@@ -1,0 +1,3 @@
+[submodule "pcax-docs"]
+	path = pcax-docs
+	url = https://github.com/liukidar/pcax-docs.git
