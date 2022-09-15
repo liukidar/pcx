@@ -1,10 +1,11 @@
+from pcax.core.nn import NODE_TYPE
 import pcaxrc.core as pcax
 import pcaxrc.nn as nn
 import jax
 import jax.numpy as jnp
 import optax
 from pcaxrc.sli import DefaultState, Trainer
-from pcaxrc.utils.optim import multi_transform
+from pcaxrc.utils.optim import multi_transform, reduce
 
 jax.config.update("jax_platform_name", "cpu")
 
@@ -40,22 +41,38 @@ rseed = 0
 rkey = jax.random.PRNGKey(rseed)
 rkey, rsubkey = jax.random.split(rkey)
 
-state = DefaultState()
-state, model = state.init(
-    Model(rsubkey),
-    "*",
-    batch_size=8,
-    input_shape=(4,),
-    # optim_fn=lambda state: multi_transform(
-    #     {NODE_TYPE.X: optax.sgd(1e-4), NODE_TYPE.W: optax.sgd(1e-4)},
-    #     state.get_masks("type"),
-    # ),
-)()
+batch_size = 8
+input_shape = (4,)
 
+state = DefaultState()
 trainer = Trainer()
 
-x = jnp.ones((4,))
+state, model, optim = state.init(
+    Model(rsubkey),
+    "*",
+    batch_size=batch_size,
+    input_shape=input_shape,
+    optim_fn=lambda state: multi_transform(
+        {
+            NODE_TYPE.X: optax.sgd(1e-4),
+            NODE_TYPE.W: optax.chain(reduce, optax.sgd(1e-4)),
+        },
+        state.get_masks("type"),
+    ),
+    trainer=trainer,
+)()
+
+x = jnp.ones((batch_size,) + input_shape)
 model = trainer.init_fn(state, model, x)
-trainer.update_fn(state, model, [x], loss_fn=lambda _, __, x: jnp.sum(x))
+state, model, y, loss = trainer.update_fn(
+    state,
+    model,
+    x_args=[x],
+    loss_fn=lambda _, __, x: jax.lax.psum(jnp.sum(x), axis_name="AX_BATCH"),
+    optim=optim,
+    loss_fn_args=[],
+    loss_fn_kwargs={},
+    x_kwargs={},
+)
 
 pass

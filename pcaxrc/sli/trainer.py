@@ -1,26 +1,74 @@
 import functools
-from typing import Any, Callable
+from typing import Any, Callable, Dict, List, Tuple
 import jax
+import jax.tree_util as jtu
 import equinox as eqx
 from pcax.core.nn import NODE_STATUS
 from pcaxrc.core.nn import NODE_TYPE
 
 from pcaxrc.utils.functions import all_kwargs, call_kwargs
+from ..lib.state import _State
 
 
-# def batch(
-#     in_args_batch_fns: List[bool | Callable[[Any], bool]],
-#     in_kwargs_batch_fns: Dict[str, bool | Callable[[Any], bool]] = {},
-# ):
-#     def decorator(fn):
-#         @functools.wraps(fn)
-#         def wrapper(*args, **kwargs):
-#             in_axes_map = ()
+def batch_over(
+    mask_kwargs: Dict[str, bool | Callable[[Any], bool]],
+    mask_out: List[str | bool | Callable[[Any], bool]],
+    mask_fn: Callable[[Any], bool] = lambda _: False,
+    axis_name: str = "AX_BATCH",
+    out_as_tuple: bool = False,
+):
+    def get_batch_mask(
+        mask_dict: Dict[str, bool | Callable[[Any], bool]], param: bool | str
+    ) -> Callable[[Any], bool]:
+        mask = param
+        if isinstance(mask, str):
+            mask = mask_dict.get(mask, mask_fn)
+
+        if not callable(mask):
+            return lambda _: mask
+        else:
+            return mask
+
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            fn_kwargs, param_names = all_kwargs(
+                fn, *args, **kwargs, get_params_names=True
+            )
+
+            in_axes_map = tuple(
+                call_kwargs(
+                    get_batch_mask(mask_kwargs, param_name),
+                    fn_kwargs[param_name],
+                    **fn_kwargs
+                )
+                for param_name in param_names
+            )
+
+            out_axes_map = tuple(
+                call_kwargs(get_batch_mask(mask_kwargs, param), param, **fn_kwargs)
+                for param in mask_out
+            )
+            if len(out_axes_map) == 1 and out_as_tuple is False:
+                out_axes_map = out_axes_map[0]
+
+            return jax.vmap(
+                fn,
+                in_axes=jtu.tree_map(lambda v: 0 if v else None, in_axes_map),
+                out_axes=jtu.tree_map(lambda v: 0 if v else None, out_axes_map),
+                axis_name=axis_name,
+            )(*(fn_kwargs[param_name] for param_name in param_names))
+
+        return wrapper
+
+    return decorator
 
 
+# TODO: specify grad_arg number
 def with_grad(
     grad_filter_fn: Callable[[Any], bool],
     grad_callback_fn: Callable[[Any], None] = lambda model: model._clear_cache(),
+    reduce_axes: Tuple[str] = ("AX_BATCH",),
 ):
     def decorator(fn):
         @functools.wraps(fn)
@@ -29,7 +77,7 @@ def with_grad(
 
             def predict(params, static):
                 # Update the first parameter passed to the function
-                fn_kwargs[next(iter(fn_kwargs))] = eqx.combine(params, static)
+                fn_kwargs["model"] = eqx.combine(params, static)
                 loss, r = call_kwargs(fn, **fn_kwargs)
                 call_kwargs(grad_callback_fn, **fn_kwargs)
 
@@ -47,6 +95,15 @@ def with_grad(
 
 class Trainer:
     @staticmethod
+    @batch_over(
+        mask_kwargs={
+            "model": lambda _, state: state.map_mask(
+                lambda type: type == NODE_TYPE.X, "type"
+            ),
+            "x": True,
+        },
+        mask_out=["model"],
+    )
     def init_fn(state, model, x):
         with state.unfreeze(
             model, filter_fn=lambda _, type: type == NODE_TYPE.X, filter_args="type"
@@ -58,8 +115,18 @@ class Trainer:
         return model
 
     @staticmethod
+    @batch_over(
+        mask_kwargs={
+            "model": lambda _, state: state.map_mask(
+                lambda type: type == NODE_TYPE.X, "type"
+            ),
+            "x_args": True,
+            "loss_fn_args": True,
+        },
+        mask_out=[False, "model", True, False],
+    )
     def update_fn(
-        state,
+        state: _State,
         model,
         x_args=[],
         x_kwargs={},
@@ -90,13 +157,15 @@ class Trainer:
                 state, model, x_args, x_kwargs, loss_fn, loss_fn_args, loss_fn_kwargs
             )
 
-            updates, optim_state = optim.update([grad], state.masks["optim"], [model])
-            state.masks["optim"] = optim_state
-            eqx.apply_updates(model, updates[0]), (y, loss)
+            # updates, optim_state = optim.update(
+            #     [grad], *state.get_masks("optim"), [model]
+            # )
+            # state.save_mask("optim", optim_state)
+
+            # return state, eqx.apply_updates(model, updates[0]), y, loss
+            return state, model, y, loss
         else:
             y = model(*x_args, **x_kwargs)
             loss = None
 
-        #
-
-        return y, loss
+        return state, model, y, loss

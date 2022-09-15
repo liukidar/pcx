@@ -109,7 +109,7 @@ class SAInit(StateAction):
             # Create optimizer now that both neurons and weights are initialized with the correct shape
             optim = optim_fn(state)
             optim_mask = optim.init(
-                [state.map_masks(lambda _, param: param, ["type", model])]
+                [state.map_mask(lambda _, param: param, ["type", model])]
             )
             state.save_mask("optim", optim_mask)
             r_kwargs["optim"] = optim
