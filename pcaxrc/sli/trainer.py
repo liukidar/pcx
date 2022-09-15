@@ -1,5 +1,5 @@
 import functools
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List
 import jax
 import jax.tree_util as jtu
 import equinox as eqx
@@ -68,7 +68,6 @@ def batch_over(
 def with_grad(
     grad_filter_fn: Callable[[Any], bool],
     grad_callback_fn: Callable[[Any], None] = lambda model: model._clear_cache(),
-    reduce_axes: Tuple[str] = ("AX_BATCH",),
 ):
     def decorator(fn):
         @functools.wraps(fn)
@@ -123,7 +122,7 @@ class Trainer:
             "x_args": True,
             "loss_fn_args": True,
         },
-        mask_out=[False, "model", True, False],
+        mask_out=[False, "model", True, True],
     )
     def update_fn(
         state: _State,

@@ -55,7 +55,7 @@ state, model, optim = state.init(
     optim_fn=lambda state: multi_transform(
         {
             NODE_TYPE.X: optax.sgd(1e-4),
-            NODE_TYPE.W: optax.chain(reduce, optax.sgd(1e-4)),
+            NODE_TYPE.W: optax.chain(reduce(), optax.sgd(1e-4)),
         },
         state.get_masks("type"),
     ),
@@ -68,7 +68,7 @@ state, model, y, loss = trainer.update_fn(
     state,
     model,
     x_args=[x],
-    loss_fn=lambda _, __, x: jax.lax.psum(jnp.sum(x), axis_name="AX_BATCH"),
+    loss_fn=lambda _, __, x: jnp.sum(x),
     optim=optim,
     loss_fn_args=[],
     loss_fn_kwargs={},

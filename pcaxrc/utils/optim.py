@@ -12,7 +12,7 @@ def reduce(
 ) -> optax.GradientTransformation:
     def init_fn(params):
         del params
-        return optax.ReduceState(axis_name)
+        return ReduceSate()
 
     def update_fn(updates, state, params=None):
         del params
