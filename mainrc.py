@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 import optax
 from pcaxrc.sli import DefaultState, Trainer
+from pcaxrc.sli.decorators import jit
 from pcaxrc.utils.optim import multi_transform, reduce
 
 jax.config.update("jax_platform_name", "cpu")
@@ -55,7 +56,7 @@ state, model, optim = state.init(
     optim_fn=lambda state: multi_transform(
         {
             NODE_TYPE.X: optax.sgd(1e-4),
-            NODE_TYPE.W: optax.chain(reduce(), optax.sgd(1e-4)),
+            NODE_TYPE.W: optax.chain(reduce(), optax.adam(1e-4)),
         },
         state.get_masks("type"),
     ),
@@ -65,21 +66,42 @@ state, model, optim = state.init(
 x = jnp.ones((batch_size,) + input_shape)
 
 
-# @jax.jit
-def run(state, model, x):
+def switch(i, fns, *args, **kwargs):
+    return jax.lax.switch(
+        i, tuple(lambda kwargs, *args: fn(*args, **kwargs) for fn in fns), kwargs, *args
+    )
+
+
+@jit(loss_fn=lambda _, __, x: jnp.sum(x), show_jit_count=True)
+def run(state, model, x, update_mode, loss_fn):
     model = trainer.init_fn(state, model, x)
-    state, model, y, loss = trainer.update_fn(
+
+    state, model, y, loss = switch(
+        0,
+        trainer.update_fn[NODE_TYPE.X, NODE_TYPE.W](loss_fn=loss_fn, optim=optim),
         state,
         model,
         x_args=[x],
-        loss_fn=lambda _, __, x: jnp.sum(x),
-        optim=optim,
-        loss_fn_args=[],
-        loss_fn_kwargs={},
-        x_kwargs={},
     )
 
     return state, model
 
 
-state, model = run(state, model, x)
+state, model = run(
+    state,
+    model,
+    x,
+    NODE_TYPE.X,
+)
+state, model = run(
+    state,
+    model,
+    x,
+    NODE_TYPE.X,
+)
+state, model = run(
+    state,
+    model,
+    x,
+    NODE_TYPE.W,
+)

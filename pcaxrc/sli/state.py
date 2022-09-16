@@ -111,7 +111,7 @@ class SAInit(StateAction):
             optim_mask = optim.init(
                 [state.map_mask(lambda _, param: param, ["type", model])]
             )
-            state.save_mask("optim", optim_mask)
+            state.save_mask("optim", optim_mask, type="dynamic")
             r_kwargs["optim"] = optim
 
         return r_kwargs

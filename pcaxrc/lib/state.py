@@ -77,7 +77,8 @@ def _unfreeze_model(model, filter_fn=None, filter_args: List[Any | str] = []):
 
 
 class _State(eqx.Module):
-    masks: Dict[str, Any] = eqx.static_field()
+    static_masks: Dict[str, Any] = eqx.static_field()
+    dynamic_masks: Dict[str, Any]
     actions: List[Callable] = eqx.static_field()
 
     class _FreezeManager:
@@ -127,8 +128,12 @@ class _State(eqx.Module):
             return self.dict.values()
 
     def __init__(self, actions: List["StateAction"] = []) -> None:
-        self.masks = {}
+        self.static_masks = {}
+        self.dynamic_masks = {}
         self.actions = {action._name: action for action in actions}
+
+    def __hash__(self):
+        return hash(frozenset(self.static_masks.items()))
 
     def init(
         self,
@@ -209,8 +214,11 @@ class _State(eqx.Module):
 
         return mask
 
-    def save_mask(self, name: str, mask: Any):
-        self.masks[name] = mask
+    def save_mask(self, name: str, mask: Any, type: str = "static") -> None:
+        if type == "static":
+            self.static_masks[name] = mask
+        elif type == "dynamic":
+            self.dynamic_masks[name] = mask
 
     # 'names' is a list of the names of the masks to get,
     # if an element is not a string, it is instead passed through.
@@ -220,7 +228,15 @@ class _State(eqx.Module):
         names = ensure_list(names)
 
         return list(
-            (self.masks[name] if isinstance(name, str) else name)
+            (
+                (
+                    self.static_masks
+                    if name in self.static_masks
+                    else self.dynamic_masks
+                )[name]
+                if isinstance(name, str)
+                else name
+            )
             for name in (names or ())
         )
 
