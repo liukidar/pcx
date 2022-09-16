@@ -32,9 +32,9 @@ class Model(pcax.Module):
 
     def __call__(self, x):
         x = self.pc1(self.linear1(x))
-        x = self.pc1.view.children[1].get(self.pc1)
+        y = self.pc1.view.children[1].get(self.pc1)
 
-        return x
+        return y
 
 
 rseed = 0
@@ -63,16 +63,23 @@ state, model, optim = state.init(
 )()
 
 x = jnp.ones((batch_size,) + input_shape)
-model = trainer.init_fn(state, model, x)
-state, model, y, loss = trainer.update_fn(
-    state,
-    model,
-    x_args=[x],
-    loss_fn=lambda _, __, x: jnp.sum(x),
-    optim=optim,
-    loss_fn_args=[],
-    loss_fn_kwargs={},
-    x_kwargs={},
-)
 
-pass
+
+# @jax.jit
+def run(state, model, x):
+    model = trainer.init_fn(state, model, x)
+    state, model, y, loss = trainer.update_fn(
+        state,
+        model,
+        x_args=[x],
+        loss_fn=lambda _, __, x: jnp.sum(x),
+        optim=optim,
+        loss_fn_args=[],
+        loss_fn_kwargs={},
+        x_kwargs={},
+    )
+
+    return state, model
+
+
+state, model = run(state, model, x)

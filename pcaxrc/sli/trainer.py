@@ -114,16 +114,6 @@ class Trainer:
         return model
 
     @staticmethod
-    @batch_over(
-        mask_kwargs={
-            "model": lambda _, state: state.map_mask(
-                lambda type: type == NODE_TYPE.X, "type"
-            ),
-            "x_args": True,
-            "loss_fn_args": True,
-        },
-        mask_out=[False, "model", True, True],
-    )
     def update_fn(
         state: _State,
         model,
@@ -134,37 +124,37 @@ class Trainer:
         loss_fn_args=[],
         loss_fn_kwargs={},
     ):
-        if loss_fn is not None:
-
-            @with_grad(
-                lambda state, model: state.partition(
-                    model,
-                    lambda _, type, status: type == NODE_TYPE.X
-                    and status != NODE_STATUS.FROZEN,
-                    ["type", "status"],
+        @batch_over(
+            mask_kwargs={
+                "model": lambda _, state: state.map_mask(
+                    lambda type: type == NODE_TYPE.X, "type"
                 ),
-            )
-            def forward(
-                state, model, x_args, x_kwargs, loss_fn, loss_fn_args, loss_fn_kwargs
-            ):
-                y = model(*x_args, **x_kwargs)
-                loss = loss_fn(state, model, y, *loss_fn_args, **loss_fn_kwargs)
-
-                return loss, y
-
-            (loss, y), grad = forward(
-                state, model, x_args, x_kwargs, loss_fn, loss_fn_args, loss_fn_kwargs
-            )
-
-            # updates, optim_state = optim.update(
-            #     [grad], *state.get_masks("optim"), [model]
-            # )
-            # state.save_mask("optim", optim_state)
-
-            # return state, eqx.apply_updates(model, updates[0]), y, loss
-            return state, model, y, loss
-        else:
+                "x_args": True,
+                "loss_fn_args": True,
+            },
+            mask_out=[True, True],
+        )
+        @with_grad(
+            lambda state, model: state.partition(
+                model,
+                lambda _, type, status: type == NODE_TYPE.X
+                and status != NODE_STATUS.FROZEN,
+                ["type", "status"],
+            ),
+        )
+        def forward(
+            state, model, x_args, x_kwargs, loss_fn, loss_fn_args, loss_fn_kwargs
+        ):
             y = model(*x_args, **x_kwargs)
-            loss = None
+            loss = loss_fn(state, model, y, *loss_fn_args, **loss_fn_kwargs)
 
-        return state, model, y, loss
+            return loss, y
+
+        (loss, y), grad = forward(
+            state, model, x_args, x_kwargs, loss_fn, loss_fn_args, loss_fn_kwargs
+        )
+
+        updates, optim_state = optim.update([grad], *state.get_masks("optim"), [model])
+        state.save_mask("optim", optim_state)
+
+        return state, eqx.apply_updates(model, updates[0]), y, loss

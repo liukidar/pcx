@@ -77,7 +77,7 @@ def _unfreeze_model(model, filter_fn=None, filter_args: List[Any | str] = []):
 
 
 class _State(eqx.Module):
-    masks: Dict[str, Any]
+    masks: Dict[str, Any] = eqx.static_field()
     actions: List[Callable] = eqx.static_field()
 
     class _FreezeManager:
