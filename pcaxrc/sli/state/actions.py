@@ -6,6 +6,7 @@ import equinox as eqx
 from pcaxrc.core.nn import NodeInfo
 from pcaxrc.lib.state import _State, Param, StateAction, is_param
 
+
 ####################################################################################################
 # Actions
 ####################################################################################################
@@ -115,21 +116,3 @@ class SAInit(StateAction):
             r_kwargs["optim"] = optim
 
         return r_kwargs
-
-
-####################################################################################################
-# States
-####################################################################################################
-
-
-# Inherits from State and defines a custom initialization function
-class DefaultState(_State):
-    def __init__(
-        self,
-        actions: List[StateAction] = [
-            SACreateDefaultMasks(),
-            SAStandardiseModelParameters(),
-            SAInit(),
-        ],
-    ) -> None:
-        super().__init__(actions)

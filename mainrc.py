@@ -4,9 +4,7 @@ import pcaxrc.nn as nn
 import jax
 import jax.numpy as jnp
 import optax
-from pcaxrc.sli import DefaultState, Trainer
-from pcaxrc.sli.decorators import jit
-from pcaxrc.utils.optim import multi_transform, reduce
+import pcaxrc.sli as pxi
 
 jax.config.update("jax_platform_name", "cpu")
 
@@ -45,18 +43,18 @@ rkey, rsubkey = jax.random.split(rkey)
 batch_size = 8
 input_shape = (4,)
 
-state = DefaultState()
-trainer = Trainer()
+state = pxi.DefaultState()
+trainer = pxi.Trainer()
 
 state, model, optim = state.init(
     Model(rsubkey),
     "*",
     batch_size=batch_size,
     input_shape=input_shape,
-    optim_fn=lambda state: multi_transform(
+    optim_fn=lambda state: pxi.optim.combine(
         {
             NODE_TYPE.X: optax.sgd(1e-4),
-            NODE_TYPE.W: optax.chain(reduce(), optax.adam(1e-4)),
+            NODE_TYPE.W: optax.chain(pxi.optim.reduce(), optax.adam(1e-4)),
         },
         state.get_masks("type"),
     ),
@@ -66,17 +64,11 @@ state, model, optim = state.init(
 x = jnp.ones((batch_size,) + input_shape)
 
 
-def switch(i, fns, *args, **kwargs):
-    return jax.lax.switch(
-        i, tuple(lambda kwargs, *args: fn(*args, **kwargs) for fn in fns), kwargs, *args
-    )
-
-
-@jit(loss_fn=lambda _, __, x: jnp.sum(x), show_jit_count=True)
+@pxi.jit(loss_fn=lambda _, __, x: jnp.sum(x), show_jit_count=True)
 def run(state, model, x, update_mode, loss_fn):
     model = trainer.init_fn(state, model, x)
 
-    state, model, y, loss = switch(
+    state, model, y, loss = pxi.flow.switch(
         0,
         trainer.update_fn[NODE_TYPE.X, NODE_TYPE.W](loss_fn=loss_fn, optim=optim),
         state,

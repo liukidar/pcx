@@ -22,7 +22,7 @@ def reduce(
     return optax.GradientTransformation(init_fn, update_fn)
 
 
-def multi_transform(
+def combine(
     transforms: Mapping[Hashable, optax.GradientTransformation],
     param_labels: Union[Any, Callable[[Any], Any]],
 ) -> optax.GradientTransformation:
@@ -74,30 +74,5 @@ def multi_transform(
             else:
                 updates, new_inner_state[group] = updates, state.inner_states[group]
         return updates, optax.MultiTransformState(new_inner_state)
-
-    # TODO: check why this doesn't work when jitting and using adam?
-    # Answer: checking if something is None is actually a static check in jax
-    # def update_fn(updates, state, params=None):
-    #     labels = param_labels(updates) if callable(param_labels) else param_labels
-    #     new_inner_state = {}
-
-    #     for group, tx in transforms.items():
-    #         group_mask = make_mask(labels, group)
-    #         update_group = not jtu.tree_all(
-    #             jtu.tree_map(lambda m, v: m is False or v is None, group_mask, updates)
-    #         )
-    #         masked_tx = optax.masked(tx, group_mask)
-
-    #         def do_update(updates, state, params):
-    #             return masked_tx.update(updates, state.inner_states[group], params)
-
-    #         def reject_update(updates, state, params):
-    #             return updates, state.inner_states[group]
-
-    #         updates, new_inner_state[group] = jax.lax.cond(
-    #             update_group, do_update, reject_update, updates, state, params
-    #         )
-
-    #     return updates, optax.MultiTransformState(new_inner_state)
 
     return optax.GradientTransformation(init_fn, update_fn)
