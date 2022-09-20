@@ -19,7 +19,8 @@ def all_kwargs(fn, *args, get_params_names: bool = False, **kwargs):
         try:
             r_kwargs[name] = next(it_args) if name not in kwargs else kwargs[name]
         except StopIteration:
-            r_kwargs[name] = parameters[name].default
+            # r_kwargs[name] = parameters[name].default
+            pass
 
     if get_params_names:
         return r_kwargs, parameters

@@ -98,22 +98,17 @@ def with_grad(
 
 
 class __partials_getter:
-    class __partial_evaluator:
-        def __init__(self, partial_fns):
-            self.partial_fns = tuple(partial_fns)
-
-        def __call__(self, **kwargs):
-            return tuple(
-                functools.partial(partial_fn, **kwargs)
-                for partial_fn in self.partial_fns
-            )
-
     def __init__(self, partial_fns):
         self.partial_fns = partial_fns
 
     def __getitem__(self, keys):
         keys = ensure_tuple(keys)
-        return self.__partial_evaluator(self.partial_fns[key] for key in keys)
+
+        return (
+            tuple(self.partial_fns[key] for key in keys)
+            if len(keys) > 1
+            else self.partial_fns[keys[0]]
+        )
 
 
 def partials(
@@ -137,7 +132,7 @@ def partials(
 __jit_counter = {}
 
 
-def jit(show_jit_count: bool = False, **static_kwargs):
+def jit(show_jit_count: bool = False, device=None, **static_kwargs):
     def decorator(fn):
         def fn_with_counter(*args, **kwargs):
             if fn not in __jit_counter:
@@ -152,9 +147,9 @@ def jit(show_jit_count: bool = False, **static_kwargs):
 
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
-            return jax.jit(fn_with_counter, static_argnames=static_kwargs.keys())(
-                *args, **{**static_kwargs, **kwargs}
-            )
+            return jax.jit(
+                fn_with_counter, static_argnames=static_kwargs.keys(), device=device
+            )(*args, **{**static_kwargs, **kwargs})
 
         return wrapper
 

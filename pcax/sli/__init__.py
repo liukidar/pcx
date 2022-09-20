@@ -33,7 +33,7 @@ def __dir__():
     return __all__
 
 
-module_name = "pcaxrc.sli"
+module_name = "pcax.sli"
 submodules = ["flow", "optim", "state"]
 
 

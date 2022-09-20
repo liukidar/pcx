@@ -1,9 +1,9 @@
 from typing import Any, Callable, Dict, List, Tuple
 import equinox as eqx
 import jax.tree_util as jtu
-from pcaxrc.core.nn import NodeInfo
-from pcaxrc.lib.tree import tree_mask
-from pcaxrc.utils.functions import ensure_list
+from pcax.core.nn import NodeInfo
+from pcax.lib.tree import tree_mask
+from pcax.utils.functions import ensure_list
 
 
 class Param:

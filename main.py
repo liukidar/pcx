@@ -1,234 +1,183 @@
 import os
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-
-from pcax.core.nn import NODE_STATUS, NODE_TYPE
-from pcax.utils.inference import batch_over, compute_grad
-import equinox as eqx
-
-######
-#
-# pcax.Simple
-#
-######
-
-
-def make_traceable(fn, fn_kwargs_dict={}, **fn_kwargs):
-    return {
-        key: lambda *args, **kwargs: fn(*args, **kwargs, **fn_kwargs, **value)
-        for key, value in fn_kwargs_dict.items()
-    }
-
-
-class Trainer:
-    @staticmethod
-    @batch_over(
-        batch_in_mask=(0,),
-        batch_filter_fn=lambda node_info: (
-            0 if node_info.type == NODE_TYPE.X else None
-        ),
-    )
-    def init_fn(state, model, x):
-        with state.unfreeze(
-            model, lambda _, info: info.type == NODE_TYPE.X
-        ) as unforzen_model:
-            unforzen_model.init(state, x, jnp.ones_like(x).mean())
-
-            model = state.freeze(unforzen_model)
-
-        return state, model
-
-    @staticmethod
-    def update_fn(
-        state,
-        model,
-        x_args=[],
-        x_kwargs={},
-        optim=None,
-        grad_filter_fn=None,
-        loss_fn=None,
-        loss_fn_args=[],
-        loss_fn_kwargs={},
-    ):
-        @compute_grad()
-        @batch_over(
-            batch_in_mask=(0, None, None, 0, None),
-            batch_out_full_mask=(None, 0),
-            batch_filter_fn=lambda node_info: (
-                0 if node_info.type == NODE_TYPE.X else None
-            ),
-        )
-        def forward(
-            state, model, x_args, x_kwargs, loss_fn, loss_fn_args, loss_fn_kwargs
-        ):
-            x = model(*x_args, **x_kwargs)
-            l = loss_fn(state, model, x, *loss_fn_args, **loss_fn_kwargs)
-
-            return l, x
-
-        (l, x), grad = forward(
-            state,
-            model,
-            x_args,
-            x_kwargs,
-            loss_fn,
-            loss_fn_args,
-            loss_fn_kwargs,
-            grad_filter_fn=grad_filter_fn,
-        )
-
-        updates, optim_state = optim.update([grad], state.masks["optim"], [model])
-        state.masks["optim"] = optim_state
-
-        return (state, eqx.apply_updates(model, updates[0]), x_args), l
-
-
-######
-#
-# END: pcax.Simple
-#
-######
-
+from pcax.core.energy import EnergyCriterion
+from pcax.core.nn import NODE_TYPE
 import pcax.core as pcax
 import pcax.nn as nn
+import jax
 import jax.numpy as jnp
 import optax
-import jax
-from pcax.utils.optim import multi_transform
-from pcax.core.energy import EnergyCriterion
+import pcax.sli as pxi
 import numpy as np
+from torch.utils import data
+from torchvision.datasets import MNIST
+import time
 
-from pcax.utils.state import create, init
-
-# jax.config.update('jax_platform_name', 'cpu')
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 
 class Model(pcax.Module):
     linear1: nn.Linear
     linear2: nn.Linear
     linear3: nn.Linear
-    linear4: nn.Linear
     pc1: pcax.Layer
     pc2: pcax.Layer
     pc3: pcax.Layer
-    pc4: pcax.Layer
 
-    def __init__(self, key) -> None:
+    def __init__(self, key, input_dim, hidden_dim, output_dim) -> None:
         super().__init__()
-
-        input_dim = 4
-        hidden_dim = 128
-        output_dim = 1
 
         key, subkey = jax.random.split(key)
         self.linear1 = nn.Linear(input_dim, hidden_dim, _key=subkey)
         key, subkey = jax.random.split(key)
         self.linear2 = nn.Linear(hidden_dim, hidden_dim, _key=subkey)
         key, subkey = jax.random.split(key)
-        self.linear3 = nn.Linear(hidden_dim, hidden_dim, _key=subkey)
-        key, subkey = jax.random.split(key)
-        self.linear4 = nn.Linear(hidden_dim, output_dim, _key=subkey)
+        self.linear3 = nn.Linear(hidden_dim, output_dim, _key=subkey)
 
         self.pc1 = pcax.Layer()
         self.pc2 = pcax.Layer()
         self.pc3 = pcax.Layer()
-        self.pc4 = pcax.Layer()
-        self.pc4._node_info.status = NODE_STATUS.FROZEN
+        self.pc3._node_info.status = pcax.NODE_STATUS.FROZEN
 
-    def init(self, state, input_data, output_data):
-        self.pc1.x.set(self.linear1(input_data))
-        self.pc2.x.set(self.linear2(self.pc1.x.get()))
-        self.pc3.x.set(self.linear3(self.pc2.x.get()))
-        self.pc4.x.set(output_data)
+    def init(self, state, x, t=None):
+        act_fn = jax.nn.tanh
+
+        self.pc1.x.set(act_fn(self.linear1(x)))
+        self.pc2.x.set(act_fn(self.linear2(self.pc1.x.get())))
+
+        if t is None:
+            self.pc3.x.set(jax.nn.softmax(self.linear3(self.pc2.x.get())))
+        else:
+            self.pc3.x.set(t)
 
         return state
 
     def __call__(self, x):
-        x = self.pc1(self.linear1(x))
-        x = self.pc2(self.linear2(*x.get()))
-        x = self.pc3(self.linear3(*x.get()))
-        x = self.pc4(self.linear4(*x.get()))
+        act_fn = jax.nn.tanh
 
-        x = self.pc4.view.children[1].get(self.pc4)
+        x = self.pc1(act_fn(self.linear1(x)))
+        x = self.pc2(act_fn(self.linear2(*x.get())))
+        x = self.pc3(jax.nn.softmax(self.linear3(*x.get())))
 
-        return x
+        y = self.pc3.at(type="output").get()[0]
+
+        return y
 
 
-def loss_fn(state, model, y):
-    r = jax.lax.psum(model.energy(EnergyCriterion()), axis_name="__batch")
+def one_hot(x, k, dtype=jnp.float32):
+    """Create a one-hot encoding of x of size k."""
+    return jnp.array(x[:, None] == jnp.arange(k), dtype)
 
-    return r
 
+def numpy_collate(batch):
+    if isinstance(batch[0], np.ndarray):
+        return np.stack(batch)
+    elif isinstance(batch[0], (tuple, list)):
+        transposed = zip(*batch)
+        return [numpy_collate(samples) for samples in transposed]
+    else:
+        return np.array(batch)
+
+
+class NumpyLoader(data.DataLoader):
+    def __init__(
+        self,
+        dataset,
+        batch_size=1,
+        shuffle=True,
+        sampler=None,
+        batch_sampler=None,
+        num_workers=1,
+        pin_memory=True,
+        drop_last=True,
+        timeout=0,
+        worker_init_fn=None,
+    ):
+        super(self.__class__, self).__init__(
+            dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            sampler=sampler,
+            batch_sampler=batch_sampler,
+            num_workers=num_workers,
+            collate_fn=numpy_collate,
+            pin_memory=pin_memory,
+            drop_last=drop_last,
+            timeout=timeout,
+            worker_init_fn=worker_init_fn,
+            persistent_workers=True,
+        )
+
+
+class FlattenAndCast(object):
+    def __call__(self, pic):
+        return np.ravel(np.array(pic, dtype=jnp.float32))
+
+
+batch_size = 64
+input_dim = 28 * 28
+hidden_dim = 512
+output_dim = 10
+
+mnist_dataset = MNIST("/tmp/mnist/", download=True, transform=FlattenAndCast())
+training_generator = NumpyLoader(mnist_dataset, batch_size=batch_size, num_workers=2)
 
 rseed = 0
 rkey = jax.random.PRNGKey(rseed)
 rkey, rsubkey = jax.random.split(rkey)
 
-state, model = create(Model(rkey))
-trainer = Trainer()
 
-batch_size = 128
-batches_per_epoch = 256
-T = 32
-epochs = 64
-train_data = [jax.random.uniform(rsubkey, shape=(batch_size, 4))] * batches_per_epoch
-state, model, optimizer = init(
-    state,
-    model,
-    multi_transform(
-        {NODE_TYPE.X: optax.sgd(1e-4), NODE_TYPE.W: optax.sgd(1e-4)},
-        state.get_type_mask(),
+state = pxi.DefaultState()
+trainer = pxi.Trainer()
+
+state, model, optim = state.init(
+    Model(rsubkey, input_dim, hidden_dim, output_dim),
+    "*",
+    batch_size=batch_size,
+    input_shape=(input_dim,),
+    optim_fn=lambda state: pxi.optim.combine(
+        {
+            NODE_TYPE.X: optax.sgd(2e-4),
+            NODE_TYPE.W: optax.chain(pxi.optim.reduce(), optax.adam(2e-4)),
+        },
+        state.get_masks("type"),
     ),
-    batch_size,
-    (4,),
-    trainer,
-)
+    trainer=trainer,
+    init_fn_args=(None,),
+)()
 
 
-def run(state, model, optim, train_data):
-    @jax.jit
-    def step(state, model, data):
-        state, model = trainer.init_fn(state, model, data)
+def loss_fn(state, model, y, t):
+    return model.energy(EnergyCriterion())
 
-        update = make_traceable(
-            trainer.update_fn,
-            {
-                NODE_TYPE.X: {
-                    "grad_filter_fn": (
-                        lambda i: (
-                            i.type == NODE_TYPE.X and i.status != NODE_STATUS.FROZEN
-                        )
-                    )
-                },
-                NODE_TYPE.W: {
-                    "grad_filter_fn": (
-                        lambda i: (
-                            i.type == NODE_TYPE.W and i.status != NODE_STATUS.FROZEN
-                        )
-                    )
-                },
-            },
+
+@pxi.jit(loss_fn=loss_fn, show_jit_count=True)
+def run_on_batch(state, model, x, t, loss_fn):
+    model = trainer.init_fn(state, model, x, t)
+
+    r, y = pxi.flow.scan(
+        pxi.flow.switch(
+            lambda j: (j % 2),
+            trainer.update_fn[NODE_TYPE.X, NODE_TYPE.X + NODE_TYPE.W],
             loss_fn=loss_fn,
             optim=optim,
-        )
+        ),
+        js=np.arange(4),
+    )(state=state, model=model, x_args=[x], loss_fn_args=[t])
 
-        (state, model, _), loss = jax.lax.scan(
-            lambda carry, x: jax.lax.cond(
-                (x + 1) % 4, update[NODE_TYPE.X], update[NODE_TYPE.W], *carry
-            ),
-            (state, model, (data,)),
-            np.arange(T),
-        )
+    target_class = jnp.argmax(t, axis=1)
+    predicted_class = jnp.argmax(y[0][0, ...], axis=1)
+    accuracy = jnp.mean(predicted_class == target_class)
 
-        return state, model, loss
-
-    for i, batch in enumerate(train_data):
-        print(f"\t batch{i}")
-        state, model, loss = step(state, model, batch)
-
-    return state, model, loss
+    return r["state"], r["model"], jnp.mean(accuracy)
 
 
-for e in range(epochs):
-    print(f"epoch {e}")
-    state, model, loss = run(state, model, optimizer, train_data)
+for e in range(16):
+    accuracies = []
+    start_time = time.time()
+    for x, y in training_generator:
+        state, model, accuracy = run_on_batch(state, model, x, one_hot(y, output_dim))
+        accuracies.append(accuracy)
+    epoch_time = time.time() - start_time
+
+    print("Epoch {} in {:0.2f} sec".format(e, epoch_time))
+    print("Accuracy:", np.mean(accuracies))

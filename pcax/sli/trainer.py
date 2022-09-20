@@ -1,6 +1,6 @@
 import equinox as eqx
 from pcax.core.nn import NODE_STATUS
-from pcaxrc.core.nn import NODE_TYPE
+from pcax.core.nn import NODE_TYPE
 
 from ..lib.state import _State
 from .decorators import batch_over, partials, with_grad
@@ -14,14 +14,15 @@ class Trainer:
                 lambda type: type == NODE_TYPE.X, "type"
             ),
             "x": True,
+            "t": True,
         },
         mask_out=["model"],
     )
-    def init_fn(state, model, x):
+    def init_fn(state, model, x, t):
         with state.unfreeze(
             model, filter_fn=lambda _, type: type == NODE_TYPE.X, filter_args="type"
         ) as unforzen_model:
-            unforzen_model.init(state, x)
+            unforzen_model.init(state, x, t)
 
             model = state.freeze(unforzen_model)
 
@@ -31,10 +32,13 @@ class Trainer:
     @partials(
         {
             NODE_TYPE.X: {
-                "grad_filter_fn": lambda _, type, status: type == NODE_TYPE.X
+                "grad_filter_fn": lambda _, type, status: type
+                == NODE_TYPE.X | type
+                == NODE_TYPE.W
                 and status != NODE_STATUS.FROZEN
             },
-            NODE_TYPE.W: {
+            NODE_TYPE.X
+            + NODE_TYPE.W: {
                 "grad_filter_fn": lambda _, type, status: type == NODE_TYPE.W
                 and status != NODE_STATUS.FROZEN
             },
@@ -87,4 +91,8 @@ class Trainer:
         )
         state.save_mask("optim", optim_state, type="dynamic")
 
-        return state, eqx.apply_updates(model, updates[0]), y, loss
+        return {
+            "state": state,
+            "model": eqx.apply_updates(model, updates[0]),
+            "y": (y, loss),
+        }
