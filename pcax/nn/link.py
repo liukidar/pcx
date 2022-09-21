@@ -1,4 +1,3 @@
-from pcax.core.nn import NODE_TYPE
 from ..core.link import Link
 import equinox as eqx
 import jax
@@ -17,7 +16,7 @@ class Linear(Link):
         *,
         _key: jax.random.PRNGKey
     ) -> None:
-        super().__init__(type=NODE_TYPE.W)
+        super().__init__()
 
         self.nn = eqx.nn.Linear(_in_features, _out_features, _use_bias, key=_key)
 

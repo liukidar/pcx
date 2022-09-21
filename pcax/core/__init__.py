@@ -1,8 +1,12 @@
-from .structure import (
-	Module, Layer
-)
+from .module import Module, Layer
 
-from .nn import (
-	NODE_TYPE,
-	NODE_STATUS
-)
+from .node import NODE_TYPE, NODE_STATUS
+
+__all__ = [
+    # .module
+    "Module",
+    "Layer",
+    # .node
+    "NODE_TYPE",
+    "NODE_STATUS",
+]
