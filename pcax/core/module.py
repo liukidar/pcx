@@ -7,7 +7,7 @@ from pcax.core.energy import gaussian_energy
 
 from pcax.utils.functions import ensure_list
 
-from .nn import NODE_TYPE, NodeModule
+from .node import NODE_TYPE, NodeModule
 from .view import InputView, OutputView, View, TmpView
 
 
