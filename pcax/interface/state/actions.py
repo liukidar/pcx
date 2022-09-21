@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import optax
 import equinox as eqx
 from pcax.core.node import NodeInfo
-from pcax.lib.state import _State, Param, StateAction, is_param
+from pcax.structure.state import _State, Param, StateAction, is_param
 
 
 ####################################################################################################

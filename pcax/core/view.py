@@ -1,7 +1,7 @@
 from typing import Callable, List, Any, Type, Tuple, Union
 import jax.numpy as jnp
 
-from pcax.lib.state import Param
+from pcax.structure.state import Param
 
 
 class View:

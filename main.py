@@ -5,7 +5,7 @@ import pcax.nn as nn
 import jax
 import jax.numpy as jnp
 import optax
-import pcax.sli as pxi
+import pcax.interface as pxi
 import numpy as np
 from torchvision.datasets import MNIST
 import time

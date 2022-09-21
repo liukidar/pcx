@@ -1,5 +1,5 @@
 from typing import List
-from pcax.lib.state import _State, StateAction
+from pcax.structure.state import _State, StateAction
 from .actions import SACreateDefaultMasks, SAStandardiseModelParameters, SAInit
 
 

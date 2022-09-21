@@ -1,7 +1,7 @@
 import equinox as eqx
 from pcax.core.node import NODE_STATUS, NODE_TYPE
 
-from ..lib.state import _State
+from ..structure.state import _State
 from .decorators import batch_over, partials, with_grad
 
 
