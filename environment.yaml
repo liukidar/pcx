@@ -2,6 +2,7 @@ name: pcax
 channels:
   - pytorch
   - nvidia
+  - anaconda
   - conda-forge
   - defaults
 dependencies:
@@ -11,7 +12,7 @@ dependencies:
   - brotlipy=0.7.0=py310h7f8727e_1002
   - bzip2=1.0.8=h7b6447c_0
   - ca-certificates=2022.07.19=h06a4308_0
-  - certifi=2022.9.14=py310h06a4308_0
+  - certifi=2022.6.15=py310h06a4308_0
   - cffi=1.15.1=py310h74dc2b5_0
   - charset-normalizer=2.0.4=pyhd3eb1b0_0
   - cryptography=37.0.1=py310h9ce1e76_0
