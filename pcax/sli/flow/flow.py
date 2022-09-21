@@ -32,7 +32,7 @@ def scan(fn, js=None, length=None, return_key="y", **static_kwargs):
                 r_kwargs = call_kwargs(fn, **{**static_kwargs, **fn_kwargs})
             else:
                 r_kwargs = call_kwargs(fn, j, **{**static_kwargs, **fn_kwargs})
-            
+
             if return_key in r_kwargs:
                 y = r_kwargs[return_key]
                 del r_kwargs[return_key]

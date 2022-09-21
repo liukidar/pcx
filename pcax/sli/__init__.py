@@ -34,7 +34,7 @@ def __dir__():
 
 
 module_name = "pcax.sli"
-submodules = ["flow", "optim", "state"]
+submodules = ["flow", "optim", "state", "data"]
 
 
 def __getattr__(name):

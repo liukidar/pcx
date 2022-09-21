@@ -32,14 +32,17 @@ class Trainer:
     @partials(
         {
             NODE_TYPE.X: {
-                "grad_filter_fn": lambda _, type, status: type
-                == NODE_TYPE.X | type
-                == NODE_TYPE.W
+                "grad_filter_fn": lambda _, type, status: type == NODE_TYPE.X
+                and status != NODE_STATUS.FROZEN
+            },
+            NODE_TYPE.W: {
+                "grad_filter_fn": lambda _, type, status: type == NODE_TYPE.W
                 and status != NODE_STATUS.FROZEN
             },
             NODE_TYPE.X
             + NODE_TYPE.W: {
-                "grad_filter_fn": lambda _, type, status: type == NODE_TYPE.W
+                "grad_filter_fn": lambda _, type, status: type == NODE_TYPE.X
+                or type == NODE_TYPE.W
                 and status != NODE_STATUS.FROZEN
             },
         }
