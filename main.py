@@ -1,5 +1,5 @@
 from pcax.core.energy import EnergyCriterion
-from pcax.core.nn import NODE_TYPE
+from pcax.core.node import NODE_TYPE
 import pcax.core as pcax
 import pcax.nn as nn
 import jax
@@ -9,6 +9,9 @@ import pcax.sli as pxi
 import numpy as np
 from torchvision.datasets import MNIST
 import time
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 
 class Model(pcax.Module):
@@ -32,7 +35,7 @@ class Model(pcax.Module):
         self.pc1 = pcax.Layer()
         self.pc2 = pcax.Layer()
         self.pc3 = pcax.Layer()
-        self.pc3._node_info.status = pcax.NODE_STATUS.FROZEN
+        self.pc3._node_info.status = pcax.node.NODE_STATUS.FROZEN
 
     def init(self, state, x, t=None):
         act_fn = jax.nn.tanh
@@ -118,7 +121,7 @@ def run_on_batch(state, model, x, t, loss_fn):
             loss_fn=loss_fn,
             optim=optim,
         ),
-        js=np.arange(1024),
+        js=np.arange(8),
     )(state=state, model=model, x_args=[x], loss_fn_args=[t])
 
     target_class = jnp.argmax(t, axis=1)

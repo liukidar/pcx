@@ -3,7 +3,7 @@ import jax.tree_util as jtu
 import jax.numpy as jnp
 import optax
 import equinox as eqx
-from pcax.core.nn import NodeInfo
+from pcax.core.node import NodeInfo
 from pcax.lib.state import _State, Param, StateAction, is_param
 
 

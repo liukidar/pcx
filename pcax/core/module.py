@@ -3,7 +3,7 @@ from typing import Dict, List, Any
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import equinox as eqx
-from pcax.core.energy import gaussian_energy
+from .energy import gaussian_energy
 
 from pcax.utils.functions import ensure_list
 

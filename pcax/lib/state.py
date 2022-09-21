@@ -1,7 +1,7 @@
 from typing import Any, Callable, Dict, List, Tuple
 import equinox as eqx
 import jax.tree_util as jtu
-from pcax.core.nn import NodeInfo
+from pcax.core.node import NodeInfo
 from pcax.lib.tree import tree_mask
 from pcax.utils.functions import ensure_list
 
