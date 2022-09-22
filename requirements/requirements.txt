@@ -1,4 +1,4 @@
-python>=3.8
+python>=3.10
 jax>=0.3.17
 equinox>=0.7
-numpy>=1.21
+optax>=0.1
