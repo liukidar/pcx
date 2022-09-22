@@ -12,14 +12,14 @@ venv:
 	python3 -m venv $(venv_name) ;\
 	. $(venv_activate_path) ;\
 	pip install --upgrade pip setuptools wheel ;\
-	pip install --upgrade -r requirements-dev.txt ;\
-	pip install --upgrade -r requirements.txt
+	pip install --upgrade -r requirements/requirements-dev.txt ;\
+	pip install --upgrade -r requirements/requirements.txt
 
 update:
 	. $(venv_activate_path) ;\
 	pip install --upgrade pip setuptools wheel ;\
-	pip install --upgrade -r requirements-dev.txt ;\
-	pip install --upgrade -r requirements.txt
+	pip install --upgrade -r requirements/requirements-dev.txt ;\
+	pip install --upgrade -r requirements/requirements.txt
 
 lint:
 	. $(venv_activate_path) ;\
