@@ -4,27 +4,41 @@
 
 pass
 
+## Install
+
+First, create an environment with Python 3.10 or newer and install JAX in the correct version for your accelerator device. Then
+
+### Install stable version
+
+On the right side of the repository, click on "releases" and download the wheel file. You can install it using
+
+TODO: add wheel file install script
+
+```shell
+pip install ?
+```
+
+### Install from github
+
+clone this repository locally and then:
+
+```shell
+pip install -e /path/to/this/repo/
+```
+
 ## Todo
 
-- environments.yaml should be requirements.txt
-- Add licence
-- Protect Main Branch
+- Add licence and then change it under setup.cfg licence
 - Add auto changelog
 - Add pre-commit hooks
 - Add tests
 - Add docs as submodule
 - Set Merge to "Squash and Merge"
-
-## Install
-
-1) Create conda environment
-2)
-
-```shell
-pip install -e /path/to/this/repo/pcax
-```
+- Add submodule docs in packaging
 
 ## Contribute
+
+TODO add contribute guidelines:
 
 ### VSCode
 
