@@ -35,6 +35,7 @@ pip install -e /path/to/this/repo/
 - Add docs as submodule
 - Set Merge to "Squash and Merge"
 - Add submodule docs in packaging
+- GHA fail on formatting / linting issue
 
 ## Contribute
 

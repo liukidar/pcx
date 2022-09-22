@@ -36,7 +36,9 @@ format:
 
 checkformat:
 	. $(venv_activate_path) ;\
+	echo "++++++++++ ISORT ++++++++++" ;\
 	isort -rc . ;\
+	echo "++++++++++ BLACK ++++++++++" ;\
 	black $(package_name)/ --check ;\
 	black tests/ --check
 
@@ -48,3 +50,6 @@ cov:
 	. $(venv_activate_path) ;\
 	py.test $(cov_args)
 
+checktype:
+	. $(venv_activate_path) ;\
+	mypy pcax/
