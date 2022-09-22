@@ -36,6 +36,7 @@ pip install -e /path/to/this/repo/
 - Set Merge to "Squash and Merge"
 - Add submodule docs in packaging
 - GHA fail on formatting / linting issue
+- Update Mypy as soon as <https://github.com/python/mypy/issues/13627#issuecomment-1240582303> is fixed
 
 ## Contribute
 
@@ -58,3 +59,7 @@ Add this to you `settings.json`:
 ```
 
 It will continuously check your code using flake8 and mypy and set the formatting to black. As the linting is expensive, creating pre-commit hooks would be nicer though.
+
+### Skip Github Actions
+
+If you want to skip github actions on a single commit (e.g. an intermediate commit or comment that does not need to be checked), you can start your commit message with `[skip ci]`.
