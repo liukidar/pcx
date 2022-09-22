@@ -26,6 +26,14 @@ clone this repository locally and then:
 pip install -e /path/to/this/repo/
 ```
 
+To download the documentation in the `docs` folder, run:
+
+```shell
+git submodule update --init --recursive
+```
+
+If the `docs` folder remains empty, you probably do not have access to the [pcax-docs](https://github.com/liukidar/pcax-docs) repository yet.
+
 ## Todo
 
 - Add licence and then change it under setup.cfg licence
