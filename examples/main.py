@@ -10,8 +10,6 @@ import numpy as np
 from torchvision.datasets import MNIST
 import time
 
-jax.config.update("jax_platform_name", "cpu")
-
 
 class Model(pxc.Module):
     linear1: pxnn.Linear
@@ -75,9 +73,7 @@ hidden_dim = 256
 output_dim = 10
 
 mnist_dataset = MNIST("/tmp/mnist/", download=True, transform=FlattenAndCast())
-training_generator = pxi.data.Dataloader(
-    mnist_dataset, batch_size=batch_size, num_workers=16, shuffle=True
-)
+training_generator = pxi.data.Dataloader(mnist_dataset, batch_size=batch_size, num_workers=16, shuffle=True)
 
 rseed = 0
 rkey = jax.random.PRNGKey(rseed)
@@ -117,12 +113,7 @@ def run_on_batch(state, model, x, t, loss_fn, optim):
     model = trainer.init_fn(state, model, x, t)
     state = state.update_mask("status", lambda mask: mask.pc3.x, NODE_STATUS.FROZEN)
 
-    r, y = pxi.flow.scan(
-        trainer.update_fn[NODE_TYPE.X],
-        loss_fn=loss_fn,
-        optim=optim,
-        length=T - 1,
-    )(
+    r, y = pxi.flow.scan(trainer.update_fn[NODE_TYPE.X], loss_fn=loss_fn, optim=optim, length=T - 1,)(
         state,
         model,
         x_args=(x,),
@@ -155,9 +146,7 @@ with pxi.debug():
         start_time = time.time()
 
         for (x, y) in training_generator:
-            state, model, en = run_on_batch(loss_fn=loss_fn, optim=optim)(
-                state, model, x, one_hot(y, output_dim)
-            )
+            state, model, en = run_on_batch(loss_fn=loss_fn, optim=optim)(state, model, x, one_hot(y, output_dim))
             energy.append(en)
 
         epoch_time = time.time() - start_time
