@@ -1,12 +1,15 @@
 # PCAX
 
-##  Introduction
+## Introduction
 
-pass
+pcax is a Python JAX-based library designed to develop highly configurable predictive coding networks. It is strictly forbidden to share any piece of code without permission.
 
 ## Install
 
-First, create an environment with Python 3.10 or newer and install JAX in the correct version for your accelerator device. Then
+First, create an environment with Python 3.10 or newer and [install JAX](https://github.com/google/jax#installation) in the correct version for your accelerator device. For cuda >= 11.4, the command is
+```shell
+pip install "jax[cuda11_cudnn82]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+```
 
 ### Install stable version
 
