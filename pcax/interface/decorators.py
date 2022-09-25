@@ -1,9 +1,26 @@
 import functools
+from logging import warning
 from typing import Any, Callable, Dict, List
 import jax
 import jax.tree_util as jtu
 import equinox as eqx
 from ..utils.functions import all_kwargs, call_kwargs, ensure_tuple
+from contextlib import contextmanager
+
+_C = {
+    "debug": False,
+}
+
+
+@contextmanager
+def debug():
+    prev = _C["debug"]
+    _C["debug"] = True
+
+    try:
+        yield None
+    finally:
+        _C["debug"] = prev
 
 
 def batch_over(
@@ -129,28 +146,70 @@ def partials(
     return decorator
 
 
-__jit_counter = {}
+__jit_debug = {
+    "hash": {},
+    "counter": {},
+}
 
 
-def jit(show_jit_count: bool = False, device=None, **static_kwargs):
-    def decorator(fn):
-        def fn_with_counter(*args, **kwargs):
-            if fn not in __jit_counter:
-                __jit_counter[fn] = 0
-            __jit_counter[fn] += 1
+def jit(fn):
+    def body(_hash, *args, **kwargs):
+        if _C["debug"] is True:
+            if fn not in __jit_debug["counter"]:
+                __jit_debug["counter"][fn] = 0
+            __jit_debug["counter"][fn] += 1
 
-            if show_jit_count:
-                print(
-                    f"[DEBUG] Function '{fn.__name__}' has been compiled #{__jit_counter[fn]} times"
-                )
-            return fn(*args, **kwargs)
+            print(
+                f"[DEBUG] Function '{fn.__name__}' has been compiled #{__jit_debug['counter'][fn]} times"
+                f" (hash: {_hash})."
+            )
 
-        @functools.wraps(fn)
-        def wrapper(*args, **kwargs):
-            return jax.jit(
-                fn_with_counter, static_argnames=static_kwargs.keys(), device=device
-            )(*args, **{**static_kwargs, **kwargs})
+        return fn(*args, **kwargs)
 
-        return wrapper
+    def decorator(device=None, *, _hash: Any | None = None, **fixed_kwargs):
+        if _C["debug"] is True:
+
+            @functools.wraps(fn)
+            def debug_wrapper(*args, **kwargs):
+                (_, static_args) = eqx.partition(args, lambda _: True)
+                (_, static_kwargs) = eqx.partition(kwargs, lambda _: True)
+
+                debug_hash = hash(static_args) + hash(tuple(static_kwargs.items()))
+
+                if (fn, _hash) in __jit_debug["hash"]:
+                    if debug_hash not in __jit_debug["hash"][(fn, _hash)]:
+                        warning(
+                            f"Function '{fn.__name__}' has been called with new static arguments"
+                            " without recompiling the function with a new hash."
+                            " Calling the function with new arguments"
+                            " does not trigger a recompilation unless a new hash is specified."
+                            " Without recompilation a previously cached version of the function will be using,"
+                            " ignoring the new static arguments. This may be the desired behavior."
+                            " If not, please specify a new hash for the function using the _hash keyword."
+                        )
+                        __jit_debug["hash"][(fn, _hash)].append(debug_hash)
+                else:
+                    __jit_debug["hash"][(fn, _hash)] = [debug_hash]
+
+                return jax.jit(
+                    body,
+                    static_argnums=(0),
+                    static_argnames=fixed_kwargs.keys(),
+                    device=device,
+                )(_hash, *args, **kwargs, **fixed_kwargs)
+
+            return debug_wrapper
+        else:
+
+            @functools.wraps(fn)
+            def wrapper(*args, **kwargs):
+                return jax.jit(
+                    body,
+                    static_argnums=(0),
+                    static_argnames=fixed_kwargs.keys(),
+                    device=device,
+                )(_hash, *args, **kwargs, **fixed_kwargs)
+
+            return wrapper
 
     return decorator
