@@ -36,17 +36,6 @@ If the `docs` folder remains empty, you probably do not have access to the [pcax
 
 This only contains the raw doc files and not the compiled folders. If you need to view the docs, you can compile them. #TODO
 
-## Todo
-
-- Add licence and then change it under setup.cfg licence
-- Add auto changelog
-- Add pre-commit hooks
-- Add tests
-- Set Merge to "Squash and Merge"
-- GHA fail on formatting / linting issue
-- Update Mypy as soon as <https://github.com/python/mypy/issues/13627#issuecomment-1240582303> is fixed
-- add a GHA for the docs repo to automatically create a PR in this repo to update the submodule. [This GHA might help](https://github.com/releasehub-com/github-action-create-pr-parent-submodule).
-
 ## Contribute
 
 Please use a new branch to contribute. Once you are done writing the feature, please open a Pull Request. A few github actions will be triggered: Formatting, Linting, Type Checking and Testing. These steps ensure that the library maintains a certain level of quality and fascilitate collaboration.
