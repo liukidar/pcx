@@ -9,6 +9,9 @@ import pcax.interface as pxi
 import numpy as np
 from torchvision.datasets import MNIST
 import time
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 
 class Model(pxc.Module):
@@ -140,6 +143,7 @@ def run_on_batch(state, model, x, t, loss_fn, optim):
 epoch_times = []
 energies = []
 
+# This slows down things but prints helpful error messages
 with pxi.debug():
     for e in range(E):
         energy = []

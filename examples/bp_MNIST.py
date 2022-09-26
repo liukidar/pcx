@@ -58,9 +58,7 @@ hidden_dim = 256
 output_dim = 10
 
 mnist_dataset = MNIST("/tmp/mnist/", download=True, transform=FlattenAndCast())
-training_generator = pxi.data.Dataloader(
-    mnist_dataset, batch_size=batch_size, num_workers=16, shuffle=True
-)
+training_generator = pxi.data.Dataloader(mnist_dataset, batch_size=batch_size, num_workers=16, shuffle=True)
 
 rseed = 0
 rkey = jax.random.PRNGKey(rseed)
@@ -107,17 +105,6 @@ def run_on_batch(state, model, x, t, loss_fn, optim):
         length=T,
     )(state=state, model=model, x_args=[x], loss_fn_args=[t])
 
-    # energy = np.mean(y[1], axis=1)
-    # err = y[1][0]
-    # mse = jnp.mean(
-    #     jax.vmap(
-    #         lambda err: np.mean(err**2),
-    #         in_axes=(0),
-    #         out_axes=(0),
-    #     )(err),
-    #     axis=0,
-    # )
-
     target_class = jnp.argmax(t, axis=1)
     predicted_class = jnp.argmax(y[0][0, ...], axis=1)
     accuracy = jnp.mean(predicted_class == target_class)
@@ -133,9 +120,7 @@ for e in range(E):
     energy = []
     start_time = time.time()
     for (x, y) in training_generator:
-        state, model, en = run_on_batch(loss_fn=loss_fn, optim=optim)(
-            state, model, x, one_hot(y, output_dim)
-        )
+        state, model, en = run_on_batch(loss_fn=loss_fn, optim=optim)(state, model, x, one_hot(y, output_dim))
         energy.append(en)
 
     epoch_time = time.time() - start_time
