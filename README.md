@@ -35,7 +35,7 @@ pip install -e /path/to/this/repo/
 
 ## Docs
 
-To download the documentation in the `docs` folder, run:
+The `docs` folder in the repository links to the [liukidar/pcax-docs](https://github.com/liukidar/pcax-docs) repository. To load it locally, please run:
 
 ```shell
 git submodule update --init --recursive
