@@ -33,7 +33,7 @@ Clone this repository locally and then:
 pip install -e /path/to/this/repo/
 ```
 
-### Docs
+## Docs
 
 To download the documentation in the `docs` folder, run:
 
@@ -43,7 +43,7 @@ git submodule update --init --recursive
 
 If the `docs` folder remains empty, you probably do not have access to the [pcax-docs](https://github.com/liukidar/pcax-docs) repository yet.
 
-This only contains the raw doc files and not the compiled folders. If you need to view the docs, you can compile them. #TODO
+The documentation does not need to be compiled and you can view it from the [docs/index.html](docs/index.html) file. In the future, we will host the docs of the latest commit on the main branch on PSSR. Link will follow.
 
 ## Contribute
 
@@ -59,8 +59,6 @@ The GHA only check that everything is in order, but does not alter the code for 
 Please add comments and docstrings to your changes.
 
 One warning: We cannot test GPU features on GHA. Please do this locally as well, even though it might not result in an error in the GHA.
-
-TODO How do update the documentation?
 
 ### VSCode
 
