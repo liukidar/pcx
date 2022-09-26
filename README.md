@@ -11,12 +11,13 @@ First, create an environment with Python 3.10 or newer and [install JAX](https:/
 ```shell
 pip install "jax[cuda11_cudnn82]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 ```
+
 Then you hav two options:
+
 - Install a stable version
-- clone this repository and install the package by linking to the this folder. The installation of this libary only links to this folder and thus dynamically updates all your changes.
+- Clone this repository and install the package by linking to the this folder. The installation of this libary only links to this folder and thus dynamically updates all your changes.
 
-
-### A Install stable version
+### Install stable version
 
 On the right side of the repository, click on "releases" and download the wheel file. You can install it using
 
@@ -24,7 +25,7 @@ On the right side of the repository, click on "releases" and download the wheel 
 pip install path/to/wheel_file.whl
 ```
 
-### B Install from github
+### Install dynamically from github
 
 Clone this repository locally and then:
 
@@ -33,6 +34,7 @@ pip install -e /path/to/this/repo/
 ```
 
 ### Docs
+
 To download the documentation in the `docs` folder, run:
 
 ```shell
