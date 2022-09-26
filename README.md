@@ -15,7 +15,7 @@ pip install "jax[cuda11_cudnn82]" -f https://storage.googleapis.com/jax-releases
 Then you hav two options:
 
 - Install a stable version
-- Clone this repository and install the package by linking to the this folder. The installation of this libary only links to this folder and thus dynamically updates all your changes.
+- Clone this repository and install the package by linking to the this folder. The installation of this libary only links to this folder and thus dynamically updates with all your changes.
 
 ### Install stable version
 
