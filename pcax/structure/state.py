@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Sequence, Tuple
 import equinox as eqx
 import jax.tree_util as jtu
 from pcax.core.node import NodeInfo
@@ -8,10 +8,7 @@ from pcax.utils.functions import ensure_list
 
 class Param:
     def __init__(self, data) -> None:
-        if isinstance(data, Param):
-            self.data = data.data
-        else:
-            self.data = data
+        self.data = data.data if isinstance(data, Param) else data
 
     def get(self):
         return self.data
@@ -70,9 +67,7 @@ def _unfreeze_model(model, filter_fn=None, filter_args: List[Any | str] = []):
             return param
 
     return jtu.tree_map(
-        replace_fn,
-        model,
-        *filter_args,
+        replace_fn, model, *filter_args, is_leaf=lambda node: node is None
     )
 
 
@@ -138,26 +133,26 @@ class _State(eqx.Module):
     def init(
         self,
         model: Any,
-        action_names: List[str],
+        actions: str | List[str] = "*",
         actions_kwargs: Dict[str, Any] = {},
         **kwargs
     ):
-        return self.exec_actions(model, action_names, actions_kwargs, **kwargs)
+        return self.exec_actions(model, actions, actions_kwargs, **kwargs)
 
     def exec_actions(
         self,
         model: Any,
-        action_names: List[str],
+        actions: str | List[str] = "*",
         actions_kwargs: Dict[str, Any] = {},
         **kwargs
     ):
-        if action_names == "*":
+        if actions == "*":
             # We rely on the fact that from python 3.7
             # the order of the keys in a dict is guaranteed to be the insertion order
-            action_names = self.actions.keys()
+            actions = self.actions.keys()
 
         main_kwargs = {"state": self, "model": model}
-        for action in action_names:
+        for action in actions:
             r_kwargs = self.actions[action]._exec(
                 **main_kwargs, **{**actions_kwargs.get(action, {}), **kwargs}
             )
@@ -213,6 +208,22 @@ class _State(eqx.Module):
             self.save_mask(mask_name, mask)
 
         return mask
+
+    def update_mask(
+        self,
+        mask_name: str,
+        where_fn: Callable[[Any], Any],
+        replace: Any | Sequence[Any] = None,
+        is_leaf: Callable[[Any], bool] = None,
+    ):
+        if mask_name in self.static_masks:
+            self.static_masks[mask_name] = eqx.tree_at(
+                where_fn, self.static_masks[mask_name], replace=replace, is_leaf=is_leaf
+            )
+        else:
+            raise NotImplementedError()
+
+        return self
 
     def save_mask(self, name: str, mask: Any, type: str = "static") -> None:
         if type == "static":

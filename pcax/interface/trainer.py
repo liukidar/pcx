@@ -40,8 +40,9 @@ class Trainer:
             },
             NODE_TYPE.X
             + NODE_TYPE.W: {
-                "grad_filter_fn": lambda _, type, status: type == NODE_TYPE.X
-                or type == NODE_TYPE.W
+                "grad_filter_fn": lambda _, type, status: (
+                    type == NODE_TYPE.X or type == NODE_TYPE.W
+                )
                 and status != NODE_STATUS.FROZEN
             },
         }
@@ -93,8 +94,4 @@ class Trainer:
         )
         state.save_mask("optim", optim_state, type="dynamic")
 
-        return {
-            "state": state,
-            "model": eqx.apply_updates(model, updates[0]),
-            "y": (y, loss),
-        }
+        return (state, eqx.apply_updates(model, updates[0])), (y, loss)

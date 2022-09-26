@@ -1,6 +1,9 @@
 import functools
+import inspect
+from logging import warning
 import jax
-from ...utils.functions import all_kwargs, call_kwargs
+import equinox as eqx
+from .. import _C
 
 
 def switch(index_fn, fns, **static_kwargs):
@@ -9,40 +12,67 @@ def switch(index_fn, fns, **static_kwargs):
         return jax.lax.switch(
             index_fn(j),
             tuple(
-                lambda kwargs, *args: fn(*args, **{**static_kwargs, **kwargs})
-                for fn in fns
+                lambda args, kwargs: fn(*args, **kwargs, **static_kwargs) for fn in fns
             ),
+            args,
             kwargs,
-            *args
         )
 
     return wrapper
 
 
-def scan(fn, js=None, length=None, return_key="y", **static_kwargs):
+def scan(fn, js=None, length=None, **static_kwargs):
+    parameter_names = inspect.signature(fn).parameters
+
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
-        fn_kwargs = all_kwargs(fn, *args, **{**static_kwargs, **kwargs})
+        # Convert args to kwargs
+        kwargs.update(zip(parameter_names, args))
 
-        for key in static_kwargs:
-            del fn_kwargs[key]
+        if _C["debug"]:
+            (_, static_fields) = eqx.partition(kwargs, lambda _: True)
+            debug_hash = hash(tuple(static_fields.items()))
 
-        def body(fn_kwargs, j):
-            if js is None:
-                r_kwargs = call_kwargs(fn, **{**static_kwargs, **fn_kwargs})
+        def body(kwargs, j):
+            if j is None:
+                r = fn(**kwargs, **static_kwargs)
             else:
-                r_kwargs = call_kwargs(fn, j, **{**static_kwargs, **fn_kwargs})
+                r = fn(j, **kwargs, **static_kwargs)
 
-            if return_key in r_kwargs:
-                y = r_kwargs[return_key]
-                del r_kwargs[return_key]
+            # Update args
+            if isinstance(r[0], dict):
+                kwargs.update(r[0])
+            elif isinstance(r[0], tuple | list):
+                # If the return value is an iterable, its elements will replace fn's arguments in order.
+                kwargs.update(zip(parameter_names, r[0]))
+            else:
+                raise TypeError(
+                    f"Invalid type for the first element of the return value: {type(r[0])}."
+                    "A scanned function must return a tuple of length 2 or less, "
+                    "where the first element is a dictionary|tuple|list of argument updates."
+                )
+
+            if len(r) == 2:
+                y = r[1]
             else:
                 y = None
 
-            fn_kwargs.update(r_kwargs)
+            return kwargs, y
 
-            return fn_kwargs, y
+        r, y = jax.lax.scan(body, kwargs, js, length)
 
-        return jax.lax.scan(body, fn_kwargs, js, length)
+        if _C["debug"]:
+            (_, static_fields) = eqx.partition(r, lambda _: True)
+            if debug_hash != hash(tuple(static_fields.items())):
+                warning(
+                    f"Function '{fn.__name__}' has modified its static arguments"
+                    " within a scan loop. Remember that the changes are not propagated"
+                    " to the next iteration as the function is compiled before being executed."
+                    " Changes to static arguments take effect only after the scan loop has finished."
+                    " If this behaviour is not desired, consider using a for loop instead (as it will be unrolled)."
+                    " If this is instead intended, ignore this warning."
+                )
+
+        return r, y
 
     return wrapper
