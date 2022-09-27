@@ -17,11 +17,11 @@ class Trainer:
         },
         mask_out=["model"],
     )
-    def init_fn(state, model, x, t):
+    def init_fn(state, model, x, t=None):
         with state.unfreeze(
             model, filter_fn=lambda _, type: type == NODE_TYPE.X, filter_args="type"
         ) as unforzen_model:
-            unforzen_model.init(state, x, t)
+            unforzen_model.init(x, t)
 
             model = state.freeze(unforzen_model)
 

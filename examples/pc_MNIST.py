@@ -38,7 +38,7 @@ class Model(pxc.Module):
         self.pc2 = pxc.Layer()
         self.pc3 = pxc.Layer()
 
-    def init(self, state, x, t=None):
+    def init(self, x, t=None):
         with pxi.force_forward():
             self(x, t)
 
