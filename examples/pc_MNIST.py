@@ -9,9 +9,11 @@ import pcax.interface as pxi
 import numpy as np
 from torchvision.datasets import MNIST
 import time
-import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+# import os
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+jax.config.update("jax_platform_name", "cpu")
 
 
 class Model(pxc.Module):
@@ -37,26 +39,19 @@ class Model(pxc.Module):
         self.pc3 = pxc.Layer()
 
     def init(self, state, x, t=None):
-        act_fn = jax.nn.tanh
+        with pxi.force_forward():
+            self(x, t)
 
-        self.pc1.at().set(act_fn(self.linear1(x)))
-        self.pc2.at().set(act_fn(self.linear2(self.pc1.x.get())))
-
-        if t is None:
-            self.pc3.at().set(act_fn(self.linear3(self.pc2.x.get())))
-        else:
-            self.pc3.at().set(t)
-
-        return state
-
-    def __call__(self, x):
+    def __call__(self, x, t=None):
         act_fn = jax.nn.tanh
 
         x = self.pc1(act_fn(self.linear1(x)))
         x = self.pc2(act_fn(self.linear2(*x.get())))
-        x = self.pc3(act_fn(self.linear3(*x.get())))
-
-        y = self.pc3.at(type="output").get()[0]
+        if t is None:
+            x = self.pc3(act_fn(self.linear3(*x.get())))
+            y = self.pc3.at(type="output").get()[0]
+        else:
+            y = self.pc3(t)
 
         return y
 
@@ -106,7 +101,7 @@ def loss_fn(state, model, y, t):
     return model.energy(EnergyCriterion())
 
 
-T = 4
+T = 3
 E = 16
 total_iterations = T * E
 

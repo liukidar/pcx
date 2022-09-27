@@ -3,7 +3,7 @@ import inspect
 from logging import warning
 import jax
 import equinox as eqx
-from .. import _C
+from ...core.environment import _C
 
 
 def switch(index_fn, fns, **static_kwargs):

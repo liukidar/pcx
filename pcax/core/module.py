@@ -98,7 +98,7 @@ class Layer(Module):
                 _children=[
                     InputView(),
                     OutputView(
-                        _energy_fn=lambda root, x, mu: gaussian_energy(
+                        energy_fn=lambda root, x, mu: gaussian_energy(
                             mu.get(root), x.get(root)
                         )
                     ),

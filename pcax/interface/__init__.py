@@ -10,7 +10,7 @@ from .trainer import (
     Trainer,
 )
 
-from .decorators import batch_over, with_grad, partials, jit, _C, debug
+from .decorators import batch_over, with_grad, partials, jit, debug, force_forward
 
 __all__ = [
     # .state
@@ -21,8 +21,8 @@ __all__ = [
     "with_grad",
     "partials",
     "jit",
-    "_C",
     "debug",
+    "force_forward",
 ]
 
 

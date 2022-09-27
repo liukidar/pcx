@@ -6,10 +6,7 @@ import jax.tree_util as jtu
 import equinox as eqx
 from ..utils.functions import all_kwargs, call_kwargs, ensure_tuple
 from contextlib import contextmanager
-
-_C = {
-    "debug": False,
-}
+from ..core.environment import _C
 
 
 @contextmanager
@@ -21,6 +18,17 @@ def debug():
         yield None
     finally:
         _C["debug"] = prev
+
+
+@contextmanager
+def force_forward():
+    prev = _C["force_forward"]
+    _C["force_forward"] = True
+
+    try:
+        yield None
+    finally:
+        _C["force_forward"] = prev
 
 
 def batch_over(

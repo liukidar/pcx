@@ -2,6 +2,7 @@ from typing import Callable, List, Any, Type, Tuple, Union
 import jax.numpy as jnp
 
 from pcax.structure.state import Param
+from .environment import _C
 
 
 class View:
@@ -26,17 +27,13 @@ class View:
         self.cached = None
 
         if _boundaries is not None:
-            raise NotImplementedError(
-                "Boundaries for a View are not currently supported."
-            )
+            raise NotImplementedError("Boundaries for a View are not currently supported.")
 
         for child in self.children:
             child.parent = self
 
-    def get(
-        self, root: jnp.ndarray, _apply_t: bool = False, _cache: bool = False
-    ) -> jnp.ndarray:
-        if _cache is True and self.cached is not None:
+    def get(self, root: jnp.ndarray) -> jnp.ndarray:
+        if self.cached is not None:
             return self.cached
 
         if isinstance(self.parent, View):
@@ -45,25 +42,23 @@ class View:
             # Convert root.x to a Param if it is not already to get an uniform interface
             x = Param(root.x).get()
 
-        if _apply_t is True and self.transformation_fn is not None:
-            x = self.transformation_fn(x)
-
-        if _cache is True:
+        x = self.transformation_fn(x) if self.transformation_fn is not None else x
+        if _C["force_forward"] is False:
             self.cached = x
 
         return x
 
-    def set(self, root: jnp.ndarray, _x: jnp.ndarray, _cache: bool = False):
+    def set(self, root: jnp.ndarray, x: jnp.ndarray):
         if isinstance(self.parent, View):
-            self.parent.set(root, _x, _cache)
+            self.parent.set(root, x)
         else:
             # x can be set only if it is a Param
-            root.x.set(_x)
+            root.x.set(x)
 
         if self.transformation_fn is not None:
-            _x = self.transformation_fn(_x)
-        if _cache is True:
-            self.cached = _x
+            x = self.transformation_fn(x)
+        if _C["force_forward"] is False:
+            self.cached = x
 
         return self.parent
 
@@ -73,9 +68,7 @@ class View:
         for child in self.children:
             child.flush_cache()
 
-    def match(
-        self, name: str, type: str = None, _only_leaves: bool = True
-    ) -> "TmpView":
+    def match(self, name: str, type: str = None, _only_leaves: bool = True) -> "TmpView":
         name2type = {"view": View, "input": InputView, "output": OutputView}
         r = []
 
@@ -85,9 +78,7 @@ class View:
             if len(name) > 1:
                 next_name = name[1]
             elif (
-                _only_leaves is False
-                or len(self.children) == 0
-                and (type is None or isinstance(self, name2type[type]))
+                _only_leaves is False or len(self.children) == 0 and (type is None or isinstance(self, name2type[type]))
             ):
                 r.append(self)
 
@@ -116,13 +107,7 @@ class View:
         else:
             return target.find(_path[1])
 
-    def clone(
-        self,
-        _target: str = None,
-        _name: str = None,
-        _type: Type["View"] = None,
-        **kwargs
-    ):
+    def clone(self, _target: str = None, _name: str = None, _type: Type["View"] = None, **kwargs):
         if _target is None:
             _target = self
         elif _target == "..":
@@ -163,40 +148,46 @@ class OutputView(View):
 
     def __init__(
         self,
-        _name: str = None,
-        _transformation_fn: Callable = None,
-        _children: Tuple["View"] = None,
-        _boundaries=None,
-        _energy_fn: Callable = None,
+        name: str = None,
+        transformation_fn: Callable = None,
+        children: Tuple[View] = None,
+        energy_fn: Callable = None,
+        # boundaries=None, # TODO
     ) -> None:
-        super().__init__(_name, _transformation_fn, _children, _boundaries)
-        self.energy_fn = _energy_fn
+        super().__init__(name, transformation_fn, children)
+        self.energy_fn = energy_fn
 
-    def set(self, root: jnp.ndarray, _x: jnp.ndarray, _cache: bool = None):
-        self.cached = (
-            self.transformation_fn(_x) if self.transformation_fn is not None else _x
-        )
+    def set(self, root: jnp.ndarray, x: jnp.ndarray):
 
-    def get(
-        self, root: jnp.ndarray, _cat_mode: str = "cat", _cache: bool = True, **_kwargs
-    ) -> jnp.ndarray | Tuple[jnp.ndarray]:
-        if _cache is True and self.cached is not None:
-            return self.cached
+        # to_root indicates whether the value x should be passed to the root
+        # or used as mu and stored in the output view cache
+        if _C["force_forward"] is True:
+            if isinstance(self.parent, View):
+                self.parent.set(root, x)
+            else:
+                # x can be set only if it is a Param
+                root.x.set(x)
+        # TODO: can be actually cached if it is a leaf output view
+        else:
+            self.cached = x
 
-        r = list((child.get(_cat_mode, _cache, **_kwargs) for child in self.children))
+    def get(self, root: jnp.ndarray, cat_mode: str = "cat", **kwargs) -> jnp.ndarray | Tuple[jnp.ndarray]:
+        if _C["force_forward"] is True:
+            return super().get(root)
+        else:
+            if self.cached is not None:
+                return self.transformation_fn(self.cached) if self.transformation_fn is not None else self.cached
 
-        if _cat_mode == "cat":
-            args = {"axis": _kwargs.get("axis", -1)}
-            r = jnp.concatenate(r, **args)
+            x = list((child.get(cat_mode, **kwargs) for child in self.children))
 
-        if _cache is True:
-            self.cached = r
+            if cat_mode == "cat":
+                x = jnp.concatenate(x, axis=kwargs.get("axis"))
 
-        return r
+            self.cached = x
 
-    def match(
-        self, _name: str, type: str = None, _only_leaves: bool = True
-    ) -> "TmpView":
+            return self.transformation_fn(x) if self.transformation_fn is not None else x
+
+    def match(self, _name: str, type: str = None, _only_leaves: bool = True) -> "TmpView":
         if type is not None and type != "output":
             return TmpView()
         else:
@@ -207,12 +198,7 @@ class OutputView(View):
 
 
 class InputView(View):
-    def get(self, root: jnp.ndarray, _cache: bool = True) -> jnp.ndarray:
-        return super().get(root, _apply_t=True, _cache=_cache)
-
-    def match(
-        self, _name: str, type: str = None, _only_leaves: bool = True
-    ) -> "TmpView":
+    def match(self, _name: str, type: str = None, _only_leaves: bool = True) -> "TmpView":
         if type is not None and type != "input":
             return TmpView()
         else:
@@ -261,11 +247,5 @@ class TmpView(View):
     def flush_cache(self):
         raise NotImplementedError("Private method")
 
-    def clone(
-        self,
-        _target: str = None,
-        _name: str = None,
-        _type: Type["View"] = None,
-        **kwargs
-    ):
+    def clone(self, _target: str = None, _name: str = None, _type: Type["View"] = None, **kwargs):
         raise NotImplementedError("Private method")
