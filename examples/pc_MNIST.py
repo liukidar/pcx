@@ -40,18 +40,25 @@ class Model(pxc.Module):
 
     def init(self, x, t=None):
         with pxi.force_forward():
-            self(x, t)
+            return self(x, t)
 
     def __call__(self, x, t=None):
         act_fn = jax.nn.tanh
 
         x = self.pc1(act_fn(self.linear1(x)))
         x = self.pc2(act_fn(self.linear2(*x.get())))
-        if t is None:
-            x = self.pc3(act_fn(self.linear3(*x.get())))
-            y = self.pc3.at(type="output").get()[0]
-        else:
-            y = self.pc3(t)
+        x = self.pc3(act_fn(self.linear3(*x.get())))
+
+        y = self.pc3.at(type="output").get()[0]
+
+        # t should only be passed during initialization,
+        # never during the forward pass.
+        # the 'if' is used to avoid rewriting the code,
+        # as initialization is done with a forward pass,
+        # except for the last pc layer.
+        if t is not None:
+            # cache is disabled, we set x to t
+            self.pc3(t)
 
         return y
 
@@ -108,10 +115,10 @@ total_iterations = T * E
 
 @pxi.jit
 def run_on_batch(state, model, x, t, loss_fn, optim):
-    model = trainer.init_fn(state, model, x, t)
+    model, y = trainer.init_fn(state, model, x, t)
     state = state.update_mask("status", lambda mask: mask.pc3.x, NODE_STATUS.FROZEN)
 
-    r, y = pxi.flow.scan(trainer.update_fn[NODE_TYPE.X], loss_fn=loss_fn, optim=optim, length=T - 1,)(
+    r, _ = pxi.flow.scan(trainer.update_fn[NODE_TYPE.X], loss_fn=loss_fn, optim=optim, length=T - 1,)(
         state,
         model,
         x_args=(x,),
@@ -129,7 +136,7 @@ def run_on_batch(state, model, x, t, loss_fn, optim):
     )
 
     target_class = jnp.argmax(t, axis=1)
-    predicted_class = jnp.argmax(y[0][0, ...], axis=1)
+    predicted_class = jnp.argmax(y, axis=1)
     accuracy = jnp.mean(predicted_class == target_class)
 
     return state, model, accuracy

@@ -98,6 +98,7 @@ total_iterations = T * E
 def run_on_batch(state, model, x, t, loss_fn, optim):
     model = trainer.init_fn(state, model, x, t)
 
+    # to have y you have to decomment the return value of update_fn in trainer.py
     r, y = pxi.flow.scan(
         trainer.update_fn[NODE_TYPE.W],
         loss_fn=loss_fn,

@@ -60,8 +60,6 @@ class View:
         if _C["force_forward"] is False:
             self.cached = x
 
-        return self.parent
-
     def flush_cache(self):
         self.cached = None
 
@@ -158,16 +156,12 @@ class OutputView(View):
         self.energy_fn = energy_fn
 
     def set(self, root: jnp.ndarray, x: jnp.ndarray):
-
-        # to_root indicates whether the value x should be passed to the root
-        # or used as mu and stored in the output view cache
         if _C["force_forward"] is True:
             if isinstance(self.parent, View):
                 self.parent.set(root, x)
             else:
                 # x can be set only if it is a Param
                 root.x.set(x)
-        # TODO: can be actually cached if it is a leaf output view
         else:
             self.cached = x
 
@@ -175,6 +169,7 @@ class OutputView(View):
         if _C["force_forward"] is True:
             return super().get(root)
         else:
+            # TODO: cache the transformation as well based on leaf/not leaf
             if self.cached is not None:
                 return self.transformation_fn(self.cached) if self.transformation_fn is not None else self.cached
 
@@ -247,5 +242,5 @@ class TmpView(View):
     def flush_cache(self):
         raise NotImplementedError("Private method")
 
-    def clone(self, _target: str = None, _name: str = None, _type: Type["View"] = None, **kwargs):
+    def clone(self, target: str = None, name: str = None, type: Type["View"] = None, **kwargs):
         raise NotImplementedError("Private method")
