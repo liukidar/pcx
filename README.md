@@ -43,7 +43,15 @@ git submodule update --init --recursive
 
 If the `docs` folder remains empty, you probably do not have access to the [pcax-docs](https://github.com/liukidar/pcax-docs) repository yet.
 
-The documentation does not need to be compiled and you can view it from the [docs/index.html](docs/index.html) file. In the future, we will host the docs of the latest commit on the main branch on PSSR. Link will follow.
+The documentation can be viewed by launching a http server in the docs folder:
+
+```shell
+cd path/to/docs
+python -m http.server
+```
+
+If you are hosting the server remotely via SSH using VS Code, the port should be automatically forwarded to your machine. If not, you can do that manually in the "PORTS" tab of the VS Code terminal.
+In the future, we will host the docs of the latest commit on the main branch on PSSR. Link will follow.
 
 ## Contribute
 
