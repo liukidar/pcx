@@ -24,5 +24,8 @@ jobs:
       - name: Install dependencies
         run: make venv
 
-      - name: Formatting
-        run: make checkformat
+      - name: Run isort
+        run: isort -r -c .
+
+      - name: Run black
+        run: black $pcax/ --check

@@ -28,7 +28,7 @@ lint:
 
 format:
 	. $(venv_activate_path) ;\
-	isort -rc . ;\
+	isort -r . ;\
 	autoflake -r --in-place --remove-unused-variables $(package_name)/ ;\
 	autoflake -r --in-place --remove-unused-variables tests/ ;\
 	black $(package_name)/ ;\
@@ -37,7 +37,7 @@ format:
 checkformat:
 	. $(venv_activate_path) ;\
 	echo "++++++++++ ISORT ++++++++++" ;\
-	isort -rc . ;\
+	isort -r -c . ;\
 	echo "++++++++++ BLACK ++++++++++" ;\
 	black $(package_name)/ --check ;\
 	black tests/ --check
