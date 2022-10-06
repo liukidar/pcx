@@ -27,7 +27,9 @@ class View:
         self.cached = None
 
         if _boundaries is not None:
-            raise NotImplementedError("Boundaries for a View are not currently supported.")
+            raise NotImplementedError(
+                "Boundaries for a View are not currently supported."
+            )
 
         for child in self.children:
             child.parent = self
@@ -66,7 +68,9 @@ class View:
         for child in self.children:
             child.flush_cache()
 
-    def match(self, name: str, type: str = None, _only_leaves: bool = True) -> "TmpView":
+    def match(
+        self, name: str, type: str = None, _only_leaves: bool = True
+    ) -> "TmpView":
         name2type = {"view": View, "input": InputView, "output": OutputView}
         r = []
 
@@ -76,7 +80,9 @@ class View:
             if len(name) > 1:
                 next_name = name[1]
             elif (
-                _only_leaves is False or len(self.children) == 0 and (type is None or isinstance(self, name2type[type]))
+                _only_leaves is False
+                or len(self.children) == 0
+                and (type is None or isinstance(self, name2type[type]))
             ):
                 r.append(self)
 
@@ -105,7 +111,13 @@ class View:
         else:
             return target.find(_path[1])
 
-    def clone(self, _target: str = None, _name: str = None, _type: Type["View"] = None, **kwargs):
+    def clone(
+        self,
+        _target: str = None,
+        _name: str = None,
+        _type: Type["View"] = None,
+        **kwargs
+    ):
         if _target is None:
             _target = self
         elif _target == "..":
@@ -143,6 +155,7 @@ class View:
 
 class OutputView(View):
     energy_fn: None | Callable
+    init_fn: None | Callable
 
     def __init__(
         self,
@@ -150,28 +163,36 @@ class OutputView(View):
         transformation_fn: Callable = None,
         children: Tuple[View] = None,
         energy_fn: Callable = None,
+        init_fn: Callable = None,
         # boundaries=None, # TODO
     ) -> None:
         super().__init__(name, transformation_fn, children)
         self.energy_fn = energy_fn
+        self.init_fn = init_fn or (lambda x: x)
 
     def set(self, root: jnp.ndarray, x: jnp.ndarray):
         if _C["force_forward"] is True:
             if isinstance(self.parent, View):
-                self.parent.set(root, x)
+                self.parent.set(root, self.init_fn(x))
             else:
                 # x can be set only if it is a Param
                 root.x.set(x)
         else:
             self.cached = x
 
-    def get(self, root: jnp.ndarray, cat_mode: str = "cat", **kwargs) -> jnp.ndarray | Tuple[jnp.ndarray]:
+    def get(
+        self, root: jnp.ndarray, cat_mode: str = "cat", **kwargs
+    ) -> jnp.ndarray | Tuple[jnp.ndarray]:
         if _C["force_forward"] is True:
             return super().get(root)
         else:
             # TODO: cache the transformation as well based on leaf/not leaf
             if self.cached is not None:
-                return self.transformation_fn(self.cached) if self.transformation_fn is not None else self.cached
+                return (
+                    self.transformation_fn(self.cached)
+                    if self.transformation_fn is not None
+                    else self.cached
+                )
 
             x = list((child.get(cat_mode, **kwargs) for child in self.children))
 
@@ -180,9 +201,13 @@ class OutputView(View):
 
             self.cached = x
 
-            return self.transformation_fn(x) if self.transformation_fn is not None else x
+            return (
+                self.transformation_fn(x) if self.transformation_fn is not None else x
+            )
 
-    def match(self, _name: str, type: str = None, _only_leaves: bool = True) -> "TmpView":
+    def match(
+        self, _name: str, type: str = None, _only_leaves: bool = True
+    ) -> "TmpView":
         if type is not None and type != "output":
             return TmpView()
         else:
@@ -193,7 +218,9 @@ class OutputView(View):
 
 
 class InputView(View):
-    def match(self, _name: str, type: str = None, _only_leaves: bool = True) -> "TmpView":
+    def match(
+        self, _name: str, type: str = None, _only_leaves: bool = True
+    ) -> "TmpView":
         if type is not None and type != "input":
             return TmpView()
         else:
@@ -242,5 +269,7 @@ class TmpView(View):
     def flush_cache(self):
         raise NotImplementedError("Private method")
 
-    def clone(self, target: str = None, name: str = None, type: Type["View"] = None, **kwargs):
+    def clone(
+        self, target: str = None, name: str = None, type: Type["View"] = None, **kwargs
+    ):
         raise NotImplementedError("Private method")

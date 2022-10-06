@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Dict, List, Any
+from typing import Callable, Dict, List, Any
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import equinox as eqx
@@ -86,6 +86,7 @@ class Layer(Module):
         energy_view: str | List[str] = None,
         input_view: str | List[str] = None,
         output_view: str | List[str] = None,
+        init_fn: Callable | None = None,
     ):
         super().__init__(type=NODE_TYPE.X)
 
@@ -100,7 +101,8 @@ class Layer(Module):
                     OutputView(
                         energy_fn=lambda root, x, mu: gaussian_energy(
                             mu.get(root), x.get(root)
-                        )
+                        ),
+                        init_fn=init_fn,
                     ),
                 ]
             )
