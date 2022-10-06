@@ -1,4 +1,4 @@
-from pcax.core.node import NODE_TYPE
+from pcax.core.node import NODE_STATUS, NODE_TYPE
 import pcax.core as pxc
 import pcax.nn as pxnn
 import jax
@@ -6,17 +6,18 @@ import jax.numpy as jnp
 import optax
 import pcax.interface as pxi
 import numpy as np
-from torchvision.datasets import MNIST
+from torchvision.datasets import MNIST, FashionMNIST
 import time
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
 class Model(pxc.Module):
     linear1: pxnn.Linear
     linear2: pxnn.Linear
     linear3: pxnn.Linear
+    linear4: pxnn.Linear
 
     def __init__(self, key, input_dim, hidden_dim, output_dim) -> None:
         super().__init__()
@@ -26,17 +27,20 @@ class Model(pxc.Module):
         key, subkey = jax.random.split(key)
         self.linear2 = pxnn.Linear(hidden_dim, hidden_dim, _key=subkey)
         key, subkey = jax.random.split(key)
-        self.linear3 = pxnn.Linear(hidden_dim, output_dim, _key=subkey)
+        self.linear3 = pxnn.Linear(hidden_dim, hidden_dim, _key=subkey)
+        key, subkey = jax.random.split(key)
+        self.linear4 = pxnn.Linear(hidden_dim, output_dim, _key=subkey)
 
     def init(self, state, x, t=None):
-        return state
+        return
 
     def __call__(self, x):
-        act_fn = jax.nn.tanh
+        act_fn = jax.nn.leaky_relu
 
         x = act_fn(self.linear1(x))
         x = act_fn(self.linear2(x))
         x = act_fn(self.linear3(x))
+        x = self.linear4(x)
 
         y = x
 
@@ -52,13 +56,22 @@ class FlattenAndCast:
         return np.ravel(np.array(pic, dtype=jnp.float32))
 
 
-batch_size = 256
+batch_size = 128
 input_dim = 28 * 28
-hidden_dim = 256
+hidden_dim = 14 * 14 * 8
 output_dim = 10
 
-mnist_dataset = MNIST("/tmp/mnist/", download=True, transform=FlattenAndCast())
-training_generator = pxi.data.Dataloader(mnist_dataset, batch_size=batch_size, num_workers=16, shuffle=True)
+mnist_dataset = FashionMNIST(
+    "/tmp/fashionmnist/", download=True, transform=FlattenAndCast()
+)
+training_generator = pxi.data.Dataloader(
+    mnist_dataset,
+    batch_size=batch_size,
+    num_workers=8,
+    shuffle=True,
+    persistent_workers=True,
+    pin_memory=True,
+)
 
 rseed = 0
 rkey = jax.random.PRNGKey(rseed)
@@ -75,8 +88,8 @@ state, model, optim = state.init(
     input_shape=(input_dim,),
     optim_fn=lambda state: pxi.optim.combine(
         {
-            NODE_TYPE.X: optax.sgd(0.5),
-            NODE_TYPE.W: optax.chain(pxi.optim.reduce(), optax.adam(1e-3)),
+            NODE_TYPE.X: optax.sgd(0),
+            NODE_TYPE.W: optax.chain(pxi.optim.reduce(), optax.adam(1e-4)),
         },
         state.get_masks("type"),
     ),
@@ -90,45 +103,49 @@ def loss_fn(state, model, y, t):
 
 
 T = 1
-E = 16
-total_iterations = T * E
+E = 8
 
 
 @pxi.jit
 def run_on_batch(state, model, x, t, loss_fn, optim):
-    model = trainer.init_fn(state, model, x, t)
+    model, _ = trainer.init_fn(state, model, x, t)
 
-    # to have y you have to decomment the return value of update_fn in trainer.py
-    r, y = pxi.flow.scan(
-        trainer.update_fn[NODE_TYPE.W],
+    (state, model), y = trainer.update_fn[NODE_TYPE.W](
+        state=state,
+        model=model,
+        x_args=(x,),
+        loss_fn_args=(t,),
         loss_fn=loss_fn,
         optim=optim,
-        length=T,
-    )(state=state, model=model, x_args=[x], loss_fn_args=[t])
+    )
 
     target_class = jnp.argmax(t, axis=1)
-    predicted_class = jnp.argmax(y[0][0, ...], axis=1)
+    predicted_class = jnp.argmax(y[0], axis=1)
     accuracy = jnp.mean(predicted_class == target_class)
 
-    return r["state"], r["model"], accuracy
+    return state, model, accuracy
 
 
 batch_it = iter(training_generator)
 
 epoch_times = []
-energies = []
+accuracy_per_epoch = []
 for e in range(E):
-    energy = []
+    accuracies = []
     start_time = time.time()
     for (x, y) in training_generator:
-        state, model, en = run_on_batch(loss_fn=loss_fn, optim=optim)(state, model, x, one_hot(y, output_dim))
-        energy.append(en)
+        state, model, accuracy = run_on_batch(loss_fn=loss_fn, optim=optim)(
+            state, model, x, one_hot(y, output_dim)
+        )
+        accuracies.append(accuracy)
 
     epoch_time = time.time() - start_time
     if e > 1:
         epoch_times.append(epoch_time)
 
-    energies.extend(np.array(energy).tolist())
+    accuracy_per_epoch.append(np.mean(accuracies))
     print("Epoch {} in {:0.3f} sec".format(e, epoch_time))
-    print("Energy:", np.mean(energies))
+    print("Accuracy:", accuracy_per_epoch[-1])
 print(f"Avg epoch time: {np.mean(epoch_times)}")
+
+del training_generator
