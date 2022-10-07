@@ -142,7 +142,7 @@ def loss_fn(state, model, y, t):
 
 
 T = 64
-E = 32
+E = 10
 total_iterations = T * E
 
 
