@@ -33,7 +33,7 @@ class Module(NodeModule):
 
         # mu is cached into the target output views
         output_views = self.at(output_view, type="output")
-        output_views.set(mu)
+        output_views.set(mu, override=False)
 
         # TODO: call forward here?
 

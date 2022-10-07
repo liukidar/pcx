@@ -170,10 +170,15 @@ class OutputView(View):
         self.energy_fn = energy_fn
         self.init_fn = init_fn or (lambda x: x)
 
-    def set(self, root: jnp.ndarray, x: jnp.ndarray):
+    def set(self, root, x: jnp.ndarray, override: bool = True):
         if _C["force_forward"] is True:
+            # When override is False, it means the user wants to set the value of the
+            # layer with the exact value of x.
+            if override is False:
+                x = self.init_fn(x)
+
             if isinstance(self.parent, View):
-                self.parent.set(root, self.init_fn(x))
+                self.parent.set(root, x)
             else:
                 # x can be set only if it is a Param
                 root.x.set(x)
@@ -181,7 +186,7 @@ class OutputView(View):
             self.cached = x
 
     def get(
-        self, root: jnp.ndarray, cat_mode: str = "cat", **kwargs
+        self, root, cat_mode: str = "cat", **kwargs
     ) -> jnp.ndarray | Tuple[jnp.ndarray]:
         if _C["force_forward"] is True:
             return super().get(root)
