@@ -64,7 +64,7 @@ class Model(pxc.Module):
         # except for the last pc layer.
         if t is not None:
             # cache is disabled, we overwrite x with t
-            self.pc4(t)
+            self.pc4.at(type="output").set(t)
 
         return y
 
@@ -147,10 +147,10 @@ total_iterations = T * E
 
 
 @pxi.jit
-def run_on_batch(state, model, x, t, loss_fn, optim):
+def run_on_batch(state, model, x, t, loss_fn, optim, mode="train"):
     model, y = trainer.init_fn(state, model, x, t)
 
-    if loss_fn is not None and optim is not None:
+    if mode == "train":
         state = state.update_mask("status", lambda mask: mask.pc4.x, NODE_STATUS.FROZEN)
 
         for j in range(T - 1):
@@ -188,7 +188,7 @@ for e in range(E):
     accuracies = []
     start_time = time.time()
     for (x, y) in train_dataloader:
-        state, model, accuracy = run_on_batch(loss_fn=loss_fn, optim=optim)(
+        state, model, accuracy = run_on_batch(loss_fn=loss_fn, optim=optim, mode="test")(
             state, model, x, one_hot(y, output_dim)
         )
         accuracies.append(accuracy)
@@ -208,7 +208,7 @@ del train_dataloader
 
 accuracies = []
 for (x, y) in test_dataloader:
-    state, model, accuracy = run_on_batch(loss_fn=None, optim=None)(
+    state, model, accuracy = run_on_batch(loss_fn=None, optim=None, mode="test")(
         state, model, x, one_hot(y, output_dim)
     )
     accuracies.append(accuracy)
