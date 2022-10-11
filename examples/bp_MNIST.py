@@ -10,14 +10,14 @@ from torchvision.datasets import MNIST, FashionMNIST
 import time
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 
 class Model(pxc.Module):
     linear1: pxnn.Linear
     linear2: pxnn.Linear
     linear3: pxnn.Linear
-    linear4: pxnn.Linear
 
     def __init__(self, key, input_dim, hidden_dim, output_dim) -> None:
         super().__init__()
@@ -27,9 +27,7 @@ class Model(pxc.Module):
         key, subkey = jax.random.split(key)
         self.linear2 = pxnn.Linear(hidden_dim, hidden_dim, _key=subkey)
         key, subkey = jax.random.split(key)
-        self.linear3 = pxnn.Linear(hidden_dim, hidden_dim, _key=subkey)
-        key, subkey = jax.random.split(key)
-        self.linear4 = pxnn.Linear(hidden_dim, output_dim, _key=subkey)
+        self.linear3 = pxnn.Linear(hidden_dim, output_dim, _key=subkey)
 
     def init(self, state, x, t=None):
         return
@@ -39,8 +37,7 @@ class Model(pxc.Module):
 
         x = act_fn(self.linear1(x))
         x = act_fn(self.linear2(x))
-        x = act_fn(self.linear3(x))
-        x = self.linear4(x)
+        x = self.linear3(x)
 
         y = x
 
@@ -58,12 +55,10 @@ class FlattenAndCast:
 
 batch_size = 128
 input_dim = 28 * 28
-hidden_dim = 14 * 14 * 8
+hidden_dim = 600
 output_dim = 10
 
-mnist_dataset = FashionMNIST(
-    "/tmp/fashionmnist/", download=True, transform=FlattenAndCast()
-)
+mnist_dataset = MNIST("/tmp/mnist/", download=True, transform=FlattenAndCast())
 training_generator = pxi.data.Dataloader(
     mnist_dataset,
     batch_size=batch_size,
@@ -103,7 +98,7 @@ def loss_fn(state, model, y, t):
 
 
 T = 1
-E = 8
+E = 16
 
 
 @pxi.jit

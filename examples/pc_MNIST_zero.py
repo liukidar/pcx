@@ -7,11 +7,11 @@ import jax.numpy as jnp
 import optax
 import pcax.interface as pxi
 import numpy as np
-from torchvision.datasets import FashionMNIST
+from torchvision.datasets import MNIST
 import time
-
 import os
 
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 # jax.config.update("jax_platform_name", "cpu")
 
@@ -20,42 +20,38 @@ class Model(pxc.Module):
     linear1: pxnn.Linear
     linear2: pxnn.Linear
     linear3: pxnn.Linear
-    linear4: pxnn.Linear
     pc1: pxc.Layer
     pc2: pxc.Layer
     pc3: pxc.Layer
-    pc4: pxc.Layer
 
     def __init__(self, key, input_dim, hidden_dim, output_dim) -> None:
         super().__init__()
 
-        key, subkey = jax.random.split(key)
-        self.linear1 = pxnn.Linear(input_dim, hidden_dim, _key=subkey)
-        key, subkey = jax.random.split(key)
-        self.linear2 = pxnn.Linear(hidden_dim, hidden_dim, _key=subkey)
-        key, subkey = jax.random.split(key)
-        self.linear3 = pxnn.Linear(hidden_dim, hidden_dim, _key=subkey)
-        key, subkey = jax.random.split(key)
-        self.linear4 = pxnn.Linear(hidden_dim, output_dim, _key=subkey)
+        key, subkey1 = jax.random.split(key)
+        self.linear1 = pxnn.Linear(input_dim, hidden_dim, _key=subkey1)
+        key, subkey2 = jax.random.split(key)
+        self.linear2 = pxnn.Linear(hidden_dim, hidden_dim, _key=subkey2)
+        key, subkey3 = jax.random.split(key)
+        self.linear3 = pxnn.Linear(hidden_dim, hidden_dim, _key=subkey3)
 
+        # init_fn specifies the initialization function for the pc layer
+        # (i.e., what to do with the input x when the cache is disabled).
         self.pc1 = pxc.Layer(init_fn=lambda x: jnp.zeros_like(x))
         self.pc2 = pxc.Layer(init_fn=lambda x: jnp.zeros_like(x))
         self.pc3 = pxc.Layer(init_fn=lambda x: jnp.zeros_like(x))
-        self.pc4 = pxc.Layer(init_fn=lambda x: jnp.zeros_like(x))
 
     def init(self, x, t=None):
         with pxi.force_forward():
             return self(x, t)
 
     def __call__(self, x, t=None):
-        act_fn = jax.nn.tanh
+        act_fn = jax.nn.leaky_relu
 
         x = self.pc1(act_fn(self.linear1(x)))
         x = self.pc2(act_fn(self.linear2(*x.get())))
-        x = self.pc3(act_fn(self.linear3(*x.get())))
-        x = self.pc4(act_fn(self.linear4(*x.get())))
+        x = self.pc3(self.linear3(*x.get()))
 
-        y = self.pc4.at(type="output").get()[0]
+        y = self.pc3.at(type="output").get()[0]
 
         # t should only be passed during initialization,
         # never during the forward pass.
@@ -64,9 +60,13 @@ class Model(pxc.Module):
         # except for the last pc layer.
         if t is not None:
             # cache is disabled, we overwrite x with t
-            self.pc4.at(type="output").set(t)
+            self.pc3.at(type="output").set(t)
 
         return y
+
+
+def loss_fn(state, model, y, t):
+    return model.energy(EnergyCriterion())
 
 
 def one_hot(x, k, dtype=jnp.float32):
@@ -78,57 +78,63 @@ class FlattenAndCast:
         return np.ravel(np.array(pic, dtype=jnp.float32))
 
 
-batch_size = 128
-input_dim = 28 * 28
-hidden_dim = 14 * 14 * 2
-output_dim = 10
+params = {
+    "batch_size": 128,
+    "x_learning_rate": 1e-3,
+    "w_learning_rate": 1e-3,
+    "num_epochs": 16,
+    "hidden_dim": 600,
+    "input_dim": 28 * 28,
+    "output_dim": 10,
+    "seed": 0,
+    "T": 20,
+}
 
-train_dataset = FashionMNIST(
-    "/tmp/fashionmnist/",
+train_dataset = MNIST(
+    "/tmp/mnist/",
     download=True,
     transform=FlattenAndCast(),
     train=True,
 )
 train_dataloader = pxi.data.Dataloader(
     train_dataset,
-    batch_size=batch_size,
+    batch_size=params["batch_size"],
     num_workers=8,
     shuffle=True,
     persistent_workers=True,
     pin_memory=True,
 )
 
-test_dataset = FashionMNIST(
-    "/tmp/fashionmnist/",
+test_dataset = MNIST(
+    "/tmp/mnist/",
     download=True,
     transform=FlattenAndCast(),
     train=False,
 )
 test_dataloader = pxi.data.Dataloader(
     train_dataset,
-    batch_size=batch_size,
+    batch_size=params["batch_size"],
     num_workers=8,
     shuffle=True,
     persistent_workers=True,
     pin_memory=True,
 )
 
-rseed = 0
-rkey = jax.random.PRNGKey(rseed)
+rkey = jax.random.PRNGKey(params["seed"])
 rkey, rsubkey = jax.random.split(rkey)
-
-
 state = pxi.DefaultState()
 trainer = pxi.Trainer()
 
 state, model, optim = state.init(
-    Model(rsubkey, input_dim, hidden_dim, output_dim),
-    batch_size=batch_size,
-    input_shape=(input_dim,),
+    Model(rsubkey, params["input_dim"], params["hidden_dim"], params["output_dim"]),
+    batch_size=params["batch_size"],
+    input_shape=(params["input_dim"],),
     optim_fn=lambda state: pxi.optim.combine(
         {
-            NODE_TYPE.X: optax.chain(optax.sgd(0.05)),
-            NODE_TYPE.W: optax.chain(pxi.optim.reduce(), optax.adam(1e-4)),
+            NODE_TYPE.X: optax.chain(optax.sgd(params["x_learning_rate"])),
+            NODE_TYPE.W: optax.chain(
+                pxi.optim.reduce(), optax.adam(params["w_learning_rate"])
+            ),
         },
         state.get_masks("type"),
     ),
@@ -137,26 +143,21 @@ state, model, optim = state.init(
 )()
 
 
-def loss_fn(state, model, y, t):
-    return model.energy(EnergyCriterion())
-
-
-T = 64
-E = 10
-total_iterations = T * E
-
-
 @pxi.jit
 def run_on_batch(state, model, x, t, loss_fn, optim, mode="train"):
-
+    # During training we set the last pc layer to the target and freeze it.
     if mode == "train":
         model, y = trainer.init_fn(state, model, x, t)
         state = state.update_mask("status", lambda mask: mask.pc4.x, NODE_STATUS.FROZEN)
+    # During inference we do not set the last pc layer to the target.
+    # Remember: 'if' is a static control flow construct and it is removed when jitting; however
+    # since it is based on a static variable (i.e. mode), this is not a problem.
     else:
         model, _ = trainer.init_fn(state, model, x, None)
         state = state.update_mask("status", lambda mask: mask.pc4.x, NODE_STATUS.NONE)
 
-    for j in range(T - 1):
+    # Compared to forward initialization, we need to perform reach x-convergence before getting the output.
+    for j in range(params["T"] - 1):
         (state, model), (y, loss) = trainer.update_fn[NODE_TYPE.X](
             state,
             model,
@@ -166,6 +167,7 @@ def run_on_batch(state, model, x, t, loss_fn, optim, mode="train"):
             optim=optim,
         )
 
+    # The w-step is performed only when training.
     if mode == "train":
         (state, model), _ = trainer.update_fn[NODE_TYPE.W](
             state,
@@ -175,10 +177,12 @@ def run_on_batch(state, model, x, t, loss_fn, optim, mode="train"):
             loss_fn=loss_fn,
             optim=optim,
         )
-
-    target_class = jnp.argmax(t, axis=1)
-    predicted_class = jnp.argmax(y, axis=1)
-    accuracy = jnp.mean(predicted_class == target_class)
+        # There's no valid output when training, thus the accuracy is undefined.
+        accuracy = 0
+    else:
+        target_class = jnp.argmax(t, axis=1)
+        predicted_class = jnp.argmax(y, axis=1)
+        accuracy = jnp.mean(predicted_class == target_class)
 
     return state, model, accuracy
 
@@ -188,13 +192,13 @@ accuracy_per_epoch = []
 
 # This slows down things but prints helpful error messages
 # with pxi.debug():
-for e in range(E):
+for e in range(params["num_epochs"]):
     accuracies = []
     start_time = time.time()
     for (x, y) in train_dataloader:
-        state, model, accuracy = run_on_batch(loss_fn=loss_fn, optim=optim, mode="train")(
-            state, model, x, one_hot(y, output_dim)
-        )
+        state, model, accuracy = run_on_batch(
+            loss_fn=loss_fn, optim=optim, mode="train"
+        )(state, model, x, one_hot(y, params["output_dim"]))
         accuracies.append(accuracy)
 
     epoch_time = time.time() - start_time
@@ -213,7 +217,7 @@ del train_dataloader
 accuracies = []
 for (x, y) in test_dataloader:
     state, model, accuracy = run_on_batch(loss_fn=loss_fn, optim=optim, mode="test")(
-        state, model, x, one_hot(y, output_dim)
+        state, model, x, one_hot(y, params["output_dim"])
     )
     accuracies.append(accuracy)
 print("Test accuracy:", np.mean(accuracies))
