@@ -160,7 +160,10 @@ __jit_debug = {
 }
 
 
-def jit(fn):
+def jit(fn, disable: bool = False):
+    if disable:
+        return fn
+
     def body(_hash, *args, **kwargs):
         if _C["debug"] is True:
             if fn not in __jit_debug["counter"]:
