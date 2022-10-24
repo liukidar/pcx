@@ -40,13 +40,13 @@ class Module(NodeModule):
         # return the input views
         return self.at(input_view, type="input")
 
-    def energy(self, criterion) -> jnp.array:
+    def energy(self, criterion: Callable, reduce: bool = True) -> jnp.array:
         submodules = self.__get_submodules()
 
         # TODO: check more efficient versions (maybe jtu.reduce()?)
         e = list(map(lambda el: el.energy(criterion), submodules))
         energies = jnp.stack(e, axis=0)
-        return jnp.sum(energies, axis=0)
+        return jnp.sum(energies, axis=0) if reduce else energies
 
     def at(self, view_name: str | List[str] = None, type=None) -> TmpView:
         r = []

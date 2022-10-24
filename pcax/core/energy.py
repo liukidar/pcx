@@ -4,6 +4,9 @@ import jax.numpy as jnp
 
 
 class EnergyCriterion:
+    def __init__(self, reduce: bool = True) -> None:
+        self.reduce = reduce
+
     def __call__(self, energy_view: View) -> jnp.ndarray:
         root = energy_view[0]
         view = energy_view[1]
@@ -27,9 +30,10 @@ class EnergyCriterion:
             axis=0,
         )
 
-        return jnp.sum(energies, axis=0)
+        return jnp.sum(energies, axis=0) if self.reduce else energies
 
     def is_compatible(self, input_view: InputView, output_view: OutputView) -> bool:
+        #TODO
         return True
 
 
