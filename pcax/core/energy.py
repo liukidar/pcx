@@ -1,11 +1,13 @@
+from typing import List
 from .view import View, InputView, OutputView
 import itertools
 import jax.numpy as jnp
 
 
 class EnergyCriterion:
-    def __init__(self, reduce: bool = True) -> None:
-        self.reduce = reduce
+    def __init__(self, cache_values: bool = False) -> None:
+        self.cache_values = cache_values
+        self._state = []
 
     def __call__(self, energy_view: View) -> jnp.ndarray:
         root = energy_view[0]
@@ -30,11 +32,21 @@ class EnergyCriterion:
             axis=0,
         )
 
-        return jnp.sum(energies, axis=0) if self.reduce else energies
+        if self.cache_values:
+            self._state.append((energy_view, energies))
+        return jnp.sum(energies, axis=0)
 
     def is_compatible(self, input_view: InputView, output_view: OutputView) -> bool:
         #TODO
         return True
+
+    def clear_cache(self) -> None:
+        self._state = []
+
+    def pop_cache(self) -> List:
+        state = self._state.pop()
+        self.clear_cache()
+        return state
 
 
 def gaussian_energy(mu, x):
