@@ -1,5 +1,15 @@
+__all__ = ['TorchDataloader']
+
+
 import numpy as np
-from torch.utils import data
+import torch.utils
+
+
+########################################################################################################################
+#
+# DATA LOADING
+#
+########################################################################################################################
 
 
 def numpy_collate(batch):
@@ -12,7 +22,7 @@ def numpy_collate(batch):
         return np.array(batch)
 
 
-class Dataloader(data.DataLoader):
+class TorchDataloader(torch.utils.data.DataLoader):
     def __init__(
         self,
         dataset,
@@ -22,7 +32,6 @@ class Dataloader(data.DataLoader):
         batch_sampler=None,
         num_workers=1,
         pin_memory=True,
-        drop_last=True,
         timeout=0,
         worker_init_fn=None,
         persistent_workers=True,
@@ -37,7 +46,7 @@ class Dataloader(data.DataLoader):
             num_workers=num_workers,
             collate_fn=numpy_collate,
             pin_memory=pin_memory,
-            drop_last=drop_last,
+            drop_last=True,
             timeout=timeout,
             worker_init_fn=worker_init_fn,
             persistent_workers=persistent_workers,
