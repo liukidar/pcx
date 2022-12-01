@@ -1,6 +1,5 @@
 import jax
 import optax
-import pcax.interface as pxi
 import numpy as np
 from torchvision.datasets import MNIST
 import timeit
@@ -9,6 +8,7 @@ import pcax as px
 import pcax.nn as nn
 import pcax.core as pxc
 from pcax.core import _
+from pcax.utils.data import TorchDataloader
 
 
 import os
@@ -65,7 +65,7 @@ train_dataset = MNIST(
     transform=FlattenAndCast(),
     train=True,
 )
-train_dataloader = pxi.data.Dataloader(
+train_dataloader = TorchDataloader(
     train_dataset,
     batch_size=params["batch_size"],
     num_workers=4,
@@ -79,7 +79,7 @@ test_dataset = MNIST(
     transform=FlattenAndCast(),
     train=False,
 )
-test_dataloader = pxi.data.Dataloader(
+test_dataloader = TorchDataloader(
     test_dataset,
     batch_size=params["batch_size"],
     num_workers=4,
