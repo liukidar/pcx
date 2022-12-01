@@ -34,10 +34,10 @@ class Model(px.Module):
         self.pc2.x.frozen = True
 
     def __call__(self, x, t=None):
-        x = self.act_fn(self.pc1(self.linear1(x))["x"])
+        x = self.pc1(self.act_fn(self.linear1(x)))["x"]
 
         for i in range(len(self.linear_h)):
-            x = self.act_fn(self.pc_h[i](self.linear_h[i](x))["x"])
+            x = self.pc_h[i](self.act_fn(self.linear_h[i](x)))["x"]
 
         x = self.pc2(self.linear2(x))["x"]
 
