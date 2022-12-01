@@ -1,3 +1,11 @@
+__all__ = [
+    "Linear",
+    "ModuleList",
+]
+
 from .link import (
-	Linear
+    Linear
+)
+from ..core import (
+    ModuleList
 )

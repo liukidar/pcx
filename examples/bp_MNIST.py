@@ -1,146 +1,170 @@
-from pcax.core.node import NODE_STATUS, NODE_TYPE
-import pcax.core as pxc
-import pcax.nn as pxnn
 import jax
-import jax.numpy as jnp
 import optax
 import pcax.interface as pxi
 import numpy as np
-from torchvision.datasets import MNIST, FashionMNIST
-import time
+from torchvision.datasets import MNIST
+import timeit
+
+import pcax as px
+import pcax.nn as nn
+import pcax.core as pxc
+from pcax.core import _
+
+
 import os
-
-os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 
-class Model(pxc.Module):
-    linear1: pxnn.Linear
-    linear2: pxnn.Linear
-    linear3: pxnn.Linear
+NM_LAYERS = 2
 
-    def __init__(self, key, input_dim, hidden_dim, output_dim) -> None:
+
+class Model(px.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, nm_layers=NM_LAYERS) -> None:
         super().__init__()
 
-        key, subkey = jax.random.split(key)
-        self.linear1 = pxnn.Linear(input_dim, hidden_dim, _key=subkey)
-        key, subkey = jax.random.split(key)
-        self.linear2 = pxnn.Linear(hidden_dim, hidden_dim, _key=subkey)
-        key, subkey = jax.random.split(key)
-        self.linear3 = pxnn.Linear(hidden_dim, output_dim, _key=subkey)
+        self.act_fn = jax.nn.tanh
 
-    def init(self, state, x, t=None):
-        return
+        self.linear1 = nn.Linear(input_dim, hidden_dim)
+        self.linear_h = nn.ModuleList(
+            [nn.Linear(hidden_dim, hidden_dim) for _ in range(nm_layers)]
+        )
+        self.linear2 = nn.Linear(hidden_dim, output_dim)
 
-    def __call__(self, x):
-        act_fn = jax.nn.leaky_relu
+    def __call__(self, x, t=None):
+        x = self.linear1(self.act_fn(x))
 
-        x = act_fn(self.linear1(x))
-        x = act_fn(self.linear2(x))
-        x = self.linear3(x)
+        for i in range(len(self.linear_h)):
+            x = self.linear_h[i](self.act_fn(x))
 
-        y = x
+        x = self.linear2(self.act_fn(x))
 
-        return y
+        return x
 
 
-def one_hot(x, k, dtype=jnp.float32):
-    return jnp.array(x[:, None] == jnp.arange(k), dtype)
+def one_hot(x, k):
+    return np.array(x[:, None] == np.arange(k), dtype=np.float32)
 
 
 class FlattenAndCast:
     def __call__(self, pic):
-        return np.ravel(np.array(pic, dtype=jnp.float32))
+        return np.ravel(np.array(pic, dtype=np.float32) / 255.0)
 
 
-batch_size = 128
-input_dim = 28 * 28
-hidden_dim = 600
-output_dim = 10
+params = {
+    "batch_size": 256,
+    "w_learning_rate": 1e-3,
+    "num_epochs": 4,
+    "hidden_dim": 128,
+    "input_dim": 28 * 28,
+    "output_dim": 10,
+    "seed": 0,
+}
 
-mnist_dataset = MNIST("/tmp/mnist/", download=True, transform=FlattenAndCast())
-training_generator = pxi.data.Dataloader(
-    mnist_dataset,
-    batch_size=batch_size,
-    num_workers=8,
+train_dataset = MNIST(
+    "/tmp/mnist/",
+    transform=FlattenAndCast(),
+    train=True,
+)
+train_dataloader = pxi.data.Dataloader(
+    train_dataset,
+    batch_size=params["batch_size"],
+    num_workers=4,
     shuffle=True,
     persistent_workers=True,
     pin_memory=True,
 )
 
-rseed = 0
-rkey = jax.random.PRNGKey(rseed)
-rkey, rsubkey = jax.random.split(rkey)
+test_dataset = MNIST(
+    "/tmp/mnist/",
+    transform=FlattenAndCast(),
+    train=False,
+)
+test_dataloader = pxi.data.Dataloader(
+    test_dataset,
+    batch_size=params["batch_size"],
+    num_workers=4,
+    shuffle=False,
+    persistent_workers=True,
+    pin_memory=True,
+)
+
+model = Model(28 * 28, params["hidden_dim"], 10)
 
 
-state = pxi.DefaultState()
-trainer = pxi.Trainer()
-
-state, model, optim = state.init(
-    Model(rsubkey, input_dim, hidden_dim, output_dim),
-    "*",
-    batch_size=batch_size,
-    input_shape=(input_dim,),
-    optim_fn=lambda state: pxi.optim.combine(
-        {
-            NODE_TYPE.X: optax.sgd(0),
-            NODE_TYPE.W: optax.chain(pxi.optim.reduce(), optax.adam(1e-4)),
-        },
-        state.get_masks("type"),
-    ),
-    trainer=trainer,
-    init_fn_args=(None,),
-)()
+@px.vectorize(_(px.NodeVar), in_axis=(0, 0))
+@px.bind(model)
+def predict(x, t):
+    return model(x, t)
 
 
-def loss_fn(state, model, y, t):
-    return jnp.dot(y - t, y - t)
+@px.vectorize(_(px.NodeVar), in_axis=(0, 0), out_axis=("sum",))
+@px.bind(model)
+def train_op(x, y):
+    y_hat = model(x)
+    return ((y - y_hat)**2).sum()
 
 
-T = 1
-E = 16
+train_W = px.gradvalues(
+    _(pxc.TrainVar),
+)(train_op)
 
 
-@pxi.jit
-def run_on_batch(state, model, x, t, loss_fn, optim):
-    model, _ = trainer.init_fn(state, model, x, t)
-
-    (state, model), y = trainer.update_fn[NODE_TYPE.W](
-        state=state,
-        model=model,
-        x_args=(x,),
-        loss_fn_args=(t,),
-        loss_fn=loss_fn,
-        optim=optim,
+# dummy run to init the optimizer parameters
+with px.eval(model):
+    predict(np.zeros((params["batch_size"], 28 * 28)), (None,) * params["batch_size"])
+    optim_w = px.Optim(
+        optax.adam(params["w_learning_rate"]),
+        model.vars(_(pxc.TrainVar)),
     )
 
-    target_class = jnp.argmax(t, axis=1)
-    predicted_class = jnp.argmax(y[0], axis=1)
-    accuracy = jnp.mean(predicted_class == target_class)
 
-    return state, model, accuracy
+@pxc.Jit
+@px.bind(model, optim_w=optim_w)
+def train_on_batch(x, y):
+    with px.train(model):
+        g, (v,) = train_W(x, y)
+        optim_w(g)
 
 
-batch_it = iter(training_generator)
+@pxc.Jit
+@px.bind(model)
+def evaluate(x, y):
+    with px.eval(model):
+        y_hat, = predict(x, y)
 
-epoch_times = []
-accuracy_per_epoch = []
-for e in range(E):
+    return (y_hat.argmax(-1) == y.argmax(-1)).mean()
+
+
+def epoch(dl):
+    x, y = next(iter(dl))
+    y = one_hot(y, 10)
+
+    for i in range(256):
+        train_on_batch(x, y)
+
+    return 0
+
+
+def test(dl):
     accuracies = []
-    start_time = time.time()
-    for (x, y) in training_generator:
-        state, model, accuracy = run_on_batch(loss_fn=loss_fn, optim=optim)(
-            state, model, x, one_hot(y, output_dim)
-        )
-        accuracies.append(accuracy)
+    for batch in dl:
+        x, y = batch
+        y = one_hot(y, 10)
 
-    epoch_time = time.time() - start_time
-    if e > 1:
-        epoch_times.append(epoch_time)
+        accuracies.append(evaluate(x, y))
 
-    accuracy_per_epoch.append(np.mean(accuracies))
-    print("Epoch {} in {:0.3f} sec".format(e, epoch_time))
-    print("Accuracy:", accuracy_per_epoch[-1])
-print(f"Avg epoch time: {np.mean(epoch_times)}")
+    return np.mean(accuracies)
 
-del training_generator
+
+if __name__ == "__main__":
+    t = timeit.timeit(lambda: epoch(train_dataloader), number=1)
+    print("Compiling + Epoch 1 took", t, "seconds")
+
+    # Time of an epoch (without jitting)
+    t = timeit.timeit(lambda: epoch(train_dataloader), number=params["num_epochs"]) / params["num_epochs"]
+    print("An Epoch takes on average", t, "seconds")
+
+    print("Final Accuracy:", test(test_dataloader))
+
+    del train_dataloader
+    del test_dataloader
