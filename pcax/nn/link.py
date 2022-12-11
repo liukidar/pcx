@@ -18,17 +18,17 @@ class Link(_Module):
         cls,
         *args,
         filter=eqx.filters.is_array,
-        generator=DEFAULT_GENERATOR,
+        rkey=DEFAULT_GENERATOR,
         **kwargs,
     ):
         super().__init__()
         self.nn = jt.tree_map(
             lambda w: TrainVar(w) if filter(w) else w,
-            cls(*args, **kwargs, key=generator()),
+            cls(*args, **kwargs, key=rkey()),
         )
 
-    def __call__(self, *args, generator=DEFAULT_GENERATOR, **kwargs):
-        return self.nn(*args, **kwargs, key=generator())
+    def __call__(self, *args, rkey=DEFAULT_GENERATOR, **kwargs):
+        return self.nn(*args, **kwargs, key=rkey())
 
     def vars(self, filter: Optional[_] = None, scope: str = "") -> VarCollection:
         vc = super().vars(scope=scope)
