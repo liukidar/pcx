@@ -12,10 +12,10 @@ import jax
 import jax.tree_util as jt
 from objax.util import class_name, repr_function
 
-from .filter import _
-from .structure import Module, Function, RandomState, VarCollection
-from .random import DEFAULT_GENERATOR
-from .util import positional_args_names
+from ..core.filter import _
+from ..core.structure import Module, Function, RandomState, VarCollection
+from ..core.random import DEFAULT_GENERATOR
+from ..core.util import positional_args_names
 
 
 class ModuleTransform(Module):
