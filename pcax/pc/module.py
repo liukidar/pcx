@@ -2,9 +2,9 @@ __all__ = ["Module", "Layer"]
 
 import jax
 import jax.tree_util as jt
-from typing import Callable, Dict, Any, Tuple, Union
+from typing import Callable, Dict, Any, Tuple, Union, Optional
 
-from ..core import Module as _Module, ModuleList, DEFAULT_GENERATOR
+from ..core import Module as _Module, ModuleList, DEFAULT_GENERATOR, Generator
 from ..core.util import positional_args_names
 from .variables import NodeVar, CachedVar
 
@@ -30,6 +30,24 @@ class Module(_Module):
         )
 
 
+class VarView:
+    def __init__(self, slices: Optional[Union[Tuple[slice], str]] = None) -> None:
+        if isinstance(slices, str):
+            slices = tuple(slice(*tuple(map(lambda i: int(i), s.split(":")))) for s in slices.split(","))
+
+        self.slices = slices
+
+    def __getitem__(self, var):
+        if self.slices is None:
+            return var.value
+        return var.value[self.slices]
+
+    def __setitem__(self, var, value):
+        if self.slices is None:
+            var.value = value
+        var.value = var.value.at[self.slices].set(value)
+
+
 def _init_fn(self, rkey):
     self["x"] = self["u"]
 
@@ -49,29 +67,33 @@ class Layer(Module):
             init_fn: Callable[['Layer'], None] = _init_fn,
             forward_fn: Callable[['Layer'], None] = _forward_fn,
             energy_fn: Callable[[Any], jax.Array] = _energy_fn,
-            blueprints: Dict[str, Callable[[Any], jax.Array]] = {}
+            blueprints: Dict[str, Callable[[Any], jax.Array]] = {},
+            views: Dict[str, VarView] = {}
     ):
         super().__init__()
 
         self.x = NodeVar()
         self.activations = CachedVar()
         self.blueprints = {}
+        self.views = {
+            "u": VarView(),
+            **views,
+        }
 
         self.init_fn = init_fn
         self.forward_fn = forward_fn
 
-        self.register_blueprints((("e", energy_fn),))
+        self.register_blueprints((("e", energy_fn),) + tuple(blueprints.items()))
 
-        self.register_blueprints(blueprints.items())
-
-    def __call__(self, *args, rkey=DEFAULT_GENERATOR, **kwargs):
-        arg_names = ("u",) + tuple("u" + str(i) for i in range(1, len(args)))
-
-        for arg_name, arg in zip(arg_names, args):
-            self.activations[arg_name] = arg
+    def __call__(self, u: jax.Array = None, rkey: Generator = DEFAULT_GENERATOR, **kwargs):
+        if u is not None:
+            self.set_activation("u", u)
 
         for key, value in kwargs.items():
-            self.activations[key] = value
+            if key not in self.views:
+                raise ValueError(f"Unregistered key {key}")
+            else:
+                self.set_activation(key, value)
 
         if self.x.value is None:
             self.init_fn(self, rkey)
@@ -83,6 +105,8 @@ class Layer(Module):
     def __setitem__(self, key: str, value: jax.Array):
         if key == "x":
             self.x.value = value
+        elif key.startswith("x:"):
+            self.views[key.split(":", 1)[1]][self.x] = value
         else:
             self.activations[key] = value
 
@@ -94,11 +118,19 @@ class Layer(Module):
 
         if key == "x":
             return self.x.value
+        elif key.startswith("x:"):
+            return self.views[key.split(":", 1)[1]][self.x]
 
         if key not in self.activations:
             self.call_blueprint(key, rkey)
 
         return self.activations[key]
+
+    def set_activation(self, key: str, value: jax.Array):
+        if key in self.activations:
+            self.activations[key] = self.activations[key] + value
+        else:
+            self.activations[key] = value
 
     @property
     def energy(self):
@@ -113,7 +145,7 @@ class Layer(Module):
         for key, blueprint in blueprints:
             self.blueprints[key] = blueprint
 
-    def call_blueprint(self, key: str, rkey=DEFAULT_GENERATOR):
+    def call_blueprint(self, key: str, rkey: Generator = DEFAULT_GENERATOR):
         blueprint = self.blueprints[key]
 
         self.activations[key] = blueprint(

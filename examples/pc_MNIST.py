@@ -65,7 +65,7 @@ params = {
     "input_dim": 28 * 28,
     "output_dim": 10,
     "seed": 0,
-    "T": NM_LAYERS + 2,
+    "T": (NM_LAYERS + 2),
 }
 
 train_dataset = MNIST(
@@ -76,7 +76,7 @@ train_dataset = MNIST(
 train_dataloader = TorchDataloader(
     train_dataset,
     batch_size=params["batch_size"],
-    num_workers=4,
+    num_workers=8,
     shuffle=True,
     persistent_workers=True,
     pin_memory=True,
@@ -122,7 +122,7 @@ train_w = px.gradvalues(
 
 # dummy run to init the optimizer parameters
 with px.eval(model):
-    predict(np.zeros((params["batch_size"], 28 * 28)), (None,) * params["batch_size"])
+    predict(np.zeros((params["batch_size"], 28 * 28)), None)
     optim_x = px.Optim(
         optax.sgd(params["x_learning_rate"]), model.vars(_(px.NodeVar)(frozen=False))
     )
@@ -136,7 +136,8 @@ with px.eval(model):
 @px.bind(model, optim_w=optim_w, optim_x=optim_x)
 def train_on_batch(x, y):
     with px.eval(model):
-        predict(x, y)
+        with px.train(model):
+            predict(x, y)
 
         for i in range(params["T"]):
             with px.train(model):
@@ -152,7 +153,7 @@ def train_on_batch(x, y):
 @px.bind(model)
 def evaluate(x, y):
     with px.eval(model):
-        y_hat, = predict(x, y)
+        y_hat, = predict(x, None)
 
     return (y_hat.argmax(-1) == y.argmax(-1)).mean()
 
@@ -172,7 +173,8 @@ def test(dl):
         x, y = batch
         y = one_hot(y, 10)
 
-        accuracies.append(evaluate(x, y))
+        a = evaluate(x, y)
+        accuracies.append(a)
 
     return np.mean(accuracies)
 
