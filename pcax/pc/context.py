@@ -1,6 +1,7 @@
 __all__ = ["init_nodes", "init_cache", "bind", "vectorize", "gradvalues", "jit"]
 
 from ..core import Function, VarCollection, Vectorize, GradValues, Jit, _
+from ..core.util import make_args
 from .variables import NodeVar
 
 import functools
@@ -19,6 +20,7 @@ def bind(*arg_vars, **kwarg_vars):
             VarCollection(),
         )
 
+        @functools.wraps(f)
         def wrapper(*args, **kwargs):
             try:
                 _original = {k: f.__globals__.get(k, None) for k in kwarg_vars.keys()}
@@ -54,6 +56,7 @@ def init_cache(model):
 
 
 def vectorize(*args, **kwargs):
+    @functools.wraps(Vectorize)
     def decorator(f):
         return Vectorize(f, *args, **kwargs)
 
@@ -61,14 +64,23 @@ def vectorize(*args, **kwargs):
 
 
 def gradvalues(*args, **kwargs):
+    @functools.wraps(GradValues)
     def decorator(f):
         return GradValues(f, *args, **kwargs)
 
     return decorator
 
 
-def jit(*args, static_argnums=None, **kwargs):
+def jit(*args, **kwargs):
     def decorator(f):
-        return Jit(f, *args, **kwargs, static_argnums=static_argnums)
+        @functools.wraps(f)
+        def wrapper(static_kwargs, *args, **kwargs):
+            # Finds the original function wrapped in the f hierarchy of transformations
+            # and calls it by merging all the given arguments.
+            return f(*make_args(Function.leaf_fn(f), args, {**dict(static_kwargs), **kwargs}))
+
+        jit_f = Jit(Function(wrapper, f.vc), *args, **kwargs, static_argnums=(0,))
+
+        return lambda **static_kwargs: functools.partial(jit_f, tuple(static_kwargs.items()))
 
     return decorator

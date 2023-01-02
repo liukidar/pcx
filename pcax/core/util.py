@@ -12,6 +12,22 @@ def positional_args_names(f: Callable) -> List[str]:
     )
 
 
+def make_args(f: Callable, args=(), kwargs={}) -> List[str]:
+    args_list = []
+    args_it = iter(args)
+
+    for parameter in inspect.signature(f).parameters.values():
+        if parameter.name in kwargs:
+            args_list.append(kwargs[parameter.name])
+        else:
+            try:
+                args_list.append(next(args_it))
+            except StopIteration:
+                args_list.append(parameter.default)
+
+    return args_list
+
+
 def repr_function(f: Callable) -> str:
     """Human readable function representation."""
     signature = inspect.signature(f)
