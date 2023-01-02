@@ -10,12 +10,11 @@ import functools
 
 import jax
 import jax.tree_util as jt
-from objax.util import class_name, repr_function
 
 from ..core.filter import _
 from ..core.structure import Module, Function, RandomState, VarCollection
 from ..core.random import DEFAULT_GENERATOR
-from ..core.util import positional_args_names
+from ..core.util import positional_args_names, repr_function
 
 
 class ModuleTransform(Module):
@@ -103,7 +102,7 @@ class Jit(ModuleTransform):
         return output
 
     def __repr__(self):
-        return f"{class_name(self)}(f={self.__wrapped__}, static_argnums={self.static_argnums or None})"
+        return f"{self.__class__.__name__}(f={self.__wrapped__}, static_argnums={self.static_argnums or None})"
 
 
 def _reduce(x, mode, axis):
@@ -202,7 +201,7 @@ class Vectorize(ModuleTransform):
         return output
 
     def __repr__(self):
-        return f"{class_name(self)}(f={self.__wrapped__}, in_axis={self.in_axis})"
+        return f"{self.__class__.__name__}(f={self.__wrapped__}, in_axis={self.in_axis})"
 
 
 class _DerivativeBase(ModuleTransform):
@@ -288,7 +287,7 @@ class _DerivativeBase(ModuleTransform):
             if isinstance(self.__wrapped__, Module)
             else repr_function(self.__wrapped__)
         )
-        return f"{class_name(self)}(f={f}, input_argnums={self.input_argnums or None})"
+        return f"{self.__class__.__name__}(f={f}, input_argnums={self.input_argnums or None})"
 
 
 class GradValues(_DerivativeBase):

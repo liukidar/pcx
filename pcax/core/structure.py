@@ -20,7 +20,7 @@ import jax
 import jax.random as jr
 import numpy as np
 
-from objax.util import repr_function, class_name
+from .util import repr_function
 from .filter import _
 
 ########################################################################################################################
@@ -51,7 +51,7 @@ def reduce_id(x: jax.Array) -> jax.Array:
 
 
 class BaseVar(abc.ABC):
-    """The abstract base class to represent objax variables."""
+    """The abstract base class to represent variables."""
 
     def __init__(
         self, reduce: Optional[Callable[[jax.Array], jax.Array]] = reduce_none
@@ -60,7 +60,7 @@ class BaseVar(abc.ABC):
 
         Args:
             reduce: a function that takes an array of shape ``(n, *dims)`` and returns one of shape ``(*dims)``. Used to
-                    combine the multiple states produced in an objax.Vectorize or an objax.Parallel call.
+                    combine the multiple states produced in an pcax.Vectorize or an pcax.Parallel call.
         """
         self._reduce = reduce
 
@@ -93,7 +93,7 @@ class BaseVar(abc.ABC):
 
     def __repr__(self):
         rvalue = re.sub("[\n]+", "\n", repr(self.value))
-        t = f"{class_name(self)}({rvalue})"
+        t = f"{self.__class__.__name__}({rvalue})"
         if not self._reduce:
             return t
         return f"{t[:-1]}, reduce={repr_function(self._reduce)})"
@@ -235,7 +235,7 @@ class BaseVar(abc.ABC):
 
     def __bool__(self):
         raise TypeError(
-            "To prevent accidental errors Objax variables can not be used as Python bool. "
+            "To prevent accidental errors variables can not be used as Python bool. "
             "To check if variable is `None` use `is None` or `is not None` instead."
         )
 
@@ -271,7 +271,7 @@ class TrainVar(BaseVar):
         Args:
             value: the initial value of the TrainVar.
             reduce: a function that takes an array of shape ``(n, *dims)`` and returns one of shape ``(*dims)``. Used to
-                    combine the multiple states produced in an objax.Vectorize or an objax.Parallel call.
+                    combine the multiple states produced in an pcax.Vectorize or an pcax.Parallel call.
         """
         self._value = value
         super().__init__(reduce)
@@ -312,7 +312,7 @@ class TrainRef(BaseVar):
         self.ref.value = value
 
     def __repr__(self):
-        return f"{class_name(self)}(ref={repr(self.ref)})"
+        return f"{self.__class__.__name__}(ref={repr(self.ref)})"
 
     def dump(self):
         return (None, None, None)
@@ -335,7 +335,7 @@ class StateVar(BaseVar):
         Args:
             tensor: the initial value of the StateVar.
             reduce: a function that takes an array of shape ``(n, *dims)`` and returns one of shape ``(*dims)``.
-                    Used to combine the multiple states produced in an objax.Vectorize or an objax.Parallel call.
+                    Used to combine the multiple states produced in an pcax.Vectorize or an pcax.Parallel call.
         """
         self._value = value
         super().__init__(reduce)
@@ -577,7 +577,7 @@ class ModuleList(Module, list):
             return "\n".join(x)
 
         entries = "\n".join(f"  [{i}] {f(x)}" for i, x in enumerate(self))
-        return f"{class_name(self)}(\n{entries}\n)"
+        return f"{self.__class__.__name__}(\n{entries}\n)"
 
 
 class Function(Module):
@@ -624,18 +624,7 @@ class Function(Module):
 
     @staticmethod
     def auto_vars(f: Callable):
-        """Turns a function into a module by auto detecting used Objax variables. Could be used as a decorator.
-
-        WARNING: This is an experimental feature.
-        It can detect variables used by function in many common cases, but not all cases.
-        This feature may be removed in the future version of Objax if it appear to be too unreliable.
-
-        Args:
-            f: function which will be converted into a module.
-        """
-        from objax.util.tracing import find_used_variables
-
-        return Function(f, find_used_variables(f))
+        raise NotImplementedError
 
     def __repr__(self):
-        return f"{class_name(self)}(f={repr_function(self.__wrapped__)})"
+        return f"{self.__class__.__name__}(f={repr_function(self.__wrapped__)})"

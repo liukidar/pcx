@@ -3,7 +3,6 @@ __all__ = ["DEFAULT_GENERATOR", "Generator"]
 from .structure import RandomState, VarCollection, Module
 
 from typing import Optional
-from objax.util import class_name
 
 
 class Generator(Module):
@@ -37,7 +36,7 @@ class Generator(Module):
         return super().vars(scope=scope)
 
     def __repr__(self):
-        return f"{class_name(self)}(seed={self.initial_seed})"
+        return f"{self.__class__.__name__}(seed={self.initial_seed})"
 
 
 DEFAULT_GENERATOR = Generator(0)
