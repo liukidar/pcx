@@ -3,7 +3,10 @@ __all__ = ["_"]
 
 class _:
     def __init__(self, *args):
-        self.args = args
+        if len(args) == 1 and isinstance(args[0], _):
+            self.args = args[0].args
+        else:
+            self.args = args
 
     def apply(self, var):
         for f in self.args:
@@ -22,6 +25,9 @@ class _:
 
     def __add__(self, other):
         return _(self, other)
+
+    def __sub__(self, other):
+        return _and(self, _not(other))
 
     def __neg__(self):
         return _not(self)
