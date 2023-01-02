@@ -10,6 +10,11 @@ from .variables import NodeVar, CachedVar
 
 
 class Module(_Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.cache = CachedVar()
+
     @staticmethod
     def _get_submodules(values):
         for v in values:
@@ -18,16 +23,31 @@ class Module(_Module):
             elif isinstance(v, ModuleList):
                 yield from Module._get_submodules(v)
 
-    def clear(self, *args, **kwargs):
+    def clear_cache(self):
         for m in Module._get_submodules(self.__dict__.values()):
-            m.clear(*args, **kwargs)
+            m.clear_cache()
+
+        self.cache.clear()
+
+    def clear_nodes(self):
+        for m in Module._get_submodules(self.__dict__.values()):
+            m.clear_nodes()
 
     @property
     def energy(self):
-        return jt.tree_reduce(
-            lambda x, y: x + y,
-            tuple(m.energy for m in Module._get_submodules(self.__dict__.values())),
-        )
+        if "e" not in self.cache:
+            self.cache["e"] = jt.tree_reduce(
+                lambda x, y: x + y,
+                tuple(m.energy for m in Module._get_submodules(self.__dict__.values())),
+            )
+
+        return self.cache["e"]
+
+    def train(self):
+        pass
+
+    def eval(self):
+        pass
 
 
 class VarView:
@@ -57,7 +77,7 @@ def _forward_fn(self, rkey):
 
 
 def _energy_fn(x: jax.Array, u: jax.Array, rkey):
-    return ((x - u) ** 2).sum()
+    return 0.5 * ((x - u) ** 2).sum()
 
 
 class Layer(Module):
@@ -73,7 +93,7 @@ class Layer(Module):
         super().__init__()
 
         self.x = NodeVar()
-        self.activations = CachedVar()
+        self.cache = CachedVar()
         self.blueprints = {}
         self.views = {
             "u": VarView(),
@@ -108,7 +128,7 @@ class Layer(Module):
         elif key.startswith("x:"):
             self.views[key.split(":", 1)[1]][self.x] = value
         else:
-            self.activations[key] = value
+            self.cache[key] = value
 
     def __getitem__(self, key: Union[str, Tuple[str, Any]]):
         if isinstance(key, tuple):
@@ -121,25 +141,26 @@ class Layer(Module):
         elif key.startswith("x:"):
             return self.views[key.split(":", 1)[1]][self.x]
 
-        if key not in self.activations:
+        if key not in self.cache:
             self.call_blueprint(key, rkey)
 
-        return self.activations[key]
+        return self.cache[key]
 
     def set_activation(self, key: str, value: jax.Array):
-        if key in self.activations:
-            self.activations[key] = self.activations[key] + value
+        if key in self.cache:
+            self.cache[key] = self.cache[key] + value
         else:
-            self.activations[key] = value
+            self.cache[key] = value
 
     @property
     def energy(self):
         return self["e"]
 
-    def clear(self, x: bool = False):
-        self.activations.clear()
-        if x:
-            self.x.value = None
+    def clear_cache(self):
+        self.cache.clear()
+
+    def clear_nodes(self):
+        self.x.value = None
 
     def register_blueprints(self, blueprints: Tuple[str, Callable[[Any], jax.Array]]):
         for key, blueprint in blueprints:
@@ -148,6 +169,6 @@ class Layer(Module):
     def call_blueprint(self, key: str, rkey: Generator = DEFAULT_GENERATOR):
         blueprint = self.blueprints[key]
 
-        self.activations[key] = blueprint(
+        self.cache[key] = blueprint(
             *(self[k] for k in positional_args_names(blueprint)[:-1]), rkey
         )
