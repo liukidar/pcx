@@ -3,10 +3,7 @@ __all__ = ["_"]
 
 class _:
     def __init__(self, *args):
-        if len(args) == 1 and isinstance(args[0], _):
-            self.args = args[0].args
-        else:
-            self.args = args
+        self.args = args
 
     def apply(self, var):
         for f in self.args:
@@ -20,17 +17,17 @@ class _:
 
         return False
 
-    def __class_getitem__(cls, args):
-        return _and(*args)
-
-    def __add__(self, other):
+    def __or__(self, other):
         return _(self, other)
 
-    def __sub__(self, other):
-        return _and(self, _not(other))
+    def __and__(self, other):
+        return _and(self, other)
 
-    def __neg__(self):
+    def __invert__(self):
         return _not(self)
+
+    def __sub__(self, other):
+        return _and(self, ~other)
 
     def __call__(self, **kwargs):
         return _hasattr(self, **kwargs)
@@ -55,24 +52,24 @@ class _and(_):
 
 class _not(_):
     def __init__(self, arg):
-        self.arg = arg
+        self.args = arg
 
     def apply(self, var):
-        if isinstance(self.arg, _):
-            r = self.arg.apply(var)
+        if isinstance(self.args, _):
+            r = self.args.apply(var)
         else:
-            r = isinstance(var, self.arg)
+            r = isinstance(var, self.args)
 
         return not r
 
 
 class _hasattr(_):
     def __init__(self, arg, **attrs):
-        self.arg = arg
+        self.args = arg
         self.attrs = attrs
 
     def apply(self, var):
-        return self.arg.apply(var) and all(
+        return self.args.apply(var) and all(
             hasattr(var, attr) and getattr(var, attr) == value
             for attr, value in self.attrs.items()
         )
