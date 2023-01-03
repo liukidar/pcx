@@ -164,12 +164,12 @@ def train_on_batch(x, y):
             # px.init_cache takes care of managing the cache.
             # !!! IMPORTANT: px.init_cache must always be used inside a px.init_nodes context !!!
             with px.init_cache(model):
-                g, (v,) = train_x(x, y)
+                g, (v,) = train_x(x)
                 optim_x(g)
 
         # !!! IMPORTANT: px.init_cache must always be used inside a px.init_nodes context !!!
         with px.init_cache(model):
-            g, (v,) = train_w(x, y)
+            g, (v,) = train_w(x)
             optim_w(g)
 
 
