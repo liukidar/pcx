@@ -477,7 +477,7 @@ class VarCollection(Dict[str, BaseVar]):
 
     def rename(self, name):
         return VarCollection(
-            {re.sub('\(.*\)', name, k, count=1): v for k, v in self.items()}
+            {re.sub(r'\(.*\)', name, k, count=1): v for k, v in self.items()}
         )
 
     def dump(self) -> Tuple[Tuple[jax.Array], Tuple[Any], Tuple[Any]]:
@@ -625,6 +625,13 @@ class Function(Module):
     @staticmethod
     def auto_vars(f: Callable):
         raise NotImplementedError
+
+    @staticmethod
+    def leaf_fn(f: 'Function') -> Callable:
+        if isinstance(f.__wrapped__, Function):
+            return Function.leaf_fn(f.__wrapped__)
+        else:
+            return f
 
     def __repr__(self):
         return f"{self.__class__.__name__}(f={repr_function(self.__wrapped__)})"
