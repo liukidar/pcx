@@ -50,9 +50,12 @@ def init_nodes(model, *args, filter=_(NodeVar), in_axis=None, out_axis=None, **k
 
 
 @contextlib.contextmanager
-def init_cache(model):
+def init_cache(model, clear_on_exit=False):
     model.clear_cache()
     yield
+
+    if clear_on_exit:
+        model.clear_cache()
 
 
 def vectorize(*args, **kwargs):
