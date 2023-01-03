@@ -1,16 +1,18 @@
+# Core dependencies
 import jax
 import optax
+
+# pcax
+import pcax as px  # same as import pcax.pc as px
+import pcax.nn as nn
+from pcax.core import _  # _ is the filter object, more about it later!
+from pcax.utils.data import TorchDataloader
+
 import numpy as np
 from torchvision.datasets import MNIST
 import timeit
-
-import pcax as px
-import pcax.nn as nn
-from pcax.core import _
-from pcax.utils.data import TorchDataloader
-
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 NM_LAYERS = 2
 
@@ -21,6 +23,9 @@ class Model(px.Module):
 
         self.act_fn = jax.nn.tanh
 
+        """
+        This is quite standard. We define the layers and links (one layer for each link).
+        """
         self.linear1 = nn.Linear(input_dim, hidden_dim)
         self.linear_h = nn.ModuleList(
             [nn.Linear(hidden_dim, hidden_dim) for _ in range(nm_layers)]
@@ -31,9 +36,22 @@ class Model(px.Module):
         self.pc_h = nn.ModuleList([px.Layer() for _ in range(nm_layers)])
         self.pc2 = px.Layer()
 
+        """
+        We normally use the x of the last layer as the target, therefore we don't want to update it.
+        """
         self.pc2.x.frozen = True
 
+    """
+    Here things are a bit different. __call__ accepts an optional target t (used during training),
+    which is used to set the x of the last layer.
+    """
     def __call__(self, x, t=None):
+        """
+        !!! IMPORTANT !!!
+        Each (pc) layer contains a cache the stores the important intermediate values computed in the forward pass.
+        By default, these are the incoming activation (u), the node values (x) and the energy (e).
+        You can access them by using the [] operator, e.g., self.pc["x"].
+        """
         x = self.pc1(self.act_fn(self.linear1(x)))["x"]
 
         for i in range(len(self.linear_h)):
@@ -44,6 +62,9 @@ class Model(px.Module):
         if t is not None:
             self.pc2["x"] = t
 
+        """
+        The output of the network is the activation received by the last layer (since its x is clamped to the label).
+        """
         return self.pc2["u"]
 
 
@@ -98,71 +119,76 @@ test_dataloader = TorchDataloader(
 
 model = Model(28 * 28, params["hidden_dim"], 10)
 
+# This is not actually necessary as we used px.init_nodes to initialize the nodes
+#
+# @px.vectorize(_(px.NodeVar), in_axis=(0, 0))
+# @px.bind(model)
+# def predict(x, t):
+#     return model(x, t)
 
-@px.vectorize(_(px.NodeVar), in_axis=(0, 0))
+
+@px.vectorize(_(px.NodeVar), in_axis=(0,), out_axis=("sum",))
 @px.bind(model)
-def predict(x, t):
-    return model(x, t)
-
-
-@px.vectorize(_(px.NodeVar), out_axis=("sum",))
-@px.bind(model)
-def train_op(x):
+def loss(x,):
     model(x)
     return model.energy
 
 
 train_x = px.gradvalues(
     _(px.NodeVar)(frozen=False),
-)(train_op)
+)(loss)
 train_w = px.gradvalues(
-    _[px.TrainVar, -_(px.NodeVar)],
-)(train_op)
+    _(px.TrainVar) - _(px.NodeVar),
+)(loss)
 
 
 # dummy run to init the optimizer parameters
-with px.eval(model):
-    predict(np.zeros((params["batch_size"], 28 * 28)), None)
+with px.init_nodes(model, np.zeros((params["batch_size"], 28 * 28)), None):
     optim_x = px.Optim(
-        optax.sgd(params["x_learning_rate"]), model.vars(_(px.NodeVar)(frozen=False))
+        optax.sgd(params["x_learning_rate"]), model.vars(_(px.NodeVar)(frozen=False)),
     )
     optim_w = px.Optim(
         optax.adam(params["w_learning_rate"]),
-        model.vars(_[px.TrainVar, -_(px.NodeVar)]),
+        model.vars(_(px.TrainVar) & ~_(px.NodeVar)),  # same as _(...) - _(...)
     )
 
 
 @px.jit()
 @px.bind(model, optim_w=optim_w, optim_x=optim_x)
 def train_on_batch(x, y):
-    with px.eval(model):
-        with px.train(model):
-            predict(x, y)
-
+    # We are working on the input x, so we initialise the internal nodes with it (this also initialises the cache).
+    with px.init_nodes(model, x, y) as (y_hat,):
         for i in range(params["T"]):
-            with px.train(model):
-                g, (v,) = train_x(x)
+            # Each forward pass caches the intermediate values (such as activations and energies), so we can use them
+            # to compute the gradients.
+            # px.init_cache takes care of managing the cache.
+            # !!! IMPORTANT: px.init_cache must always be used inside a px.init_nodes context !!!
+            with px.init_cache(model):
+                g, (v,) = train_x(x, y)
                 optim_x(g)
 
-        with px.train(model):
-            g, (v,) = train_w(x)
+        # !!! IMPORTANT: px.init_cache must always be used inside a px.init_nodes context !!!
+        with px.init_cache(model):
+            g, (v,) = train_w(x, y)
             optim_w(g)
 
 
 @px.jit()
 @px.bind(model)
 def evaluate(x, y):
-    with px.eval(model):
-        y_hat, = predict(x, None)
-
-    return (y_hat.argmax(-1) == y.argmax(-1)).mean()
+    # As in train_on_batch, we initialise the internal nodes with the input x. By doing so we also get the model's
+    # output y_hat.
+    with px.init_nodes(model, x, y) as (y_hat,):
+        return (y_hat.argmax(-1) == y.argmax(-1)).mean()
 
 
 def epoch(dl):
-    for x, y in dl:
+    for batch in dl:
+        x, y = batch
         y = one_hot(y, 10)
 
-        train_on_batch(x, y)
+        # Static arguments in the first brackets, dynamic arguments in the second.
+        train_on_batch()(x, y)
 
     return 0
 
@@ -173,8 +199,8 @@ def test(dl):
         x, y = batch
         y = one_hot(y, 10)
 
-        a = evaluate(x, y)
-        accuracies.append(a)
+        # Static arguments in the first brackets, dynamic arguments in the second.
+        accuracies.append(evaluate()(x, y))
 
     return np.mean(accuracies)
 
