@@ -3,6 +3,7 @@ __all__ = ["DEFAULT_GENERATOR", "Generator"]
 from .structure import RandomState, VarCollection, Module
 
 from typing import Optional
+import time
 
 
 class Generator(Module):
@@ -39,4 +40,4 @@ class Generator(Module):
         return f"{self.__class__.__name__}(seed={self.initial_seed})"
 
 
-DEFAULT_GENERATOR = Generator(0)
+DEFAULT_GENERATOR = Generator(time.time_ns())
