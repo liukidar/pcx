@@ -12,6 +12,15 @@ def positional_args_names(f: Callable) -> List[str]:
     )
 
 
+def kwargs_indices(f: Callable, kwargs) -> List[int]:
+    """Returns the indices of the keyword arguments of a function."""
+    return [
+        i
+        for i, p in enumerate(inspect.signature(f).parameters.values())
+        if p in kwargs
+    ]
+
+
 def make_args(f: Callable, args=(), kwargs={}) -> List[str]:
     args_list = []
     args_it = iter(args)

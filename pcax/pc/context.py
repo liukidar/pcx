@@ -35,13 +35,18 @@ def bind(*arg_vars, **kwarg_vars):
 
 
 @contextlib.contextmanager
-def init_nodes(model, *args, filter=_(NodeVar), in_axis=None, out_axis=None, **kwargs):
+def init_nodes(model, *args, filter=_(NodeVar), in_axis=None, out_axis=None, clear_on_enter=True, **kwargs):
     if len(args):
         if in_axis is None:
             in_axis = (0,) * len(args)
         if out_axis is None:
             out_axis = (0,)
-        yield Vectorize(bind(model)(model.__call__), filter, in_axis, out_axis)(*args, **kwargs)
+        r = Vectorize(bind(model)(model.__call__), filter, in_axis, out_axis)(*args, **kwargs)
+
+        if clear_on_enter:
+            model.clear_cache()
+
+        yield r
     else:
         yield
 
@@ -78,9 +83,7 @@ def jit(*args, **kwargs):
     def decorator(f):
         @functools.wraps(f)
         def wrapper(static_kwargs, *args, **kwargs):
-            # Finds the original function wrapped in the f hierarchy of transformations
-            # and calls it by merging all the given arguments.
-            return f(*make_args(Function.leaf_fn(f), args, {**dict(static_kwargs), **kwargs}))
+            return f(*make_args(f, args, {**dict(static_kwargs), **kwargs}))
 
         jit_f = Jit(Function(wrapper, f.vc), *args, **kwargs, static_argnums=(0,))
 
