@@ -33,12 +33,11 @@ class Module(_Module):
         for m in Module._get_submodules(self.__dict__.values()):
             m.clear_nodes()
 
-    @property
     def energy(self):
         if "e" not in self.cache:
             self.cache["e"] = jt.tree_reduce(
                 lambda x, y: x + y,
-                tuple(m.energy for m in Module._get_submodules(self.__dict__.values())),
+                tuple(m.energy() for m in Module._get_submodules(self.__dict__.values())),
             )
 
         return self.cache["e"]
@@ -152,7 +151,6 @@ class Layer(Module):
         else:
             self.cache[key] = value
 
-    @property
     def energy(self):
         return self["e"]
 

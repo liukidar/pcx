@@ -131,7 +131,7 @@ model = Model(28 * 28, params["hidden_dim"], 10)
 @px.bind(model)
 def loss(x,):
     model(x)
-    return model.energy
+    return model.energy()
 
 
 train_x = px.gradvalues(
