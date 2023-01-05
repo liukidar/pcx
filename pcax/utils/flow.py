@@ -6,21 +6,67 @@ from ..core.util import make_args, kwargs_indices
 from ..core.transform import ModuleTransform
 from ..core.structure import Module, Function, VarCollection
 from ..core.filter import _
+from ..core.random import DEFAULT_GENERATOR
 
-# !!! NOT WORKING
-# def switch(index_fn, fns, **static_kwargs):
-#     @functools.wraps(fns[0])
-#     def wrapper(j, *args, **kwargs):
-#         return jax.lax.switch(
-#             index_fn(j),
-#             tuple(
-#                 lambda args, kwargs: fn(*args, **kwargs, **static_kwargs) for fn in fns
-#             ),
-#             args,
-#             kwargs,
-#         )
 
-#     return wrapper
+class Switch(ModuleTransform):
+    def __init__(
+        self,
+        fns: Tuple[Union[Module, Callable], ...],
+        vc_f: Union[_, Callable[[VarCollection], VarCollection]] = lambda vc: vc,
+        static_argnums: Tuple[int, ...] = (),
+    ):
+        super().__init__(Function(fns[0], sum(map(lambda fn: fn.vars(), fns), VarCollection())), vc_f)
+
+        def switch(f):
+            @self._functional
+            def switched(params, args_list):
+                self.vc_target.load(*params)
+
+                for static_argnum in self.static_argnums:
+                    args_list[static_argnum] = self.static_args[static_argnum]
+
+                return f(*args_list), self.vc_target.dump()[:2]
+
+            return switched
+
+        self._call = lambda j, params, args_list: jax.lax.switch(
+            j,
+            self.fns,
+            params,
+            args_list,
+        )
+        self.fns = tuple(switch(f) for f in fns)
+        self.static_argnums = static_argnums
+        self.static_args = {}
+
+    @property
+    def vc_target(self) -> VarCollection:
+        return self.vc_f(self.vc) + VarCollection(DEFAULT_GENERATOR.vars())
+
+    def __call__(self, j: int, *args, **kwargs):
+        differentiable, dynamic, static = self.vc_target.dump()
+
+        args_list = make_args(
+            self.__wrapped__,
+            args,
+            kwargs
+        )
+
+        for static_argnum in self.static_argnums:
+            self.static_args[static_argnum] = args_list[static_argnum]
+            args_list[static_argnum] = None
+
+        output, changes = self._call(
+            j, (differentiable, dynamic), args_list
+        )
+        self.vc_target.load(*changes)
+        self.static_args = {}
+
+        return output
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(f={self.__wrapped__})"
 
 
 class Scan(ModuleTransform):
@@ -44,7 +90,6 @@ class Scan(ModuleTransform):
 
             for static_argnum in self.static_argnums:
                 args_list[static_argnum] = self.static_args[static_argnum]
-                del self.static_args[static_argnum]
 
             if self.has_aux:
                 r = f(j, *args_list[1:])
@@ -80,7 +125,7 @@ class Scan(ModuleTransform):
 
     @property
     def vc_target(self) -> VarCollection:
-        return self.vc_f(self.vc)
+        return self.vc_f(self.vc) + VarCollection(DEFAULT_GENERATOR.vars())
 
     def __call__(self, *args, **kwargs):
         differentiable, dynamic, static = self.vc_target.dump()
@@ -102,6 +147,7 @@ class Scan(ModuleTransform):
             (differentiable, dynamic), args_list
         )
         self.vc_target.load(*changes)
+        self.static_args = {}
 
         return output
 
@@ -129,7 +175,26 @@ def scan(f):
 
         return Function(
             functools.wraps(f)(lambda *args, **kwargs: scan(*args, **{**dict(static_kwargs), **kwargs})),
-            f.vc
+            scan.vc
+        )
+
+    return wrapper
+
+
+def switch(*fns):
+    def wrapper(
+        filter: Union[_, Callable[[VarCollection], VarCollection]] = lambda vc: vc,
+        **static_kwargs
+    ):
+        switch = Switch(
+            fns,
+            vc_f=filter,
+            static_argnums=kwargs_indices(fns[0], static_kwargs),
+        )
+
+        return Function(
+            lambda j, *args, **kwargs: switch(j, *args, **{**dict(static_kwargs), **kwargs}),
+            switch.vc
         )
 
     return wrapper
