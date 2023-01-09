@@ -26,11 +26,7 @@ class Optim(_Module):
         self.state = StateVar(
             self.optax_opt.init({id(var.ref): var.ref.value for var in self.train_refs})
         )
-
         self.allow_none_grads = allow_none_grads
-
-        if self.allow_none_grads:
-            raise NotImplementedError()
 
     def __call__(self, grads):
         train_vars = {id(var.ref): var.ref.value for var in self.train_refs}
