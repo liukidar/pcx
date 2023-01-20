@@ -30,8 +30,10 @@ pip install path/to/wheel_file.whl
 Clone this repository locally and then:
 
 ```shell
-pip install -e /path/to/this/repo/
+pip install -e /path/to/this/repo/ --config-settings editable_mode=strict
 ```
+
+The `--config-settings editable_mode=strict` flag enables VSCode to scan the package. However, it also means that adding and removing files form the package will require a reinstall.
 
 ## Docs
 
