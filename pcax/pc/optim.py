@@ -2,7 +2,7 @@ __all__ = ["Optim"]
 
 from ..core import Module as _Module, ModuleList, TrainRef, StateVar
 import jax.tree_util as jt
-
+import jax.numpy as jnp
 
 def _combine(*args):
     for arg in args:
@@ -30,19 +30,23 @@ class Optim(_Module):
 
     def __call__(self, grads):
         train_vars = {id(var.ref): var.ref.value for var in self.train_refs}
-
         if self.allow_none_grads:
             grads = {
                 id(var.ref): grads.get(id(var.ref), None) for var in self.train_refs
             }
         else:
             grads = {id(var.ref): grads[id(var.ref)] for var in self.train_refs}
-
         updates, self.state.value = self.optax_opt.update(
             grads, self.state.value, train_vars
         )
-
         for var in self.train_refs:
             update = updates[id(var.ref)]
             if update is not None:
                 var.ref.value += update
+
+    @property
+    def step_count(self) -> 'jnp.ndarray[int]':
+        try:
+            return self.state.value[-1][-1].count
+        except:
+            return f"Step count not available."

@@ -1,13 +1,14 @@
 __all__ = [
     "CachedVar",
     "NodeVar",
-    "TrainVar"
+    "TrainVar",
+    "LinkVar"
 ]
 
 from typing import Optional, Callable, Tuple, Union
 import jax
 
-from ..core.structure import BaseVar, TrainVar, reduce_id
+from ..core.structure import BaseVar, TrainVar, reduce_id, reduce_none
 
 
 class CachedVar(BaseVar):
@@ -86,3 +87,20 @@ class NodeVar(TrainVar):
 
         if static is not None:
             self.frozen = static
+
+
+class LinkVar(TrainVar):
+    def __init__(
+        self,
+        tensor: Optional[jax.Array] = None,
+        reduce: Optional[Callable[[jax.Array], jax.Array]] = reduce_none,
+    ):
+        super().__init__(tensor, reduce)
+
+    def assign(self, other):
+        """Assign a new value to the variable. Kept for compatibility with the objax.io package."""
+        if not self.shape == other.shape:
+            raise ValueError(
+                f"Shape mismatch: Cannot assign {other.shape} to {self.value.shape} for LinkVar {self.name}."
+            )
+        self.value = other

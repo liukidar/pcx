@@ -2,14 +2,16 @@ from typing import Optional, Tuple
 import equinox as eqx
 import jax.tree_util as jt
 
+
 from ..core import (
     Module as _Module,
     BaseVar,
-    TrainVar,
     VarCollection,
     DEFAULT_GENERATOR,
 )
 from ..core.filter import _
+
+from ..pc import LinkVar
 
 
 class Link(_Module):
@@ -22,7 +24,7 @@ class Link(_Module):
     ):
         super().__init__()
         self.nn = jt.tree_map(
-            lambda w: TrainVar(w) if filter(w) else w,
+            lambda w: LinkVar(w) if filter(w) else w,
             cls(*args, **kwargs),
         )
 
