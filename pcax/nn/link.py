@@ -11,6 +11,7 @@ from ..core import (
 )
 from ..core.filter import _
 
+from ..pc import LinkVar
 
 class Link(_Module):
     def __init__(
@@ -23,7 +24,7 @@ class Link(_Module):
     ):
         super().__init__()
         self.nn = jt.tree_map(
-            lambda w: TrainVar(w) if filter(w) else w,
+            lambda w: LinkVar(w) if filter(w) else w,
             cls(*args, **kwargs, key=rkey()),
         )
 
