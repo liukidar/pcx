@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 import equinox as eqx
 import jax.tree_util as jt
 
@@ -18,13 +18,12 @@ class Link(_Module):
         cls,
         *args,
         filter=eqx.filters.is_array,
-        rkey=DEFAULT_GENERATOR,
         **kwargs,
     ):
         super().__init__()
         self.nn = jt.tree_map(
             lambda w: TrainVar(w) if filter(w) else w,
-            cls(*args, **kwargs, key=rkey()),
+            cls(*args, **kwargs),
         )
 
     def __call__(self, *args, rkey=DEFAULT_GENERATOR, **kwargs):
@@ -44,5 +43,17 @@ class Link(_Module):
 
 
 class Linear(Link):
-    def __init__(self, in_features, out_features, bias=True):
-        super().__init__(eqx.nn.Linear, in_features, out_features, bias)
+    def __init__(self, in_features: int, out_features: int, bias: bool = True):
+        super().__init__(
+            eqx.nn.Linear, in_features, out_features, bias, key=DEFAULT_GENERATOR()
+        )
+
+
+class LayerNorm(Link):
+    def __init__(
+        self,
+        shape: Optional[Tuple[int, ...]] = None,
+        eps: float = 1e-05,
+        elementwise_affine: bool = True,
+    ):
+        super().__init__(eqx.nn.LayerNorm, shape, eps, elementwise_affine)
