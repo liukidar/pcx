@@ -90,28 +90,30 @@ params = {
 }
 
 train_dataset = MNIST(
-    "/tmp/mnist/",
+    "~/tmp/mnist/",
     transform=FlattenAndCast(),
     train=True,
+    download=True
 )
 train_dataloader = TorchDataloader(
     train_dataset,
     batch_size=params["batch_size"],
-    num_workers=8,
+    num_workers=6,
     shuffle=True,
     persistent_workers=True,
     pin_memory=True,
 )
 
 test_dataset = MNIST(
-    "/tmp/mnist/",
+    "~/tmp/mnist/",
     transform=FlattenAndCast(),
     train=False,
+    download=True
 )
 test_dataloader = TorchDataloader(
     test_dataset,
     batch_size=params["batch_size"],
-    num_workers=4,
+    num_workers=6,
     shuffle=False,
     persistent_workers=False,
     pin_memory=True,
