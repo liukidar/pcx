@@ -5,7 +5,6 @@ import jax.tree_util as jt
 from typing import Callable, Dict, Any, Tuple, Union, Optional
 
 from ..core import Module as _Module, ModuleList, DEFAULT_GENERATOR, Generator
-from ..core.util import positional_args_names
 from .variables import NodeVar, CachedVar
 
 
