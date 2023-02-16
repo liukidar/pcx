@@ -1,10 +1,12 @@
 __all__ = [
     "Linear",
+    "LayerNorm",
     "ModuleList",
 ]
 
 from .link import (
-    Linear
+    Linear,
+    LayerNorm,
 )
 from ..core import (
     ModuleList
