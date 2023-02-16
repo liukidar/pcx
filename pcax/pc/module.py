@@ -75,8 +75,8 @@ def _forward_fn(self, rkey):
     pass
 
 
-def _energy_fn(x: jax.Array, u: jax.Array, rkey):
-    return 0.5 * ((x - u) ** 2).sum()
+def _energy_fn(self, rkey):
+    return 0.5 * ((self["x"] - self["u"]) ** 2).sum()
 
 
 class Layer(Module):
@@ -168,5 +168,5 @@ class Layer(Module):
         blueprint = self.blueprints[key]
 
         self.cache[key] = blueprint(
-            *(self[k] for k in positional_args_names(blueprint)[:-1]), rkey
+            self, rkey
         )
