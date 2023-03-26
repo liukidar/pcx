@@ -32,14 +32,33 @@ class Module(_Module):
         for m in Module._get_submodules(self.__dict__.values()):
             m.clear_nodes()
 
-    def energy(self):
-        if "e" not in self.cache:
-            self.cache["e"] = jt.tree_reduce(
-                lambda x, y: x + y,
-                tuple(m.energy() for m in Module._get_submodules(self.__dict__.values())),
-            )
+    def energy(self, targets: Optional[Any] = None):
+        if targets is None:
+            if "e" not in self.cache:
+                self.cache["e"] = jt.tree_reduce(
+                    lambda x, y: x + y,
+                    tuple(
+                        m.energy()
+                        for m in Module._get_submodules(self.__dict__.values())
+                    ),
+                )
 
-        return self.cache["e"]
+            return self.cache["e"]
+        else:
+            if "e_t" not in self.cache:
+                self.cache["e_t"] = jt.tree_reduce(
+                    lambda x, y: x + y,
+                    tuple(
+                        jax.numpy.abs(m.energy() - target)
+                        if target is not None
+                        else m.energy()
+                        for m, target in zip(
+                            Module._get_submodules(self.__dict__.values()), targets
+                        )
+                    ),
+                )
+
+            return self.cache["e_t"]
 
     def train(self):
         pass
@@ -51,7 +70,10 @@ class Module(_Module):
 class VarView:
     def __init__(self, slices: Optional[Union[Tuple[slice], str]] = None) -> None:
         if isinstance(slices, str):
-            slices = tuple(slice(*tuple(map(lambda i: int(i), s.split(":")))) for s in slices.split(","))
+            slices = tuple(
+                slice(*tuple(map(lambda i: int(i), s.split(":"))))
+                for s in slices.split(",")
+            )
 
         self.slices = slices
 
@@ -75,18 +97,19 @@ def _forward_fn(self, rkey):
 
 
 def _energy_fn(self, rkey):
-    return 0.5 * ((self["x"] - self["u"]) ** 2).sum()
+    e = self["x"] - self["u"]
+    return 0.5 * (e * e).sum()
 
 
 class Layer(Module):
     def __init__(
-            self,
-            rkey=DEFAULT_GENERATOR,
-            init_fn: Callable[['Layer'], None] = _init_fn,
-            forward_fn: Callable[['Layer'], None] = _forward_fn,
-            energy_fn: Callable[[Any], jax.Array] = _energy_fn,
-            blueprints: Dict[str, Callable[[Any], jax.Array]] = {},
-            views: Dict[str, VarView] = {}
+        self,
+        rkey=DEFAULT_GENERATOR,
+        init_fn: Callable[["Layer"], None] = _init_fn,
+        forward_fn: Callable[["Layer"], None] = _forward_fn,
+        energy_fn: Callable[[Any], jax.Array] = _energy_fn,
+        blueprints: Dict[str, Callable[[Any], jax.Array]] = {},
+        views: Dict[str, VarView] = {},
     ):
         super().__init__()
 
@@ -103,7 +126,9 @@ class Layer(Module):
 
         self.register_blueprints((("e", energy_fn),) + tuple(blueprints.items()))
 
-    def __call__(self, u: jax.Array = None, rkey: Generator = DEFAULT_GENERATOR, **kwargs):
+    def __call__(
+        self, u: jax.Array = None, rkey: Generator = DEFAULT_GENERATOR, **kwargs
+    ):
         if u is not None:
             self.set_activation("u", u)
 
@@ -166,6 +191,4 @@ class Layer(Module):
     def call_blueprint(self, key: str, rkey: Generator = DEFAULT_GENERATOR):
         blueprint = self.blueprints[key]
 
-        self.cache[key] = blueprint(
-            self, rkey
-        )
+        self.cache[key] = blueprint(self, rkey)
