@@ -98,7 +98,7 @@ def _forward_fn(self, rkey):
 
 def _energy_fn(self, rkey):
     e = self["x"] - self["u"]
-    return 0.5 * (e * e).sum()
+    return 0.5 * (e * e).sum(axis=-1)
 
 
 class Layer(Module):
