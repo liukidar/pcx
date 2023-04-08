@@ -24,3 +24,6 @@ no_implicit_reexport = true
 
 [tool.black]
 line-length = 120
+
+[tool.ruff]
+line-length = 120

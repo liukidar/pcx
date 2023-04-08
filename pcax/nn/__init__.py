@@ -1,12 +1,18 @@
 __all__ = [
-    "Linear",
+    "Conv",
+    "Conv2d",
     "LayerNorm",
+    "Linear",
+    "MaxPool2d",
     "ModuleList",
 ]
 
 from .link import (
-    Linear,
+    Conv,
+    Conv2d,
     LayerNorm,
+    Linear,
+    MaxPool2d
 )
 from ..core import (
     ModuleList
