@@ -98,12 +98,7 @@ def _forward_fn(self, rkey):
 
 def _energy_fn(self, rkey):
     e = self["x"] - self["u"]
-    assert isinstance(e, jax.interpreters.batching.BatchTracer)
-    if isinstance(e, jax.interpreters.batching.BatchTracer):
-        axes = None
-    else:
-        axes = tuple(range(1, e.ndim))
-    return 0.5 * (e * e).sum(axes)
+    return 0.5 * (e * e).sum()
 
 
 class Layer(Module):
