@@ -38,8 +38,8 @@ def get_jax_value(x: Union[jax.Array, "BaseVar"]):
         return x
 
 
-def reduce_none(x: jax.Array) -> jax.Array:
-    return x[0]
+def reduce_none(x: Optional[jax.Array]) -> jax.Array:
+    return x[0] if x is not None else None
 
 
 def reduce_mean(x: jax.Array) -> jax.Array:
@@ -477,7 +477,7 @@ class VarCollection(Dict[str, BaseVar]):
 
     def rename(self, name):
         return VarCollection(
-            {re.sub(r'\(.*\)', name, k, count=1): v for k, v in self.items()}
+            {re.sub(r"\(.*\)", name, k, count=1): v for k, v in self.items()}
         )
 
     def dump(self) -> Tuple[Tuple[jax.Array], Tuple[Any], Tuple[Any]]:
