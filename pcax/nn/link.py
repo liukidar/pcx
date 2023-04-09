@@ -28,8 +28,8 @@ class Link(_Module):
             cls(*args, **kwargs),
         )
 
-    def __call__(self, *args, rkey=DEFAULT_GENERATOR, **kwargs):
-        return self.nn(*args, **kwargs, key=rkey())
+    def __call__(self, *args, key=None, **kwargs):
+        return self.nn(*args, **kwargs, key=key)
 
     def vars(self, filter: Optional[_] = None, scope: str = "") -> VarCollection:
         vc = super().vars(scope=scope)
@@ -46,9 +46,7 @@ class Link(_Module):
 
 class Linear(Link):
     def __init__(self, in_features: int, out_features: int, bias: bool = True):
-        super().__init__(
-            eqx.nn.Linear, in_features, out_features, bias, key=DEFAULT_GENERATOR()
-        )
+        super().__init__(eqx.nn.Linear, in_features, out_features, bias, key=DEFAULT_GENERATOR())
 
 
 class LayerNorm(Link):
