@@ -45,8 +45,8 @@ class Link(_Module):
 
 
 class Linear(Link):
-    def __init__(self, in_features: int, out_features: int, bias: bool = True):
-        super().__init__(eqx.nn.Linear, in_features, out_features, bias, key=DEFAULT_GENERATOR())
+    def __init__(self, in_features: int, out_features: int, bias: bool = True, **kwargs):
+        super().__init__(eqx.nn.Linear, in_features, out_features, bias, key=DEFAULT_GENERATOR(), **kwargs)
 
 
 class LayerNorm(Link):
@@ -55,8 +55,9 @@ class LayerNorm(Link):
         shape: Optional[Tuple[int, ...]] = None,
         eps: float = 1e-05,
         elementwise_affine: bool = True,
+        **kwargs,
     ):
-        super().__init__(eqx.nn.LayerNorm, shape, eps, elementwise_affine)
+        super().__init__(eqx.nn.LayerNorm, shape, eps, elementwise_affine, key=DEFAULT_GENERATOR(), **kwargs)
 
 
 class Conv(Link):
@@ -71,6 +72,7 @@ class Conv(Link):
         dilation: Union[int, Sequence[int]] = 1,
         groups: int = 1,
         use_bias: bool = True,
+        **kwargs
     ):
         super().__init__(
             eqx.nn.Conv,
@@ -84,6 +86,7 @@ class Conv(Link):
             groups,
             use_bias,
             key=DEFAULT_GENERATOR(),
+            **kwargs
         )
 
 
@@ -98,8 +101,9 @@ class Conv2d(Conv):
         dilation: Union[int, Sequence[int]] = 1,
         groups: int = 1,
         use_bias: bool = True,
+        **kwargs,
     ):
-        super().__init__(2, in_channels, out_channels, kernel_size, stride, padding, dilation, groups, use_bias)
+        super().__init__(2, in_channels, out_channels, kernel_size, stride, padding, dilation, groups, use_bias, **kwargs)
 
 
 class MaxPool2d(Link):
@@ -111,4 +115,4 @@ class MaxPool2d(Link):
         use_ceil: bool = False,
         **kwargs,
     ):
-        super().__init__(eqx.nn.MaxPool2d, kernel_size, stride, padding, use_ceil, **kwargs)
+        super().__init__(eqx.nn.MaxPool2d, kernel_size, stride, padding, use_ceil, key=DEFAULT_GENERATOR(), **kwargs)
