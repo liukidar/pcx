@@ -115,4 +115,4 @@ class MaxPool2d(Link):
         use_ceil: bool = False,
         **kwargs,
     ):
-        super().__init__(eqx.nn.MaxPool2d, kernel_size, stride, padding, use_ceil, key=DEFAULT_GENERATOR(), **kwargs)
+        super().__init__(eqx.nn.MaxPool2d, kernel_size, stride, padding, use_ceil, **kwargs)
