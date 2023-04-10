@@ -1,14 +1,9 @@
-__all__ = [
-    "CachedVar",
-    "NodeVar",
-    "TrainVar",
-    "LinkVar"
-]
+__all__ = ["CachedVar", "NodeVar", "TrainVar", "LinkVar", "StateVar"]
 
 from typing import Optional, Callable, Tuple, Union
 import jax
 
-from ..core.structure import BaseVar, TrainVar, reduce_id, reduce_none
+from ..core.structure import BaseVar, TrainVar, reduce_id, reduce_none, StateVar
 
 
 class CachedVar(BaseVar):

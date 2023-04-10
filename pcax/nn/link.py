@@ -28,8 +28,8 @@ class Link(_Module):
             cls(*args, **kwargs),
         )
 
-    def __call__(self, *args, rkey=DEFAULT_GENERATOR, **kwargs):
-        return self.nn(*args, **kwargs, key=rkey())
+    def __call__(self, *args, key=None, **kwargs):
+        return self.nn(*args, **kwargs, key=key)
 
     def vars(self, filter: Optional[_] = None, scope: str = "") -> VarCollection:
         vc = super().vars(scope=scope)
