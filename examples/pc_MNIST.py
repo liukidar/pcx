@@ -98,7 +98,7 @@ train_dataset = MNIST(
 train_dataloader = TorchDataloader(
     train_dataset,
     batch_size=params["batch_size"],
-    num_workers=6,
+    num_workers=16,
     shuffle=True,
     persistent_workers=True,
     pin_memory=True,
@@ -113,7 +113,7 @@ test_dataset = MNIST(
 test_dataloader = TorchDataloader(
     test_dataset,
     batch_size=params["batch_size"],
-    num_workers=6,
+    num_workers=16,
     shuffle=False,
     persistent_workers=False,
     pin_memory=True,
@@ -129,7 +129,7 @@ model = Model(28 * 28, params["hidden_dim"], 10)
 #     return model(x, t)
 
 
-@px.vectorize(_(px.NodeVar), in_axis=(0,), out_axis=("sum",))
+@px.vectorize(_(px.NodeVar, px.CachedVar), in_axis=(0,), out_axis=("sum",))
 @px.bind(model)
 def loss(x,):
     model(x)
