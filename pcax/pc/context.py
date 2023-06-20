@@ -1,47 +1,32 @@
-__all__ = ["init_nodes", "init_cache", "bind", "vectorize", "gradvalues", "jit"]
+__all__ = ["init_nodes", "init_cache", "vectorize", "gradvalues", "jit"]
 
-from ..core import Function, VarCollection, Vectorize, GradValues, Jit, _
-from ..core.util import make_args
-from .variables import NodeVar
+from ..core import _, Vectorize, GradValues, Jit
+from .variables import NodeVar, ParameterCache
+from ..core.parameters import ParamsDict
 
-import functools
 import contextlib
-
-
-def bind(*arg_vars, **kwarg_vars):
-    """Decorator to bind a function to a set of variables."""
-
-    def decorator(f):
-        vc = functools.reduce(
-            lambda x, y: x + y, (m.vars() for m in arg_vars), VarCollection()
-        ) + functools.reduce(
-            lambda x, y: x + y,
-            (m.vars().rename(k) for k, m in kwarg_vars.items()),
-            VarCollection(),
-        )
-
-        @functools.wraps(f)
-        def wrapper(*args, **kwargs):
-            try:
-                _original = {k: f.__globals__.get(k, None) for k in kwarg_vars.keys()}
-                f.__globals__.update(kwarg_vars)
-                return f(*args, **kwargs)
-            finally:
-                f.__globals__.update(_original)
-
-        return Function(wrapper, vc)
-
-    return decorator
+from typing import Callable, Tuple, Optional, Union
 
 
 @contextlib.contextmanager
-def init_nodes(model, *args, filter=_(NodeVar), in_axis=None, out_axis=None, clear_on_enter=True, **kwargs):
+def init_nodes(
+    model,
+    *args,
+    filter=_(NodeVar, ParameterCache),
+    in_axis=None,
+    out_axis=None,
+    clear_on_enter=True,
+    **kwargs
+):
     if len(args):
         if in_axis is None:
             in_axis = (0,) * len(args)
         if out_axis is None:
             out_axis = (0,)
-        r = Vectorize(bind(model)(model.__call__), filter, in_axis, out_axis)(*args, **kwargs)
+
+        def call(*args, model):
+            return model(*args, **kwargs)
+        r = Vectorize(call, filter, in_axis, out_axis)(*args, model=model)
 
         if clear_on_enter:
             model.clear_cache()
@@ -56,37 +41,43 @@ def init_nodes(model, *args, filter=_(NodeVar), in_axis=None, out_axis=None, cle
 
 @contextlib.contextmanager
 def init_cache(model, clear_on_exit=False):
-    model.clear_cache()
+    if clear_on_exit is False:
+        model.clear_cache()
     yield
 
     if clear_on_exit:
         model.clear_cache()
 
 
-def vectorize(*args, **kwargs):
-    @functools.wraps(Vectorize)
+def vectorize(
+    filter: Union[_, Callable[[ParamsDict], ParamsDict]],
+    in_axis: Tuple[Optional[int], ...] = (0,),
+    out_axis: Tuple[Optional[int], ...] = (0,),
+    axis_name: str = "batch"
+):
     def decorator(f):
-        return Vectorize(f, *args, **kwargs)
+        return Vectorize(f, filter, in_axis, out_axis, axis_name)
 
     return decorator
 
 
-def gradvalues(*args, **kwargs):
-    @functools.wraps(GradValues)
+def gradvalues(
+    filter: Union[_, Callable[[ParamsDict], ParamsDict]],
+    input_argnums: Optional[Tuple[int, ...]] = None,
+):
     def decorator(f):
-        return GradValues(f, *args, **kwargs)
+        return GradValues(f, filter, input_argnums)
 
     return decorator
 
 
-def jit(*args, **kwargs):
+def jit(
+    filter: Union[_, Callable[[ParamsDict], ParamsDict]] = lambda key, value: True,
+    static_argnums: Tuple[int, ...] = (),
+    donate_argnums: Tuple[int, ...] = (),
+    inline: bool = False
+):
     def decorator(f):
-        @functools.wraps(f)
-        def wrapper(static_kwargs, *args, **kwargs):
-            return f(*make_args(f, args, {**dict(static_kwargs), **kwargs}))
-
-        jit_f = Jit(Function(wrapper, f.vc), *args, **kwargs, static_argnums=(0,))
-
-        return lambda **static_kwargs: functools.partial(jit_f, tuple(static_kwargs.items()))
+        return Jit(f, filter, static_argnums, donate_argnums, inline)
 
     return decorator

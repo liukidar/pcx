@@ -4,61 +4,41 @@ import jax
 import jax.tree_util as jt
 from typing import Callable, Dict, Any, Tuple, Union, Optional
 
-from ..core import Module as _Module, ModuleList, DEFAULT_GENERATOR, Generator
-from .variables import NodeVar, CachedVar
+from ..core import Module as _Module, RKG, RandomKeyGenerator
+from .variables import NodeVar
+from ..core.parameters import _BaseParameter, Parameter, ParameterCache
 
 
 class Module(_Module):
     def __init__(self) -> None:
         super().__init__()
 
-        self.cache = CachedVar()
-
-    @staticmethod
-    def _get_submodules(values):
-        for v in values:
-            if isinstance(v, Module):
-                yield v
-            elif isinstance(v, ModuleList):
-                yield from Module._get_submodules(v)
-
     def clear_cache(self):
-        for m in Module._get_submodules(self.__dict__.values()):
-            m.clear_cache()
-
-        self.cache.clear()
+        parameters = jax.tree_util.tree_leaves(self, is_leaf=lambda x: isinstance(x, _BaseParameter))
+        for p in parameters:
+            if isinstance(p, ParameterCache):
+                p.clear()
 
     def clear_nodes(self):
-        for m in Module._get_submodules(self.__dict__.values()):
-            m.clear_nodes()
+        parameters = jax.tree_util.tree_leaves(self, is_leaf=lambda x: isinstance(x, _BaseParameter))
+        for p in parameters:
+            if isinstance(p, NodeVar):
+                p.value = None
 
-    def energy(self, targets: Optional[Any] = None):
-        if targets is None:
-            if "e" not in self.cache:
-                self.cache["e"] = jt.tree_reduce(
-                    lambda x, y: x + y,
-                    tuple(
-                        m.energy()
-                        for m in Module._get_submodules(self.__dict__.values())
-                    ),
-                )
-
-            return self.cache["e"]
-        else:
-            if "e_t" not in self.cache:
-                self.cache["e_t"] = jt.tree_reduce(
-                    lambda x, y: x + y,
-                    tuple(
-                        jax.numpy.abs(m.energy() - target)
-                        if target is not None
-                        else m.energy()
-                        for m, target in zip(
-                            Module._get_submodules(self.__dict__.values()), targets
-                        )
-                    ),
-                )
-
-            return self.cache["e_t"]
+    def energy(self):
+        modules = tuple(
+            m for m in jax.tree_util.tree_leaves(
+                tuple(self.__dict__.values()),
+                is_leaf=(lambda x: isinstance(x, Module))
+            ) if isinstance(m, Module)
+        )
+        return jt.tree_reduce(
+            lambda x, y: x + y,
+            tuple(
+                m.energy()
+                for m in modules
+            ),
+        )
 
     def train(self):
         pass
@@ -104,7 +84,7 @@ def _energy_fn(self, rkey):
 class Layer(Module):
     def __init__(
         self,
-        rkey=DEFAULT_GENERATOR,
+        rkey=RKG,
         init_fn: Callable[["Layer"], None] = _init_fn,
         forward_fn: Callable[["Layer"], None] = _forward_fn,
         energy_fn: Callable[[Any], jax.Array] = _energy_fn,
@@ -114,7 +94,7 @@ class Layer(Module):
         super().__init__()
 
         self.x = NodeVar()
-        self.cache = CachedVar()
+        self.x_tmp = ParameterCache(self.x)
         self.blueprints = {}
         self.views = {
             "u": VarView(),
@@ -127,7 +107,7 @@ class Layer(Module):
         self.register_blueprints((("e", energy_fn),) + tuple(blueprints.items()))
 
     def __call__(
-        self, u: jax.Array = None, rkey: Generator = DEFAULT_GENERATOR, **kwargs
+        self, u: jax.Array = None, rkey: RandomKeyGenerator = RKG, **kwargs
     ):
         if u is not None:
             self.set_activation("u", u)
@@ -151,35 +131,35 @@ class Layer(Module):
         elif key.startswith("x:"):
             self.views[key.split(":", 1)[1]][self.x] = value
         else:
-            self.cache[key] = value
+            self.x_tmp[key] = value
 
     def __getitem__(self, key: Union[str, Tuple[str, Any]]):
         if isinstance(key, tuple):
             key, rkey = key
         else:
-            rkey = DEFAULT_GENERATOR
+            rkey = RKG
 
         if key == "x":
             return self.x.value
         elif key.startswith("x:"):
             return self.views[key.split(":", 1)[1]][self.x]
 
-        if key not in self.cache:
+        if key not in self.x_tmp:
             self.call_blueprint(key, rkey)
 
-        return self.cache[key]
+        return self.x_tmp[key]
 
     def set_activation(self, key: str, value: jax.Array):
-        if key in self.cache:
-            self.cache[key] = self.cache[key] + value
+        if key in self.x_tmp:
+            self.x_tmp[key] = self.x_tmp[key] + value
         else:
-            self.cache[key] = value
+            self.x_tmp[key] = value
 
     def energy(self):
         return self["e"]
 
     def clear_cache(self):
-        self.cache.clear()
+        self.x_tmp.clear()
 
     def clear_nodes(self):
         self.x.value = None
@@ -188,7 +168,39 @@ class Layer(Module):
         for key, blueprint in blueprints:
             self.blueprints[key] = blueprint
 
-    def call_blueprint(self, key: str, rkey: Generator = DEFAULT_GENERATOR):
+    def call_blueprint(self, key: str, rkey: RandomKeyGenerator = RKG):
         blueprint = self.blueprints[key]
 
-        self.cache[key] = blueprint(self, rkey)
+        self.x_tmp[key] = blueprint(self, rkey)
+
+
+def _layerwsigma_init_fn(layer, rkey):
+    layer["x"] = layer["u"]
+
+    if layer.logsigma.value is None:
+        layer.logsigma.value = jax.numpy.zeros(layer["x"].shape)
+
+
+def _layerwsigma_energy_fn(layer, rkey):
+    return (
+        0.5
+        * (
+            ((layer["x"] - layer["u"]) ** 2 / jax.numpy.exp(layer.logsigma.value))
+            + layer.logsigma.value
+        ).sum()
+    )
+
+
+class LayerWSigma(Layer):
+    def __init__(
+        self,
+        rkey=RKG,
+        init_fn: Callable[["Layer"], None] = _layerwsigma_init_fn,
+        forward_fn: Callable[["Layer"], None] = _forward_fn,
+        energy_fn: Callable[[Any], jax.Array] = _layerwsigma_energy_fn,
+        blueprints: Dict[str, Callable[[Any], jax.Array]] = {},
+        views: Dict[str, VarView] = {},
+    ):
+        super().__init__(rkey, init_fn, forward_fn, energy_fn, blueprints, views)
+
+        self.logsigma = Parameter()

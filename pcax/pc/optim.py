@@ -1,29 +1,15 @@
 __all__ = ["Optim"]
 
-from ..core import Module as _Module, ModuleList, TrainRef, StateVar
-import jax.tree_util as jt
+from ..core import Module as _Module
+from ..core.parameters import Parameter, ParameterRef
 import jax.numpy as jnp
-
-def _combine(*args):
-    for arg in args:
-        if arg is not None:
-            return arg
-    return None
-
-
-def _is_none(x):
-    return x is None
-
-
-def combine(*pytrees):
-    return jt.tree_map(_combine, *pytrees, is_leaf=_is_none)
 
 
 class Optim(_Module):
     def __init__(self, optax_opt, vars, allow_none_grads=False):
         self.optax_opt = optax_opt
-        self.train_refs = ModuleList(TrainRef(x) for x in vars)
-        self.state = StateVar(
+        self.train_refs = [ParameterRef(x) for x in vars]
+        self.state = Parameter(
             self.optax_opt.init({id(var.ref): var.ref.value for var in self.train_refs})
         )
         self.allow_none_grads = allow_none_grads
@@ -48,5 +34,5 @@ class Optim(_Module):
     def step_count(self) -> 'jnp.ndarray[int]':
         try:
             return self.state.value[-1][-1].count
-        except:
-            return f"Step count not available."
+        except AttributeError:
+            return "Step count not available."

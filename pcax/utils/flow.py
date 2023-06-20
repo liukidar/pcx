@@ -6,7 +6,7 @@ from ..core.util import make_args, kwargs_indices
 from ..core.transform import ModuleTransform
 from ..core.structure import Module, Function, VarCollection
 from ..core.filter import _
-from ..core.random import DEFAULT_GENERATOR
+from ..core.random import RKG
 
 
 class Switch(ModuleTransform):
@@ -42,7 +42,7 @@ class Switch(ModuleTransform):
 
     @property
     def vc_target(self) -> VarCollection:
-        return self.vc_f(self.vc) + VarCollection(DEFAULT_GENERATOR.vars())
+        return self.vc_f(self.vc) + VarCollection(RKG.vars())
 
     def __call__(self, j: int, *args, **kwargs):
         differentiable, dynamic, static = self.vc_target.dump()
@@ -125,7 +125,7 @@ class Scan(ModuleTransform):
 
     @property
     def vc_target(self) -> VarCollection:
-        return self.vc_f(self.vc) + VarCollection(DEFAULT_GENERATOR.vars())
+        return self.vc_f(self.vc) + VarCollection(RKG.vars())
 
     def __call__(self, *args, **kwargs):
         differentiable, dynamic, static = self.vc_target.dump()

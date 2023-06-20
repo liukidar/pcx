@@ -1,23 +1,17 @@
-from typing import Callable, List
+from typing import Callable, List, Dict, Optional, Any
 import inspect
 
 
-def positional_args_names(f: Callable) -> List[str]:
-    """Returns the ordered names of the positional arguments of a function."""
-    return list(
-        p.name
-        for p in inspect.signature(f).parameters.values()
-        if p.kind
-        in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
-    )
+def move(obj: Any, target: Optional[Any] = None):
+    return obj.__move__(target) if target is not obj else obj
 
 
-def kwargs_indices(f: Callable, kwargs) -> List[int]:
+def kwargs_indices(f: Callable, kwargs: Dict) -> List[int]:
     """Returns the indices of the keyword arguments of a function."""
     return [
         i
         for i, p in enumerate(inspect.signature(f).parameters.values())
-        if p in kwargs
+        if p.name in kwargs
     ]
 
 

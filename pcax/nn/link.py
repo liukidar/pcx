@@ -5,11 +5,8 @@ import jax.tree_util as jt
 
 from ..core import (
     Module as _Module,
-    BaseVar,
-    VarCollection,
-    DEFAULT_GENERATOR,
+    RKG,
 )
-from ..core.filter import _
 
 from ..pc import LinkVar
 
@@ -19,7 +16,7 @@ class Link(_Module):
         self,
         cls,
         *args,
-        filter=eqx.filters.is_array,
+        filter=eqx._filters.is_array,
         **kwargs,
     ):
         super().__init__()
@@ -31,22 +28,12 @@ class Link(_Module):
     def __call__(self, *args, key=None, **kwargs):
         return self.nn(*args, **kwargs, key=key)
 
-    def vars(self, filter: Optional[_] = None, scope: str = "") -> VarCollection:
-        vc = super().vars(scope=scope)
-        scope += f"({self.__class__.__name__}).nn."
-        for k, v in self.nn.__dict__.items():
-            if isinstance(v, BaseVar):
-                vc[scope + k] = v
-
-        if filter is not None:
-            vc = vc.filter(filter)
-
-        return vc
-
 
 class Linear(Link):
     def __init__(self, in_features: int, out_features: int, bias: bool = True):
-        super().__init__(eqx.nn.Linear, in_features, out_features, bias, key=DEFAULT_GENERATOR())
+        super().__init__(
+            eqx.nn.Linear, in_features, out_features, bias, key=RKG()
+        )
 
 
 class LayerNorm(Link):

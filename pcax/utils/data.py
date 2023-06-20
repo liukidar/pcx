@@ -3,6 +3,28 @@ __all__ = ['TorchDataloader']
 
 import numpy as np
 import torch.utils
+import jax
+
+
+########################################################################################################################
+#
+# PARAMETERS LOADING
+#
+########################################################################################################################
+
+
+def save_params(params, path):
+    keys, values = zip(*jax.tree_util.tree_flatten_with_path(params)[0])
+    np.savez_compressed(path, **dict(zip(map(repr, keys), values)))
+
+
+def load_params(params, path):
+    raw_data = np.load(path)
+    data, treedef = jax.tree_util.tree_flatten_with_path(params)
+
+    assert all((rd == repr(d[0])) for rd, d in zip(raw_data.keys(), data)), "Parameter names mismatch."
+
+    return jax.tree_util.tree_unflatten(treedef, raw_data.values())
 
 
 ########################################################################################################################
