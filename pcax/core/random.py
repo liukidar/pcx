@@ -1,19 +1,31 @@
-__all__ = ["RKGState", "RKG", "RandomKeyGenerator"]
+__all__ = ["_RKGState", "RKG", "RandomKeyGenerator"]
+
+from typing import Optional, List
+import time
+
+import jax
 
 from .modules import Module
 from .parameters import _BaseParameter, reduce_none
 
-from typing import Optional, List
-import time
-import jax
+########################################################################################################################
+#
+# RANDOM
+#
+# jax requires to keep track of the random generator state. This is done by passing a PRNGKey to every random function.
+# pcax offers a random generator class that keeps track of the state and can be used to generate random keys. RKG is
+# the default random generator used provided by pcax.
+#
+########################################################################################################################
+
+# Utils ################################################################################################################
 
 
-class RKGState(_BaseParameter):
-    """RKGState are variables that track the random generator state. They are meant to be used internally.
-    Currently only the random.RandomKeyGenerator module uses them."""
+class _RKGState(_BaseParameter):
+    """RKGState is a state parameter that tracks a random generator state. It is meant to be used internally."""
 
     def __init__(self, seed: int):
-        """RKGState constructor.
+        """_RKGState constructor.
 
         Args:
             seed: the initial seed of the random number generator.
@@ -29,8 +41,8 @@ class RKGState(_BaseParameter):
         self.value = jax.random.PRNGKey(seed)
 
     def split(self, n: int) -> List[jax.Array]:
-        """Create multiple seeds from the current seed. This is used internally by Parallel and Vectorize to ensure
-        that random numbers are different in parallel threads.
+        """Create multiple seeds from the current seed. This is used internally by pcax.Vectorize to ensure
+        that random numbers are different in parallel computations.
 
         Args:
             n: the number of seeds to generate.
@@ -40,26 +52,25 @@ class RKGState(_BaseParameter):
         return values[1:]
 
 
+# Random ###############################################################################################################
+
+
 class RandomKeyGenerator(Module):
-    """Random number generator module."""
+    """Random number generator module. Provide an imperative interface to generate random keys."""
 
     def __init__(self, seed: int = 0):
         """Create a random key generator, seed is the random generator initial seed."""
         super().__init__()
-        self._key: Optional[RKGState] = RKGState(seed)
-
-    @property
-    def key(self):
-        """The random generator state (a tensor of 2 int32)."""
-        return self._key
+        self._key: Optional[_RKGState] = _RKGState(seed)
 
     def seed(self, seed: int = 0):
         """Sets a new random generator seed."""
         self._key.seed(seed)
 
     def __call__(self):
-        """Generate a new generator state."""
-        return self.key.split(1)[0]
+        """Generate a new key."""
+        return self._key.split(1)[0]
 
 
+"""Default random key generator. """
 RKG = RandomKeyGenerator(time.time_ns())

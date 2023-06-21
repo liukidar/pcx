@@ -25,6 +25,8 @@ from .util import repr_function, move
 #
 ########################################################################################################################
 
+# Utils ################################################################################################################
+
 
 def get_jax_value(x: Union[jax.Array, "_BaseParameter"]):
     """Returns JAX value encapsulated in the input argument."""
@@ -35,21 +37,32 @@ def get_jax_value(x: Union[jax.Array, "_BaseParameter"]):
 
 
 def reduce_none(x: Optional[jax.Array]) -> jax.Array:
+    """Reduces a vmapped value to its first element."""
     return x[0] if x is not None else None
 
 
 def reduce_mean(x: jax.Array) -> jax.Array:
+    """Reduces a vmapped value to the mean of its elements."""
     return x.mean(axis=0)
 
 
 def reduce_id(x: jax.Array) -> jax.Array:
+    """Does not apply any reduction to a vmapped element."""
     return x
+
+
+# Core #################################################################################################################
 
 
 class _AbstractParameterMeta(abc.ABCMeta):
     """
     Metaclass to register all parameters in the JAX pytree flatten/unflatten util.
+    A parameter is flatten by separating its value from the rest of the object.
+    A parameter is considered the static part of itself; this ensures that a parameter is never destroyed when
+    flattening/unflattening it. Thus, the references to a parameter are always valid until the parameter is explicitly
+    deleted.
     """
+
     def __new__(mcs, name, bases, dct):
         cls = super().__new__(mcs, name, bases, dct)
 
@@ -80,6 +93,7 @@ class _AbstractParameter(metaclass=_AbstractParameterMeta):
     """
     Base abstract class for all parameters. It is used to detect whether an object is a parameter or not.
     """
+
     @property
     @abc.abstractmethod
     def value(self) -> jax.Array:
@@ -99,12 +113,12 @@ class _AbstractParameter(metaclass=_AbstractParameterMeta):
     @abc.abstractmethod
     def reduce(self):
         """Method called by Vectorize to reduce a multiple-device (or batched in case of vectorization)
-        value to a single device."""
+        value to a single element."""
         raise NotImplementedError("Pure method")
 
 
 class _BaseParameter(_AbstractParameter):
-    """The abstract base class to represent variables."""
+    """The abstract base class to represent and store a jax.Array."""
 
     def __init__(
         self,
@@ -132,12 +146,10 @@ class _BaseParameter(_AbstractParameter):
         self._value = __value
 
     def reduce(self):
-        """Method called by Vectorize to reduce a multiple-device (or batched in case of vectoriaation)
-        value to a single device."""
         self.value = self._reduce(self.value)
 
     def __repr__(self):
-        rvalue = type(self.value)  # re.sub("[\n]+", "\n", repr(self.value))
+        rvalue = re.sub("[\n]+", "\n", repr(self.value))
         t = f"{self.__class__.__name__}({rvalue})"
         if not self._reduce:
             return t
@@ -306,8 +318,11 @@ class _BaseParameter(_AbstractParameter):
         return self.value.ndim
 
 
+# Parameters ##########################################################################################################
+
+
 class Parameter(_BaseParameter):
-    """A trainable variable."""
+    """A trainable parameter. The class is only used to differentiate parameters from other state parameters."""
 
     def __init__(
         self,
@@ -319,32 +334,33 @@ class Parameter(_BaseParameter):
         Args:
             value: the initial value of the Parameter.
             reduce: a function that takes an array of shape ``(n, *dims)`` and returns one of shape ``(*dims)``. Used to
-                    combine the multiple states produced in an pcax.Vectorize or an pcax.Parallel call.
+                    combine the multiple states produced in an pcax.Vectorize call. Default options are ``reduce_none``,
+                    ``reduce_mean`` and ``reduce_id``.
         """
         super().__init__(value, reduce)
         self._value = value
 
 
 class ParameterRef(_AbstractParameter):
-    """A state variable that references a trainable variable for assignment.
+    """A state parameter that references a trainable parameter for assignment.
 
     ParameterRef are used by optimizers to keep references to trainable variables. This is necessary to differentiate
     them from the optimizer own training variables if any."""
 
-    def __init__(self, ref: Parameter):
+    def __init__(self, param: Parameter):
         """ParameterRef constructor.
 
         Args:
-            ref: the Parameter to keep the reference of.
+            param: the Parameter to keep the reference of.
         """
         super().__init__()
-        self.ref = ref
+        self.ref = param
 
-    def __move__(self, target=None) -> 'ParameterRef':
-        if target is None:
+    def __move__(self, __target: Optional['ParameterRef'] = None) -> 'ParameterRef':
+        if __target is None:
             new_var = copy.copy(self)
         else:
-            new_var = target
+            new_var = __target
             new_var.ref = self.ref
             new_var.value = self.value
         self.ref = None
@@ -354,14 +370,16 @@ class ParameterRef(_AbstractParameter):
 
     @property
     def value(self) -> jax.Array:
-        """The value stored in the referenced Parameter, it can be read or written."""
+        """To be consistent with other state parameters, ParameterRef have a value property that returns None,
+        as it does not store any value to be directly optimized."""
         return None
 
     @value.setter
-    def value(self, value: jax.Array):
+    def value(self, _: jax.Array):
         return
 
     def reduce(self):
+        """Similarly to .value, ParameterRef does not apply any reduction to its content."""
         return
 
     def __repr__(self):
@@ -369,20 +387,29 @@ class ParameterRef(_AbstractParameter):
 
 
 class ParameterCache(_BaseParameter, ParameterRef):
+    """A parameter dictionary used to store interemediate transformations of the referenced parameter. Those are
+    normally only stored in the computation tree and are not accessible to the user."""
+
     def __init__(
         self, param: Parameter
     ):
+        """ParameterCache constructor.
+
+        Args:
+            param: the Parameter to keep the reference of.
+        """
+
         _BaseParameter.__init__(self, {}, None)
         ParameterRef.__init__(self, param)
 
-    def __getitem__(self, key: str):
-        return self._value[key]
+    def __getitem__(self, __key: str):
+        return self._value[__key]
 
-    def __setitem__(self, key: str, value: jax.Array):
-        self._value[key] = value
+    def __setitem__(self, __key: str, __value: jax.Array):
+        self._value[__key] = __value
 
-    def __contains__(self, key: str):
-        return key in self._value
+    def __contains__(self, __key: str):
+        return __key in self._value
 
     def clear(self):
         self._value = {}
@@ -399,10 +426,13 @@ class ParameterCache(_BaseParameter, ParameterRef):
 
 class ParamsDict(Dict[str, _AbstractParameter]):
     """A ParamsDict is a dictionary (name, var) with some additional methods to make manipulation of collections of
-    variables easy. A ParamsDict is ordered by insertion order. It is the object returned by Module.vars() and used
-    as input by many modules: optimizers, Jit, etc..."""
+    parameters easy. In particular, iterating through a ParamsDict will iterate through each unique parameter stored
+    in the dictionary, avoiding duplicate references."""
 
     def __init__(self, *args, **kwargs):
+        """ParamsDict constructor.
+
+        Simply initialise the dictionary with the given elements."""
         super().__init__(*args, **kwargs)
 
     def __move__(self, __target: Optional['ParamsDict' | Dict[str, _AbstractParameter]] = None):
@@ -419,13 +449,13 @@ class ParamsDict(Dict[str, _AbstractParameter]):
         return params
 
     def __add__(self, __other: "ParamsDict") -> "ParamsDict":
-        """Overloaded add operator to merge two ParamsDicts together."""
+        """Overloaded add operator to compute the set union of two ParamsDicts."""
         params = ParamsDict(self)
         params.update(__other)
         return params
 
     def __sub__(self, __other: "ParamsDict") -> "ParamsDict":
-        """Overloaded add operator to merge two ParamsDicts together."""
+        """Overloaded sub operator to compute the set difference between two ParamsDicts."""
         params = ParamsDict()
         other_ids = set(map(lambda x: id(x), __other.values()))
 
@@ -436,8 +466,8 @@ class ParamsDict(Dict[str, _AbstractParameter]):
         return params
 
     def __iter__(self) -> Iterator[_AbstractParameter]:
-        """Create an iterator that iterates over the variables (dict values) and visit them only once.
-        If a variable has two names, for example in the case of weight sharing, this iterator yields the variable only
+        """Create an iterator that iterates over the parameters (dict values) and visit them only once.
+        If a parameters has two names, for example in the case of weight sharing, this iterator yields the variable only
         once."""
         seen = set()
         for v in self.values():
@@ -480,6 +510,7 @@ class ParamsDict(Dict[str, _AbstractParameter]):
         return "\n".join(text)
 
     def filter(self, filter: Union['_', Callable[[_AbstractParameter], bool]]):  # noqa F821 # type: ignore
+        """Filter the parameters in the ParamsDict according to the provided filter."""
         params = ParamsDict()
 
         if hasattr(filter, "apply"):
@@ -493,6 +524,9 @@ class ParamsDict(Dict[str, _AbstractParameter]):
         return ParamsDict(
             {re.sub(r"\(.*?\)", name, k, count=1): v for k, v in self.items()}
         )
+
+
+# Register ParamsDict in the JAX pytree flatten/unflatten util ########################################################
 
 
 def flatten_paramsdict(params: ParamsDict) -> Tuple[Any, Any]:
