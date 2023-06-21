@@ -20,7 +20,7 @@ from ..core.modules import Module, Function
 from ..core.random import RKG
 from ..core.util import repr_function, move, hash_pytree
 from ..core.parameters import ParamsDict
-from ..core.random import RKGState
+from ..core.random import _RKGState
 
 
 class Transform(abc.ABC):
@@ -52,7 +52,10 @@ class Transform(abc.ABC):
             self.f = self.f._build(params, kwargs)
 
         self.params = params
-        self.transform = self._make_transform(kwargs)
+        self.kwargs = kwargs
+
+        if self.transform is None:
+            self.transform = self._make_transform()
 
         def f(*args):
             return self._call(self.partition, *args)
@@ -82,7 +85,7 @@ class Transform(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _make_transform(self, kwargs):
+    def _make_transform(self):
         raise NotImplementedError()
 
     def __repr__(self):
@@ -110,6 +113,8 @@ class Jit(Transform):
 
     def snapshot(self, **kwargs: Module):
         t = copy.deepcopy(self)
+        t.transform = None
+        t.kwargs = {}
 
         return t._build(
             functools.reduce(
@@ -127,11 +132,12 @@ class Jit(Transform):
 
         return output
 
-    def _make_transform(self, kwargs):
-        if len(kwargs) != 0:
-            self.kwargs = kwargs
-            self.static_args_hash = hash_pytree(self.kwargs)
+    def _build(self, params, kwargs):
+        self.static_args_hash = hash_pytree(kwargs)
 
+        return super()._build(params, kwargs)
+
+    def _make_transform(self):
         return jax.jit(
             lambda params, _, *args: self._functional(self.f)(params, *args),
             static_argnums=(1,),
@@ -167,7 +173,7 @@ class Vectorize(Transform):
         else:
             nsplits = next(iter(params_copy[0].values())).shape[0]
 
-        for rkg in params_copy[0].filter(_(RKGState)):
+        for rkg in params_copy[0].filter(_(_RKGState)):
             rkg.value = rkg.split(nsplits)
 
         output, params_partition = self.transform(
@@ -179,9 +185,7 @@ class Vectorize(Transform):
 
         return output
 
-    def _make_transform(self, kwargs):
-        self.kwargs = kwargs
-
+    def _make_transform(self):
         def vmap(
             *args,
             **kwargs
@@ -260,9 +264,7 @@ class _DerivativeBase(Transform):
         else:
             return g
 
-    def _make_transform(self, kwargs):
-        self.kwargs = kwargs
-
+    def _make_transform(self):
         def derivative(params_inputs, params_other, *args, **kwargs):
             inputs, params_target = params_inputs
             for i, arg in zip(self.input_argnums, inputs):

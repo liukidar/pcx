@@ -4,16 +4,10 @@ import jax
 
 
 def move(obj: Any, target: Optional[Any] = None):
+    """
+    Calls the __move__ method of an object, which implements the move semantics.
+    """
     return obj.__move__(target) if target is not obj else obj
-
-
-def kwargs_indices(f: Callable, kwargs: Dict) -> List[int]:
-    """Returns the indices of the keyword arguments of a function."""
-    return [
-        i
-        for i, p in enumerate(inspect.signature(f).parameters.values())
-        if p.name in kwargs
-    ]
 
 
 def hash_pytree(pytree: Any) -> int:
@@ -22,22 +16,6 @@ def hash_pytree(pytree: Any) -> int:
     hashable_leaves = tuple((x.shape, x.dtype) if isinstance(x, jax.Array) else x for x in leaves)
 
     return hash((hashable_leaves, treedef))
-
-
-def make_args(f: Callable, args=(), kwargs={}) -> List[str]:
-    args_list = []
-    args_it = iter(args)
-
-    for parameter in inspect.signature(f).parameters.values():
-        if parameter.name in kwargs:
-            args_list.append(kwargs[parameter.name])
-        else:
-            try:
-                args_list.append(next(args_it))
-            except StopIteration:
-                args_list.append(parameter.default)
-
-    return args_list
 
 
 def repr_function(f: Callable) -> str:
@@ -54,3 +32,30 @@ def repr_function(f: Callable) -> str:
     if args:
         return f'{f.__name__}(*, {args})'
     return f.__name__
+
+
+# TODO: V is used only in flow.py, which is to be updated.
+
+def kwargs_indices(f: Callable, kwargs: Dict) -> List[int]:
+    """Returns the indices of the keyword arguments of a function."""
+    return [
+        i
+        for i, p in enumerate(inspect.signature(f).parameters.values())
+        if p.name in kwargs
+    ]
+
+
+def make_args(f: Callable, args=(), kwargs={}) -> List[str]:
+    args_list = []
+    args_it = iter(args)
+
+    for parameter in inspect.signature(f).parameters.values():
+        if parameter.name in kwargs:
+            args_list.append(kwargs[parameter.name])
+        else:
+            try:
+                args_list.append(next(args_it))
+            except StopIteration:
+                args_list.append(parameter.default)
+
+    return args_list

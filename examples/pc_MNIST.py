@@ -127,8 +127,8 @@ def train_x(x, *, model):
 
 @px.gradvalues(filter=_(px.LinkVar))
 @px.vectorize(filter=_(px.NodeVar, with_cache=True), in_axis=(0,), out_axis=("sum",))
-def train_w(x, *, model, dummy):
-    if dummy is True:
+def train_w(x, *, model, dummy_static_arg):
+    if dummy_static_arg is True:
         model(x)
     else:
         model(x)
@@ -151,7 +151,7 @@ def train_on_batch(x, y, *, model, optim_w, optim_x):
 
         # !!! IMPORTANT: px.init_cache must always be used inside a px.init_nodes context !!!
         with px.init_cache(model):
-            g, (v,) = train_w(x, model=model, dummy=True)
+            g, (v,) = train_w(x, model=model, dummy_static_arg=True)
             optim_w(g)
 
 
