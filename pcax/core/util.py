@@ -1,5 +1,6 @@
 from typing import Callable, List, Dict, Optional, Any
 import inspect
+import jax
 
 
 def move(obj: Any, target: Optional[Any] = None):
@@ -13,6 +14,14 @@ def kwargs_indices(f: Callable, kwargs: Dict) -> List[int]:
         for i, p in enumerate(inspect.signature(f).parameters.values())
         if p.name in kwargs
     ]
+
+
+def hash_pytree(pytree: Any) -> int:
+    leaves, treedef = jax.tree_util.tree_flatten(pytree)
+
+    hashable_leaves = tuple((x.shape, x.dtype) if isinstance(x, jax.Array) else x for x in leaves)
+
+    return hash((hashable_leaves, treedef))
 
 
 def make_args(f: Callable, args=(), kwargs={}) -> List[str]:

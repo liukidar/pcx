@@ -25,8 +25,8 @@ def init_nodes(
             out_axis = (0,)
 
         def call(*args, model):
-            return model(*args, **kwargs)
-        r = Vectorize(call, filter, in_axis, out_axis)(*args, model=model)
+            return model(*args)
+        r = Vectorize(call, filter, in_axis, out_axis)(*args, model=model, **kwargs)
 
         if clear_on_enter:
             model.clear_cache()
@@ -73,11 +73,10 @@ def gradvalues(
 
 def jit(
     filter: Union[_, Callable[[ParamsDict], ParamsDict]] = lambda key, value: True,
-    static_argnums: Tuple[int, ...] = (),
     donate_argnums: Tuple[int, ...] = (),
     inline: bool = False
 ):
     def decorator(f):
-        return Jit(f, filter, static_argnums, donate_argnums, inline)
+        return Jit(f, filter, donate_argnums, inline)
 
     return decorator
