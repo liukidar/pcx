@@ -18,7 +18,7 @@ from pcax.core.filter import _
 
 from ..core.modules import Module, Function
 from ..core.random import RKG
-from ..core.util import repr_function, move
+from ..core.util import repr_function, move, hash_pytree
 from ..core.parameters import ParamsDict
 from ..core.random import RKGState
 
@@ -42,31 +42,20 @@ class Transform(abc.ABC):
                 lambda x, y: x + y,
                 (m.parameters().rename(k) for k, m in kwargs.items() if isinstance(m, Module)),
                 RKG.parameters(),
-            )
+            ),
+            kwargs
         )
-        return f(*args, **kwargs)
+        return f(*args)
 
-    def snapshot(self, **kwargs: Module):
-        t = copy.deepcopy(self)
-        t.kwargs = kwargs
-
-        return t._build(
-            functools.reduce(
-                lambda x, y: x + y,
-                (m.parameters().rename(k) for k, m in kwargs.items() if isinstance(m, Module)),
-                RKG.parameters(),
-            )
-        )
-
-    def _build(self, params):
+    def _build(self, params, kwargs):
         if isinstance(self.f, Transform):
-            self.f = self.f._build(params)
+            self.f = self.f._build(params, kwargs)
 
         self.params = params
-        self.transform = self._make_transform()
+        self.transform = self._make_transform(kwargs)
 
-        def f(*args, **kwargs):
-            return self._call(self.partition, *args, **kwargs)
+        def f(*args):
+            return self._call(self.partition, *args)
 
         return Function(f, self.params)
 
@@ -83,16 +72,17 @@ class Transform(abc.ABC):
         return wrapper
 
     @property
-    @abc.abstractmethod
-    def partition(self, params: ParamsDict) -> Tuple[ParamsDict, ParamsDict]:
-        raise NotImplementedError()
+    def partition(self) -> Tuple[ParamsDict, ParamsDict]:
+        target = self.params.filter(self.filter) + RKG.parameters()
+
+        return target, self.params - target
 
     @abc.abstractmethod
     def _call(self, *args, **kwargs):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _make_transform(self):
+    def _make_transform(self, kwargs):
         raise NotImplementedError()
 
     def __repr__(self):
@@ -109,34 +99,43 @@ class Jit(Transform):
         self,
         f: Union[Transform, Callable],
         filter: Union[_, Callable[[ParamsDict], ParamsDict]] = lambda *args: True,
-        static_argnums: Tuple[int, ...] = (),
         donate_argnums: Tuple[int, ...] = (),
-        inline: bool = False,
+        inline: bool = True,
     ):
         super().__init__(f, filter)
 
-        self.static_argnums = static_argnums
         self.donate_argnums = donate_argnums
         self.inline = inline
+        self.static_args_hash = None
 
-    @property
-    def partition(self) -> Tuple[ParamsDict, ParamsDict]:
-        target = self.params.filter(self.filter) + RKG.parameters()
+    def snapshot(self, **kwargs: Module):
+        t = copy.deepcopy(self)
 
-        return target, self.params - target
+        return t._build(
+            functools.reduce(
+                lambda x, y: x + y,
+                (m.parameters().rename(k) for k, m in kwargs.items() if isinstance(m, Module)),
+                RKG.parameters(),
+            ),
+            kwargs
+        )
 
-    def _call(self, params_partition, *args, **kwargs):
+    def _call(self, params_partition, *args):
         output, params_partition = self.transform(
-            params_partition, *args, **kwargs
+            params_partition, self.static_args_hash, *args
         )
 
         return output
 
-    def _make_transform(self):
+    def _make_transform(self, kwargs):
+        if len(kwargs) != 0:
+            self.kwargs = kwargs
+            self.static_args_hash = hash_pytree(self.kwargs)
+
         return jax.jit(
-            self._functional(self.f),
-            static_argnums=tuple(x + 1 for x in self.static_argnums),
-            donate_argnums=(0,) + tuple(x + 1 for x in self.donate_argnums),
+            lambda params, _, *args: self._functional(self.f)(params, *args),
+            static_argnums=(1,),
+            donate_argnums=(0,) + tuple(x + 2 for x in self.donate_argnums),
             inline=self.inline,
         )
 
@@ -156,13 +155,7 @@ class Vectorize(Transform):
         self.out_axis = out_axis
         self.axis_name = axis_name
 
-    @property
-    def partition(self) -> Tuple[ParamsDict, ParamsDict]:
-        target = self.params.filter(self.filter) + RKG.parameters()
-
-        return target, self.params - target
-
-    def _call(self, params_partition, *args, **kwargs):
+    def _call(self, params_partition, *args):
         params_copy = tuple(move(p) for p in params_partition)
         if len(self.in_axis) > 0:
             in_axis_argnums = [
@@ -179,15 +172,16 @@ class Vectorize(Transform):
 
         output, params_partition = self.transform(
             params_copy,
-            *args,
-            **kwargs,
+            *args
         )
         for p in params_partition[0]:
             p.reduce()
 
         return output
 
-    def _make_transform(self):
+    def _make_transform(self, kwargs):
+        self.kwargs = kwargs
+
         def vmap(
             *args,
             **kwargs
@@ -266,7 +260,9 @@ class _DerivativeBase(Transform):
         else:
             return g
 
-    def _make_transform(self):
+    def _make_transform(self, kwargs):
+        self.kwargs = kwargs
+
         def derivative(params_inputs, params_other, *args, **kwargs):
             inputs, params_target = params_inputs
             for i, arg in zip(self.input_argnums, inputs):

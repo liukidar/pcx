@@ -19,6 +19,10 @@ from .util import repr_function, move
 #
 # PARAMETERS
 #
+# pcax is inspired by objax (https://github.com/google/objax) and equinox (https://github.com/patrick-kidger/equinox),
+# two other JAX libraries. The core idea is that each JAX array is wrapped in a _BaseParameter object that allows pcax
+# to automatically keep track of it, without the need to respect the strict functional programming paradigm of JAX.
+#
 ########################################################################################################################
 
 
@@ -43,6 +47,9 @@ def reduce_id(x: jax.Array) -> jax.Array:
 
 
 class _AbstractParameterMeta(abc.ABCMeta):
+    """
+    Metaclass to register all parameters in the JAX pytree flatten/unflatten util.
+    """
     def __new__(mcs, name, bases, dct):
         cls = super().__new__(mcs, name, bases, dct)
 
@@ -70,6 +77,9 @@ class _AbstractParameterMeta(abc.ABCMeta):
 
 
 class _AbstractParameter(metaclass=_AbstractParameterMeta):
+    """
+    Base abstract class for all parameters. It is used to detect whether an object is a parameter or not.
+    """
     @property
     @abc.abstractmethod
     def value(self) -> jax.Array:
