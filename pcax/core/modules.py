@@ -5,6 +5,7 @@ __all__ = [
 
 import abc
 from typing import Tuple, Callable, Any
+import functools
 
 import jax
 
@@ -56,11 +57,12 @@ def flatten_module_with_keys(module: 'Module') -> Tuple[Any, Any]:
             ))
             values.append(v)
 
-    return parameters, (module, keys, values)
+    return parameters, (keys, values)
 
 
-def unflatten_module(static_data: Any, parameters: Any) -> 'Module':
-    module, keys, values = static_data
+def unflatten_module(cls, static_data: Any, parameters: Any) -> 'Module':
+    module = object.__new__(cls)
+    keys, values = static_data
     parameters_iter = iter(parameters)
     for key, value in zip(keys, values):
         if isinstance(value, _BaseParameter):
@@ -85,7 +87,7 @@ class _ModuleMeta(abc.ABCMeta):
         cls = super().__new__(mcs, name, bases, dct)
 
         jax.tree_util.register_pytree_with_keys(
-            cls, flatten_module_with_keys, unflatten_func=unflatten_module
+            cls, flatten_module_with_keys, unflatten_func=functools.partial(unflatten_module, cls=cls)
         )
 
         return cls
