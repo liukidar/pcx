@@ -4,7 +4,7 @@ __all__ = [
 ]
 
 import abc
-from typing import Tuple, Callable, Any
+from typing import Tuple, Callable, Any, Optional
 import functools
 
 import jax
@@ -101,6 +101,9 @@ class Module(metaclass=_ModuleMeta):
     used to keep track of all Parameter used by such model.
     """
 
+    def __init__(self) -> None:
+        self._mode = None
+
     def parameters(self) -> ParamsDict:
         """Returns a dictionary of all the parameters of the module."""
 
@@ -118,12 +121,9 @@ class Module(metaclass=_ModuleMeta):
         raise NotImplementedError
 
     def set_mode(self, mode: str):
-        for v in self.__dict__.values():
-            if isinstance(v, Module):
-                v.set_mode(mode)
-            else:
-                (leaf.set_mode(mode) for leaf in jax.tree_util.tree_leaves(v, is_leaf=lambda x: isinstance(x, Module))
-                 if isinstance(leaf, Module))
+        self._mode = mode
+        for m in self.get_submodules():
+            m.set_mode(mode)
 
     def train(self):
         self.set_mode("train")
@@ -138,6 +138,14 @@ class Module(metaclass=_ModuleMeta):
     @property
     def is_eval(self):
         return self._mode == "eval"
+
+    def get_submodules(self, *, cls: Optional[type] = None):
+        cls = cls or Module
+
+        for v in self.__dict__.values():
+            for leaf in jax.tree_util.tree_leaves(v, is_leaf=lambda x: isinstance(x, Module)):
+                if isinstance(leaf, cls):
+                    yield leaf
 
 
 class Function(Module):
