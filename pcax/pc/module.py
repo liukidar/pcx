@@ -12,6 +12,7 @@ from ..core.parameters import _BaseParameter, Parameter, ParameterCache
 class Module(_Module):
     def __init__(self) -> None:
         super().__init__()
+        self._status = None
 
     def clear_cache(self):
         parameters = jax.tree_util.tree_leaves(self, is_leaf=lambda x: isinstance(x, _BaseParameter))
@@ -26,25 +27,24 @@ class Module(_Module):
                 p.value = None
 
     def energy(self):
-        modules = tuple(
-            m for m in jax.tree_util.tree_leaves(
-                tuple(self.__dict__.values()),
-                is_leaf=(lambda x: isinstance(x, Module))
-            ) if isinstance(m, Module)
-        )
         return jt.tree_reduce(
             lambda x, y: x + y,
             tuple(
                 m.energy()
-                for m in modules
+                for m in self.get_submodules(cls=Module)
             ),
         )
 
-    def train(self):
-        pass
+    def set_status(self, **status):
+        if "init" in status:
+            self._init = status["init"]
 
-    def eval(self):
-        pass
+        for m in self.get_submodules(cls=Module):
+            m.set_status(**status)
+
+    @property
+    def is_init(self):
+        return self._init is True
 
 
 class VarView:
