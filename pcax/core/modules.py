@@ -117,6 +117,28 @@ class Module(metaclass=_ModuleMeta):
         """Optional module __call__ method, typically a forward pass computation for standard primitives."""
         raise NotImplementedError
 
+    def set_mode(self, mode: str):
+        for v in self.__dict__.values():
+            if isinstance(v, Module):
+                v.set_mode(mode)
+            else:
+                (leaf.set_mode(mode) for leaf in jax.tree_util.tree_leaves(v, is_leaf=lambda x: isinstance(x, Module))
+                 if isinstance(leaf, Module))
+
+    def train(self):
+        self.set_mode("train")
+
+    def eval(self):
+        self.set_mode("eval")
+
+    @property
+    def is_train(self):
+        return self._mode == "train"
+
+    @property
+    def is_eval(self):
+        return self._mode == "eval"
+
 
 class Function(Module):
     """Turn a function into a Module by storing the parameters it uses."""
