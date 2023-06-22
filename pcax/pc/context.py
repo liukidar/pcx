@@ -55,18 +55,18 @@ def vectorize(
     out_axis: Tuple[Optional[int], ...] = (0,),
     axis_name: str = "batch"
 ):
-    def decorator(f):
-        return Vectorize(f, filter, in_axis, out_axis, axis_name)
+    def decorator(fn):
+        return Vectorize(fn, filter, in_axis, out_axis, axis_name)
 
     return decorator
 
 
 def gradvalues(
     filter: Union[_, Callable[[ParamsDict], ParamsDict]],
-    input_argnums: Optional[Tuple[int, ...]] = None,
+    input_argnums: Tuple[int, ...] = (),
 ):
-    def decorator(f):
-        return GradValues(f, filter, input_argnums)
+    def decorator(fn):
+        return GradValues(fn, filter, input_argnums)
 
     return decorator
 
@@ -76,7 +76,7 @@ def jit(
     donate_argnums: Tuple[int, ...] = (),
     inline: bool = False
 ):
-    def decorator(f):
-        return Jit(f, filter, donate_argnums, inline)
+    def decorator(fn):
+        return Jit(fn, filter, donate_argnums, inline)
 
     return decorator

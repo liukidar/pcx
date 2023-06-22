@@ -1,5 +1,5 @@
 __all__ = [
-    "Transform",
+    "_AbstractTransformation",
     "Jit",
     "Vectorize",
     "GradValues",
@@ -23,21 +23,53 @@ from ..core.parameters import ParamsDict
 from ..core.random import _RKGState
 
 
-class Transform(abc.ABC):
-    def __init__(self, f: Union['Transform', Callable], filter: Union[_, Callable[[ParamsDict], ParamsDict]]):
-        if isinstance(f, Transform):
-            self.__wrapped__ = f.__wrapped__
-            self.f = copy.deepcopy(f)
+########################################################################################################################
+#
+# TRANSFORMATIONS
+#
+# pcax offers a wrapper around the most important jax transformations, such as vmap and value_and_grad. A wrapper is
+# necessary in order to catch the tensors used within the transformation and provide an imperative approach to the user.
+# Furthermore, the classes defined here offer some quality-of-life improvement that facilitate their usage.
+# NOTE: Compared to JAX, some functionalities and flexibility are missing/not accessible to the user. Improving this
+# aspect is a core issues that will be addressed in future versions.
+#
+########################################################################################################################
+
+
+class _AbstractTransformation(abc.ABC):
+    """
+    Base abstract class for all transformations. It is used to track the parameters belonging to any module passed to
+    it. By default, it also keeps track of the default random key generator pcax.RKG.
+    Transformations are lazily computed on the fly when calling them by analyzing the kwargs of the transformed
+    function. In particular, args passed to a function are considered dynamic (i.e., jax.Array), while kwargs are
+    considered static. Modules *must* be passed as a kwarg to be registered to the transformation. It is possible to
+    pass them as args but they will be treated as normal pytrees of parameters (e.g., it would be similar to passing
+    a dictionary of tensors to the jax transformation).
+    """
+
+    def __init__(self,
+                 fn: Union['_AbstractTransformation', Callable],
+                 filter: Union[_, Callable[[ParamsDict], ParamsDict]]
+                 ):
+        """_AbstractTransformation constructor.
+
+            Args:
+                f: the function (or pcax transformation) to be processed by the current transformation,
+                filter: the filter used to select which parameters should undergo the transformation.
+        """
+        if isinstance(fn, _AbstractTransformation):
+            self.__wrapped__ = fn.__wrapped__
+            self.fn = copy.deepcopy(fn)
         else:
-            self.__wrapped__ = f
-            self.f = f
-        self.kwargs = {}
-        self.params: Optional[ParamsDict] = None
+            self.__wrapped__ = fn
+            self.fn = fn
+        self.params: ParamsDict = None
         self.filter = filter
         self.transform = None
+        self.kwargs = {}
 
     def __call__(self, *args, **kwargs: Any) -> Any:
-        f = self._build(
+        fn = self._build(
             functools.reduce(
                 lambda x, y: x + y,
                 (m.parameters().rename(k) for k, m in kwargs.items() if isinstance(m, Module)),
@@ -45,11 +77,11 @@ class Transform(abc.ABC):
             ),
             kwargs
         )
-        return f(*args)
+        return fn(*args)
 
     def _build(self, params, kwargs):
-        if isinstance(self.f, Transform):
-            self.f = self.f._build(params, kwargs)
+        if isinstance(self.fn, _AbstractTransformation):
+            self.fn = self.fn._build(params, kwargs)
 
         self.params = params
         self.kwargs = kwargs
@@ -57,18 +89,18 @@ class Transform(abc.ABC):
         if self.transform is None:
             self.transform = self._make_transform()
 
-        def f(*args):
+        def fn(*args):
             return self._call(self.partition, *args)
 
-        return Function(f, self.params)
+        return Function(fn, self.params)
 
     def _functional(self, t: Callable) -> Callable:
-        def wrapper(params_copy, *args, **kwargs):
+        def wrapper(params_copy, *args):
             params_partition = tuple(move(c, p) for c, p in zip(params_copy, self.partition))
-            if isinstance(self.f, Function):
-                output = t(*args, **kwargs)
+            if isinstance(self.fn, Function):
+                output = t(*args)
             else:
-                output = t(*args, **self.kwargs, **kwargs)
+                output = t(*args, **self.kwargs)
 
             return output, params_partition
 
@@ -81,7 +113,7 @@ class Transform(abc.ABC):
         return target, self.params - target
 
     @abc.abstractmethod
-    def _call(self, *args, **kwargs):
+    def _call(self, *args):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -89,23 +121,79 @@ class Transform(abc.ABC):
         raise NotImplementedError()
 
     def __repr__(self):
-        f = (
+        fn = (
             repr(self.__wrapped__)
-            if isinstance(self.__wrapped__, Transform)
+            if isinstance(self.__wrapped__, _AbstractTransformation)
             else repr_function(self.__wrapped__)
         )
-        return f"{self.__class__.__name__}(f={f})"
+        return f"{self.__class__.__name__}(fn={fn})"
 
 
-class Jit(Transform):
+class Jit(_AbstractTransformation):
+    """pcax transformation corresponding to jax.jit.
+
+    Differently from other transformations, we may want not to compute a jitted function on the fly for two reasons:
+    - we want to jit a function and reuse it many times to benefit from the compilation.
+    - even when using the caching functionality integrated within pcax.jit, we actually waste computing resources to
+    compute the function's arguments hash to determine if a cached version of such function already exists.
+    pcax gives the user the possibility to manually handle this step, saving computing at the expense of requiring
+    more carefulness when using such functionality.
+
+    In particular, it is possible to create `snapshots` of a to-be-jitted function fn. A snapshot will create a compiled
+    version of fn with the current kwargs passed to it and will ignore any further changes made to them (i.e., skip the
+    cache hit/miss bit and always use the same jitted function, regardless of changes in it inputs). It is the user who
+    will have to keep track of any possible change in the kwargs structure and create new snapshots when needed.
+
+    Example:
+
+    @pcax.jit()
+    def fn(x, y, model, optimizer):
+        g = loss(x, y, model=model)
+        optimizer.step(g)
+
+    # The following two ways produce the same computation, however one will keep track of changes in the static
+    # arguments requiring extra computations
+
+    #
+    # Default mode: the hash of model and optimizer is computed, this is a rather expensive computation, but changes in
+    # the structure are possible
+    #
+    fn(x, y, model=model, optimizer=optimizer)
+    fn(x, y, model=model, optimizer=optimizer) # this has to compute the hash of model and optimizer again
+    model.layer1 = new Layer(...)  # different parameters compared to the previous layer1
+    fn(x, y, model=model, optimizer=optimizer) # this will correctly compute a new computational graph
+
+    #
+    # Snapshot mode: the hash of model and optimizer is cached and reused. Changes in the structure are not tracked and
+    # will result in undefined behaviour.
+    #
+    fn_s = fn.snapshot(model=model, optimizer=optimizer)
+    fn_s(x, y) # no kwargs are passed to the snapshot as those are cached
+    fn_s(x, y) # fast re-execution: no hash is computed
+    model.layer1 = new Layer(...)  # different parameters compared to the previous layer1
+    fn_s(x, y) # this is undefined behaviour
+    fn_s = fn.snapshot(model=model, optimizer=optimizer) # need to manually recompute the snapshot
+    fn_s(x, y) # now you can use it
+    """
+
     def __init__(
         self,
-        f: Union[Transform, Callable],
+        fn: Union[_AbstractTransformation, Callable],
         filter: Union[_, Callable[[ParamsDict], ParamsDict]] = lambda *args: True,
         donate_argnums: Tuple[int, ...] = (),
-        inline: bool = True,
+        inline: bool = False,
     ):
-        super().__init__(f, filter)
+        """Jit constructor.
+
+            Args:
+                fn: the function/transformation to jit,
+                filter: the filter used to select which parameters should be tracked by the jitter
+                    (by default is all of them),
+                donate_argnums: same as jax.jit (only affects args),
+                inline: same as jax.jit,
+        """
+
+        super().__init__(fn, filter)
 
         self.donate_argnums = donate_argnums
         self.inline = inline
@@ -139,23 +227,39 @@ class Jit(Transform):
 
     def _make_transform(self):
         return jax.jit(
-            lambda params, _, *args: self._functional(self.f)(params, *args),
+            lambda params, _, *args: self._functional(self.fn)(params, *args),
             static_argnums=(1,),
             donate_argnums=(0,) + tuple(x + 2 for x in self.donate_argnums),
             inline=self.inline,
         )
 
 
-class Vectorize(Transform):
+class Vectorize(_AbstractTransformation):
+    """pcax transformation corresponding to jax.vmap.
+
+    Compared to jax.vmap it does not yet support complex axis selection for vmapping. However, it offers
+    automatic reduction of the output. Supported reduction modes are: 'mean', 'sum'; which can be selected by passing
+    such string to the corresponding `out_axis` element, instead of a number specifing the vmapped axis."""
+
     def __init__(
         self,
-        f: Union[Module, Callable],
+        fn: Union[Module, Callable],
         filter: Union[_, Callable[[ParamsDict], ParamsDict]],
         in_axis: Tuple[Optional[int], ...] = (0,),
         out_axis: Tuple[Optional[int], ...] = (0,),
         axis_name: str = "batch",
     ):
-        super().__init__(f, filter)
+        """Jit constructor.
+
+            Args:
+                fn: the function/transformation to vectorize,
+                filter: the filter used to select which parameters should be vectorized,
+                in_axis: same as jax.vmap (only affects args),
+                out_axis: same as jax.vmap, but can also contain reduction modes,
+                axis_name: same as jax.vmap.
+        """
+
+        super().__init__(fn, filter)
 
         self.in_axis = in_axis
         self.out_axis = out_axis
@@ -190,7 +294,7 @@ class Vectorize(Transform):
             *args,
             **kwargs
         ):
-            outputs = self.f(*args, **kwargs)
+            outputs = self.fn(*args, **kwargs)
             if not isinstance(outputs, tuple):
                 outputs = (outputs,)
 
@@ -219,21 +323,30 @@ class Vectorize(Transform):
             return jax.lax.psum(x, axis)
 
 
-class _DerivativeBase(Transform):
-    """Base class for various modules which compute derivatives."""
+class _DerivativeBase(_AbstractTransformation):
+    """Base class for various modules which compute derivatives. Currently used only by pcax.GradValues."""
 
     def __init__(
         self,
-        f: Union[Module, Callable],
+        fn: Union[Module, Callable],
         filter: Union[_, Callable[[ParamsDict], ParamsDict]],
         derivative_fn: Callable,
-        input_argnums: Optional[Tuple[int, ...]] = None,
+        input_argnums: Tuple[int, ...] = (),
         has_aux: bool = False,
     ):
-        super().__init__(f, filter)
+        """_DerivativeBase constructor.
+
+        Args:
+            - fn: the function/transformation to which to apply `derivative_fn`,
+            - filter: the filter used to select which parameters should be targeted by `derivative_fn`,
+            - derivative_fn: the jax derivative transformation to use,
+            - input_argnums: indices of the input arguments to be targeted by `derivtive_fn` (default None),
+            - has_aux: whether derivative_fn returns an auxiliary value.
+        """
+        super().__init__(fn, filter)
 
         self.derivative_fn = derivative_fn
-        self.input_argnums = input_argnums or tuple()
+        self.input_argnums = input_argnums
         self.has_aux = has_aux
 
     @property
@@ -242,15 +355,14 @@ class _DerivativeBase(Transform):
 
         return target, self.params - target
 
-    def _call(self, params_partition, *args, **kwargs):
+    def _call(self, params_partition, *args):
         params_copy = tuple(move(p) for p in params_partition)
         inputs = [args[i] for i in self.input_argnums]
 
         g, (output, params_partition) = self.transform(
             (inputs, params_copy[0]),
             params_copy[1],
-            *args,
-            **kwargs,
+            *args
         )
         # Map the gradients to the variables.
         g = (g[0], {id(k): v.value for k, v in zip(params_partition[0], g[1])})
@@ -265,12 +377,12 @@ class _DerivativeBase(Transform):
             return g
 
     def _make_transform(self):
-        def derivative(params_inputs, params_other, *args, **kwargs):
+        def derivative(params_inputs, params_other, *args):
             inputs, params_target = params_inputs
             for i, arg in zip(self.input_argnums, inputs):
                 args[i] = arg
 
-            output, params_partition = self._functional(self.f)((params_target, params_other), *args, **kwargs)
+            output, params_partition = self._functional(self.fn)((params_target, params_other), *args)
 
             if not isinstance(output, tuple | list):
                 output = (output,)
@@ -281,23 +393,30 @@ class _DerivativeBase(Transform):
 
 
 class GradValues(_DerivativeBase):
-    """The GradValues module is used to compute the gradients of a function."""
+    """pcax transformation corresponding to jax.value_and_grad.
+    The output gradients are returned according to the following specification:
+    - if any input gradient is present: (g_wrt_inputs, g_wrt_parameters),
+    - if no input gradient is requested: g_wrt_parameters,
+    where:
+    - g_wrt_inputs is a list containing the gradients wrt each input, ordered by `input_argnums`,
+    - g_wrt_parameters is a dictionary where each element is pair (key_p, g_wrt_p), with p being any of the target
+    parameters, key_p = id(p), and g_wrt_p is the gradient wrt to p.value (`id` is a python predefined function)."""
 
     def __init__(
         self,
-        f: Union[Module, Callable],
+        fn: Union[Module, Callable],
         filter: Union[_, Callable[[ParamsDict], ParamsDict]],
-        input_argnums: Optional[Tuple[int, ...]] = None,
+        input_argnums: Tuple[int, ...] = (),
     ):
         super().__init__(
-            f=f,
+            fn=fn,
             filter=filter,
             derivative_fn=lambda func: jax.grad(func, has_aux=True),
             input_argnums=input_argnums,
             has_aux=True,
         )
 
-        signature = inspect.signature(f)
+        signature = inspect.signature(fn)
         self.__signature__ = signature.replace(
             return_annotation=Tuple[
                 Union[
