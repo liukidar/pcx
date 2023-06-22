@@ -5,7 +5,7 @@ import optax
 # pcax
 import pcax as px  # same as import pcax.pc as px
 import pcax.nn as nn
-from pcax.core import _  # _ is the filter object, more about it later!
+from pcax.core import f  # _ is the filter object, more about it later!
 from pcax.utils.data import TorchDataloader
 
 import numpy as np
@@ -118,15 +118,15 @@ test_dataloader = TorchDataloader(
 )
 
 
-@px.gradvalues(filter=_(px.NodeVar)(frozen=False))
-@px.vectorize(filter=_(px.NodeVar, with_cache=True), in_axis=(0,), out_axis=("sum",))
+@px.gradvalues(filter=f(px.NodeVar)(frozen=False))
+@px.vectorize(filter=f(px.NodeVar, with_cache=True), in_axis=(0,), out_axis=("sum",))
 def train_x(x, *, model):
     model(x)
     return model.energy()
 
 
-@px.gradvalues(filter=_(px.LinkVar))
-@px.vectorize(filter=_(px.NodeVar, with_cache=True), in_axis=(0,), out_axis=("sum",))
+@px.gradvalues(filter=f(px.LinkVar))
+@px.vectorize(filter=f(px.NodeVar, with_cache=True), in_axis=(0,), out_axis=("sum",))
 def train_w(x, *, model, dummy_static_arg):
     if dummy_static_arg is True:
         model(x)
@@ -191,11 +191,11 @@ model = Model(28 * 28, params["hidden_dim"], 10)
 # dummy run to init the optimizer parameters
 with px.init_nodes(model, np.zeros((params["batch_size"], 28 * 28)), None):
     optim_x = px.Optim(
-        optax.sgd(params["x_learning_rate"]), model.parameters().filter(_(px.NodeVar)(frozen=False)),
+        optax.sgd(params["x_learning_rate"]), model.parameters().filter(f(px.NodeVar)(frozen=False)),
     )
     optim_w = px.Optim(
         optax.adam(params["w_learning_rate"]),
-        model.parameters().filter(_(px.LinkVar)),  # same as _(...) - _(...)
+        model.parameters().filter(f(px.LinkVar)),  # same as _(...) - _(...)
     )
 
 if __name__ == "__main__":

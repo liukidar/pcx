@@ -8,7 +8,7 @@ __all__ = [
     "Jit",
     "Vectorize",
     "GradValues",
-    "_",
+    "f",
     "RandomKeyGenerator",
     "RKG"
 ]
@@ -29,7 +29,7 @@ from .transform import (
     GradValues
 )
 from .filter import (
-    _
+    f
 )
 from .random import (
     RandomKeyGenerator,

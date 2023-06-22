@@ -1,6 +1,6 @@
 __all__ = ["init_nodes", "init_cache", "vectorize", "gradvalues", "jit"]
 
-from ..core import _, Vectorize, GradValues, Jit
+from ..core import f, Vectorize, GradValues, Jit
 from .variables import NodeVar, ParameterCache
 from ..core.parameters import ParamsDict
 
@@ -12,7 +12,7 @@ from typing import Callable, Tuple, Optional, Union
 def init_nodes(
     model,
     *args,
-    filter=_(NodeVar, ParameterCache),
+    filter=f(NodeVar, ParameterCache),
     in_axis=None,
     out_axis=None,
     clear_on_enter=True,
@@ -50,7 +50,7 @@ def init_cache(model, clear_on_exit=False):
 
 
 def vectorize(
-    filter: Union[_, Callable[[ParamsDict], ParamsDict]],
+    filter: Union[f, Callable[[ParamsDict], ParamsDict]],
     in_axis: Tuple[Optional[int], ...] = (0,),
     out_axis: Tuple[Optional[int], ...] = (0,),
     axis_name: str = "batch"
@@ -62,7 +62,7 @@ def vectorize(
 
 
 def gradvalues(
-    filter: Union[_, Callable[[ParamsDict], ParamsDict]],
+    filter: Union[f, Callable[[ParamsDict], ParamsDict]],
     input_argnums: Tuple[int, ...] = (),
 ):
     def decorator(fn):
@@ -72,7 +72,7 @@ def gradvalues(
 
 
 def jit(
-    filter: Union[_, Callable[[ParamsDict], ParamsDict]] = lambda key, value: True,
+    filter: Union[f, Callable[[ParamsDict], ParamsDict]] = lambda key, value: True,
     donate_argnums: Tuple[int, ...] = (),
     inline: bool = False
 ):

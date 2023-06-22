@@ -14,7 +14,7 @@ import copy
 import jax
 import jax.tree_util as jt
 
-from pcax.core.filter import _
+from pcax.core.filter import f
 
 from ..core.modules import Module, Function
 from ..core.random import RKG
@@ -49,7 +49,7 @@ class _AbstractTransformation(abc.ABC):
 
     def __init__(self,
                  fn: Union['_AbstractTransformation', Callable],
-                 filter: Union[_, Callable[[ParamsDict], ParamsDict]]
+                 filter: Union[f, Callable[[ParamsDict], ParamsDict]]
                  ):
         """_AbstractTransformation constructor.
 
@@ -179,7 +179,7 @@ class Jit(_AbstractTransformation):
     def __init__(
         self,
         fn: Union[_AbstractTransformation, Callable],
-        filter: Union[_, Callable[[ParamsDict], ParamsDict]] = lambda *args: True,
+        filter: Union[f, Callable[[ParamsDict], ParamsDict]] = lambda *args: True,
         donate_argnums: Tuple[int, ...] = (),
         inline: bool = False,
     ):
@@ -244,7 +244,7 @@ class Vectorize(_AbstractTransformation):
     def __init__(
         self,
         fn: Union[Module, Callable],
-        filter: Union[_, Callable[[ParamsDict], ParamsDict]],
+        filter: Union[f, Callable[[ParamsDict], ParamsDict]],
         in_axis: Tuple[Optional[int], ...] = (0,),
         out_axis: Tuple[Optional[int], ...] = (0,),
         axis_name: str = "batch",
@@ -277,7 +277,7 @@ class Vectorize(_AbstractTransformation):
         else:
             nsplits = next(iter(params_copy[0].values())).shape[0]
 
-        for rkg in params_copy[0].filter(_(_RKGState)):
+        for rkg in params_copy[0].filter(f(_RKGState)):
             rkg.value = rkg.split(nsplits)
 
         output, params_partition = self.transform(
@@ -329,7 +329,7 @@ class _DerivativeBase(_AbstractTransformation):
     def __init__(
         self,
         fn: Union[Module, Callable],
-        filter: Union[_, Callable[[ParamsDict], ParamsDict]],
+        filter: Union[f, Callable[[ParamsDict], ParamsDict]],
         derivative_fn: Callable,
         input_argnums: Tuple[int, ...] = (),
         has_aux: bool = False,
@@ -405,7 +405,7 @@ class GradValues(_DerivativeBase):
     def __init__(
         self,
         fn: Union[Module, Callable],
-        filter: Union[_, Callable[[ParamsDict], ParamsDict]],
+        filter: Union[f, Callable[[ParamsDict], ParamsDict]],
         input_argnums: Tuple[int, ...] = (),
     ):
         super().__init__(
