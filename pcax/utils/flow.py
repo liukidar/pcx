@@ -6,6 +6,32 @@ from ..core.modules import ParamDict
 from ..core.filter import f
 
 
+class cond(_AbstractTransformation):
+    def __init__(
+        self,
+        true_fn: Union[_AbstractTransformation, Callable],
+        false_fn: Union[_AbstractTransformation, Callable],
+        filter: Union[f, Callable[[ParamDict], ParamDict]] = lambda *args: True,
+    ):
+        super().__init__((true_fn, false_fn), filter)
+
+    def _call(self, params_partition, *args):
+        output, params_partition = self.transform(
+            params_partition,
+            *args
+        )
+
+        return output
+
+    def _make_transform(self):
+        return lambda partition, cond, *args: jax.lax.cond(
+            cond,
+            *tuple(self._functional(fn) for fn in self.fn),
+            partition,
+            *args,
+        )
+
+
 class switch(_AbstractTransformation):
     def __init__(
         self,
@@ -23,11 +49,11 @@ class switch(_AbstractTransformation):
         return output
 
     def _make_transform(self):
-        return lambda partition, j, args_list: jax.lax.switch(
+        return lambda partition, j, *args: jax.lax.switch(
             j,
             tuple(self._functional(fn) for fn in self.fn),
             partition,
-            args_list,
+            *args,
         )
 
 
