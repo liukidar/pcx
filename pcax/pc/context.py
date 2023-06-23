@@ -1,9 +1,9 @@
-__all__ = ["train", "eval", "init_cache", "vectorize", "grad_and_values", "jit"]
+__all__ = ["train", "eval", "step", "vectorize", "grad_and_values", "jit"]
 
 from ..core import f, Vectorize, GradAndValues, Jit, Module
-from .variables import NodeVar
-from ..core.parameters import ParamsDict
-from .module import EnergyModule
+from .parameters import NodeParam
+from ..core.parameters import ParamDict
+from .energymodule import EnergyModule
 
 import contextlib
 from typing import Callable, Tuple, Optional, Union
@@ -13,7 +13,7 @@ from typing import Callable, Tuple, Optional, Union
 def train(
     model: Union[Module, EnergyModule],
     *args,
-    filter: Union[f, Callable] = f(NodeVar, with_cache=True),
+    filter: Union[f, Callable] = f(NodeParam, with_cache=True),
     in_axis: Optional[Tuple[Union[None, int]]] = None,
     out_axis: Optional[Tuple[Union[None, int, str]]] = None,
     **kwargs
@@ -32,7 +32,7 @@ def train(
 def eval(
     model: Union[Module, EnergyModule],
     *args,
-    filter: Union[f, Callable] = f(NodeVar, with_cache=True),
+    filter: Union[f, Callable] = f(NodeParam, with_cache=True),
     in_axis: Optional[Tuple[Union[None, int]]] = None,
     out_axis: Optional[Tuple[Union[None, int, str]]] = None,
     **kwargs
@@ -50,7 +50,7 @@ def eval(
 def init_module(
     model: Module | EnergyModule,
     *args,
-    filter: Union[f, Callable] = f(NodeVar, with_cache=True),
+    filter: Union[f, Callable] = f(NodeParam, with_cache=True),
     in_axis: Optional[Tuple[Union[None, int]]] = None,
     out_axis: Optional[Tuple[Union[None, int, str]]] = None,
     **kwargs
@@ -72,17 +72,19 @@ def init_module(
 
 
 @contextlib.contextmanager
-def init_cache(model, clear_on_exit=False):
-    if clear_on_exit is False:
-        model.clear_cache()
+def step(model):
+    model.clear_cache()
+
     yield
 
-    if clear_on_exit:
-        model.clear_cache()
+    model.clear_cache()
+
+
+# TRANSFORMS #########################################################################################################
 
 
 def vectorize(
-    filter: Union[f, Callable[[ParamsDict], ParamsDict]],
+    filter: Union[f, Callable[[ParamDict], ParamDict]],
     in_axis: Tuple[Optional[int], ...] = (0,),
     out_axis: Tuple[Optional[int], ...] = (0,),
     axis_name: str = "batch"
@@ -94,7 +96,7 @@ def vectorize(
 
 
 def grad_and_values(
-    filter: Union[f, Callable[[ParamsDict], ParamsDict]],
+    filter: Union[f, Callable[[ParamDict], ParamDict]],
     input_argnums: Tuple[int, ...] = (),
 ):
     def decorator(fn):
@@ -104,7 +106,7 @@ def grad_and_values(
 
 
 def jit(
-    filter: Union[f, Callable[[ParamsDict], ParamsDict]] = lambda key, value: True,
+    filter: Union[f, Callable[[ParamDict], ParamDict]] = lambda key, value: True,
     donate_argnums: Tuple[int, ...] = (),
     inline: bool = False
 ):

@@ -2,7 +2,7 @@ __all__ = ["f"]
 
 import types
 from typing import Any, Tuple, Union, Dict
-from .parameters import ParameterCache
+from .parameters import ParamCache
 
 
 ########################################################################################################################
@@ -47,7 +47,7 @@ class f:
         """Filters `var`, returning whether it has to be kept (True) or discarded (False) """
         if isinstance(self.arg, f):
             r = self.arg.apply(var)
-        elif isinstance(var, ParameterCache) and self.with_cache:
+        elif isinstance(var, ParamCache) and self.with_cache:
             r = isinstance(var, self.arg) or isinstance(var.ref, self.arg)
         else:
             r = isinstance(var, self.arg)

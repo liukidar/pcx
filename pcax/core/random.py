@@ -6,7 +6,7 @@ import time
 import jax
 
 from .modules import Module
-from .parameters import _BaseParameter, reduce_none
+from .parameters import _BaseParam, reduce_none
 
 ########################################################################################################################
 #
@@ -21,7 +21,7 @@ from .parameters import _BaseParameter, reduce_none
 # Utils ################################################################################################################
 
 
-class _RKGState(_BaseParameter):
+class _RKGState(_BaseParam):
     """RKGState is a state parameter that tracks a random generator state. It is meant to be used internally."""
 
     def __init__(self, seed: int):

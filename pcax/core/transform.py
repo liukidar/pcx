@@ -19,7 +19,7 @@ from pcax.core.filter import f
 from ..core.modules import Module, Function
 from ..core.random import RKG
 from ..core.util import repr_function, move, hash_pytree
-from ..core.parameters import ParamsDict
+from ..core.parameters import ParamDict
 from ..core.random import _RKGState
 
 
@@ -49,7 +49,7 @@ class _AbstractTransformation(abc.ABC):
 
     def __init__(self,
                  fn: Union['_AbstractTransformation', Callable],
-                 filter: Union[f, Callable[[ParamsDict], ParamsDict]]
+                 filter: Union[f, Callable[[ParamDict], ParamDict]]
                  ):
         """_AbstractTransformation constructor.
 
@@ -63,7 +63,7 @@ class _AbstractTransformation(abc.ABC):
         else:
             self.__wrapped__ = fn
             self.fn = fn
-        self.params: ParamsDict = None
+        self.params: ParamDict = None
         self.filter = filter
         self.transform = None
         self.kwargs = {}
@@ -107,7 +107,7 @@ class _AbstractTransformation(abc.ABC):
         return wrapper
 
     @property
-    def partition(self) -> Tuple[ParamsDict, ParamsDict]:
+    def partition(self) -> Tuple[ParamDict, ParamDict]:
         target = self.params.filter(self.filter) + RKG.parameters()
 
         return target, self.params - target
@@ -179,7 +179,7 @@ class Jit(_AbstractTransformation):
     def __init__(
         self,
         fn: Union[_AbstractTransformation, Callable],
-        filter: Union[f, Callable[[ParamsDict], ParamsDict]] = lambda *args: True,
+        filter: Union[f, Callable[[ParamDict], ParamDict]] = lambda *args: True,
         donate_argnums: Tuple[int, ...] = (),
         inline: bool = False,
     ):
@@ -244,7 +244,7 @@ class Vectorize(_AbstractTransformation):
     def __init__(
         self,
         fn: Union[Module, Callable],
-        filter: Union[f, Callable[[ParamsDict], ParamsDict]],
+        filter: Union[f, Callable[[ParamDict], ParamDict]],
         in_axis: Tuple[Optional[int], ...] = (0,),
         out_axis: Tuple[Optional[int], ...] = (0,),
         axis_name: str = "batch",
@@ -329,7 +329,7 @@ class _DerivativeBase(_AbstractTransformation):
     def __init__(
         self,
         fn: Union[Module, Callable],
-        filter: Union[f, Callable[[ParamsDict], ParamsDict]],
+        filter: Union[f, Callable[[ParamDict], ParamDict]],
         derivative_fn: Callable,
         input_argnums: Tuple[int, ...] = (),
         has_aux: bool = False,
@@ -350,7 +350,7 @@ class _DerivativeBase(_AbstractTransformation):
         self.has_aux = has_aux
 
     @property
-    def partition(self) -> Tuple[ParamsDict, ParamsDict]:
+    def partition(self) -> Tuple[ParamDict, ParamDict]:
         target = self.params.filter(self.filter)
 
         return target, self.params - target
@@ -405,7 +405,7 @@ class GradAndValues(_DerivativeBase):
     def __init__(
         self,
         fn: Union[Module, Callable],
-        filter: Union[f, Callable[[ParamsDict], ParamsDict]],
+        filter: Union[f, Callable[[ParamDict], ParamDict]],
         input_argnums: Tuple[int, ...] = (),
     ):
         super().__init__(

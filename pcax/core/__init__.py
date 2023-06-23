@@ -1,10 +1,10 @@
 __all__ = [
     "Module",
     "Function",
-    "Parameter",
-    "ParameterRef",
-    "ParameterCache",
-    "ParamsDict",
+    "Param",
+    "ParamRef",
+    "ParamCache",
+    "ParamDict",
     "Jit",
     "Vectorize",
     "GradAndValues",
@@ -18,10 +18,10 @@ from .modules import (
     Module, Function
 )
 from .parameters import (
-    Parameter,
-    ParameterRef,
-    ParameterCache,
-    ParamsDict
+    Param,
+    ParamRef,
+    ParamCache,
+    ParamDict
 )
 from .transform import (
     Jit,

@@ -30,9 +30,9 @@ class Model(px.EnergyModule):
         self.linear_h = [nn.Linear(hidden_dim, hidden_dim) for _ in range(nm_layers)]
         self.linear2 = nn.Linear(hidden_dim, output_dim)
 
-        self.pc1 = px.Layer()
-        self.pc_h = [px.Layer() for _ in range(nm_layers)]
-        self.pc2 = px.Layer()
+        self.pc1 = px.Node()
+        self.pc_h = [px.Node() for _ in range(nm_layers)]
+        self.pc2 = px.Node()
 
         """
         We normally use the x of the last layer as the target, therefore we don't want to update it.
@@ -83,7 +83,6 @@ params = {
     "hidden_dim": 128,
     "input_dim": 28 * 28,
     "output_dim": 10,
-    "seed": 0,
     "T": (NM_LAYERS + 2),
 }
 
@@ -118,20 +117,17 @@ test_dataloader = TorchDataloader(
 )
 
 
-@px.grad_and_values(filter=f(px.NodeVar)(frozen=False))
-@px.vectorize(filter=f(px.NodeVar, with_cache=True), in_axis=(0,), out_axis=("sum",))
+@px.grad_and_values(filter=f(px.NodeParam)(frozen=False))
+@px.vectorize(filter=f(px.NodeParam, with_cache=True), in_axis=(0,), out_axis=("sum",))
 def train_x(x, *, model):
     model(x)
     return model.energy()
 
 
-@px.grad_and_values(filter=f(px.LinkVar))
-@px.vectorize(filter=f(px.NodeVar, with_cache=True), in_axis=(0,), out_axis=("sum",))
-def train_w(x, *, model, dummy_static_arg):
-    if dummy_static_arg is True:
-        model(x)
-    else:
-        model(x)
+@px.grad_and_values(filter=f(px.LayerParam))
+@px.vectorize(filter=f(px.NodeParam, with_cache=True), in_axis=(0,), out_axis=("sum",))
+def train_w(x, *, model):
+    model(x)
 
     return model.energy()
 
@@ -145,13 +141,13 @@ def train_on_batch(x, y, *, model, optim_w, optim_x):
             # to compute the gradients.
             # px.init_cache takes care of managing the cache.
             # !!! IMPORTANT: px.init_cache must always be used inside a px.init_nodes context !!!
-            with px.init_cache(model):
+            with px.step(model):
                 g, (v,) = train_x(x, model=model)
                 optim_x(g)
 
         # !!! IMPORTANT: px.init_cache must always be used inside a px.init_nodes context !!!
-        with px.init_cache(model):
-            g, (v,) = train_w(x, model=model, dummy_static_arg=True)
+        with px.step(model):
+            g, (v,) = train_w(x, model=model)
             optim_w(g)
 
 
@@ -167,7 +163,6 @@ def epoch(train_fn, dl):
     for batch in dl:
         x, y = batch
         y = one_hot(y, 10)
-        # Static arguments in the first brackets, dynamic arguments in the second.
         train_fn(x, y)
 
     return 0
@@ -179,26 +174,25 @@ def test(evaluate_fn, dl):
         x, y = batch
         y = one_hot(y, 10)
 
-        # Static arguments in the first brackets, dynamic arguments in the second.
         accuracies.append(evaluate_fn(x, y))
 
     return np.mean(accuracies)
 
 
-model = Model(28 * 28, params["hidden_dim"], 10)
-# load_params(model.parameters().filter(_(px.LinkVar)), "mnist_params.npz")
-
-# dummy run to init the optimizer parameters
-with px.train(model, np.zeros((params["batch_size"], 28 * 28)), None):
-    optim_x = px.Optim(
-        optax.sgd(params["x_learning_rate"]), model.parameters().filter(f(px.NodeVar)(frozen=False)),
-    )
-    optim_w = px.Optim(
-        optax.adam(params["w_learning_rate"]),
-        model.parameters().filter(f(px.LinkVar)),  # same as _(...) - _(...)
-    )
-
 if __name__ == "__main__":
+    model = Model(28 * 28, params["hidden_dim"], 10)
+    # load_params(model.parameters().filter(_(px.LinkVar)), "mnist_params.npz")
+
+    # dummy run to init the optimizer parameters
+    with px.train(model, np.zeros((params["batch_size"], 28 * 28)), None):
+        optim_x = px.Optim(
+            optax.sgd(params["x_learning_rate"]), model.parameters().filter(f(px.NodeParam)(frozen=False)),
+        )
+        optim_w = px.Optim(
+            optax.adam(params["w_learning_rate"]),
+            model.parameters().filter(f(px.LayerParam)),
+        )
+
     train_fn = train_on_batch.snapshot(model=model, optim_w=optim_w, optim_x=optim_x)
     test_fn = evaluate.snapshot(model=model)
 

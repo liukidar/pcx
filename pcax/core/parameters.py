@@ -1,9 +1,9 @@
 __all__ = [
-    "_BaseParameter",
-    "Parameter",
-    "ParameterRef",
-    "ParamsDict",
-    "ParameterCache",
+    "_BaseParam",
+    "Param",
+    "ParamRef",
+    "ParamDict",
+    "ParamCache",
 ]
 
 import abc
@@ -28,9 +28,9 @@ from .util import repr_function, move
 # Utils ################################################################################################################
 
 
-def get_jax_value(x: Union[jax.Array, "_BaseParameter"]):
+def get_jax_value(x: Union[jax.Array, "_BaseParam"]):
     """Returns JAX value encapsulated in the input argument."""
-    if isinstance(x, _BaseParameter):
+    if isinstance(x, _BaseParam):
         return x.value
     else:
         return x
@@ -54,7 +54,7 @@ def reduce_id(x: jax.Array) -> jax.Array:
 # Core #################################################################################################################
 
 
-class _AbstractParameterMeta(abc.ABCMeta):
+class _AbstractParamMeta(abc.ABCMeta):
     """
     Metaclass to register all parameters in the JAX pytree flatten/unflatten util.
     A parameter is flatten by separating its value from the rest of the object.
@@ -68,28 +68,28 @@ class _AbstractParameterMeta(abc.ABCMeta):
 
         jax.tree_util.register_pytree_with_keys(
             cls,
-            flatten_func=_AbstractParameterMeta.flatten_parameter,
-            flatten_with_keys=_AbstractParameterMeta.flatten_parameter_with_keys,
-            unflatten_func=_AbstractParameterMeta.unflatten_parameter
+            flatten_func=_AbstractParamMeta.flatten_parameter,
+            flatten_with_keys=_AbstractParamMeta.flatten_parameter_with_keys,
+            unflatten_func=_AbstractParamMeta.unflatten_parameter
         )
 
         return cls
 
     @staticmethod
-    def flatten_parameter(var: '_AbstractParameter') -> Tuple[Any, '_AbstractParameter']:
+    def flatten_parameter(var: '_AbstractParam') -> Tuple[Any, '_AbstractParam']:
         return (var.value,), var
 
     @staticmethod
-    def flatten_parameter_with_keys(var: '_AbstractParameter') -> Tuple[Any, '_AbstractParameter']:
+    def flatten_parameter_with_keys(var: '_AbstractParam') -> Tuple[Any, '_AbstractParam']:
         return (("value", var.value),), var
 
     @staticmethod
-    def unflatten_parameter(var: '_AbstractParameter', data: Any) -> '_AbstractParameter':
+    def unflatten_parameter(var: '_AbstractParam', data: Any) -> '_AbstractParam':
         var.value = data[0]
         return var
 
 
-class _AbstractParameter(metaclass=_AbstractParameterMeta):
+class _AbstractParam(metaclass=_AbstractParamMeta):
     """
     Base abstract class for all parameters. It is used to detect whether an object is a parameter or not.
     """
@@ -117,7 +117,7 @@ class _AbstractParameter(metaclass=_AbstractParameterMeta):
         raise NotImplementedError("Pure method")
 
 
-class _BaseParameter(_AbstractParameter):
+class _BaseParam(_AbstractParam):
     """The abstract base class to represent and store a jax.Array."""
 
     def __init__(
@@ -128,7 +128,7 @@ class _BaseParameter(_AbstractParameter):
         self._value = value
         self._reduce = reduce
 
-    def __move__(self, __other: Optional['_BaseParameter'] = None) -> '_BaseParameter':
+    def __move__(self, __other: Optional['_BaseParam'] = None) -> '_BaseParam':
         if __other is None:
             __other = copy.copy(self)
         else:
@@ -321,7 +321,7 @@ class _BaseParameter(_AbstractParameter):
 # Parameters ##########################################################################################################
 
 
-class Parameter(_BaseParameter):
+class Param(_BaseParam):
     """A trainable parameter. The class is only used to differentiate parameters from other state parameters."""
 
     def __init__(
@@ -329,10 +329,10 @@ class Parameter(_BaseParameter):
         value: Optional[jax.Array] = None,
         reduce: Optional[Callable[[jax.Array], jax.Array]] = reduce_none,
     ):
-        """Parameter constructor.
+        """Param constructor.
 
         Args:
-            value: the initial value of the Parameter.
+            value: the initial value of the Param.
             reduce: a function that takes an array of shape ``(n, *dims)`` and returns one of shape ``(*dims)``. Used to
                     combine the multiple states produced in an pcax.Vectorize call. Default options are ``reduce_none``,
                     ``reduce_mean`` and ``reduce_id``.
@@ -341,14 +341,14 @@ class Parameter(_BaseParameter):
         self._value = value
 
 
-class ParameterRef(_AbstractParameter):
+class ParamRef(_AbstractParam):
     """A state parameter that references a trainable parameter for assignment.
 
-    ParameterRef are used by optimizers to keep references to trainable variables. This is necessary to differentiate
+    ParamRef are used by optimizers to keep references to trainable variables. This is necessary to differentiate
     them from the optimizer own training variables if any."""
 
-    def __init__(self, param: Parameter):
-        """ParameterRef constructor.
+    def __init__(self, param: Param):
+        """ParamRef constructor.
 
         Args:
             param: the Parameter to keep the reference of.
@@ -356,7 +356,7 @@ class ParameterRef(_AbstractParameter):
         super().__init__()
         self.ref = param
 
-    def __move__(self, __target: Optional['ParameterRef'] = None) -> 'ParameterRef':
+    def __move__(self, __target: Optional['ParamRef'] = None) -> 'ParamRef':
         if __target is None:
             new_var = copy.copy(self)
         else:
@@ -386,21 +386,21 @@ class ParameterRef(_AbstractParameter):
         return f"{self.__class__.__name__}(ref={repr(self.ref)})"
 
 
-class ParameterCache(_BaseParameter, ParameterRef):
+class ParamCache(_BaseParam, ParamRef):
     """A parameter dictionary used to store interemediate transformations of the referenced parameter. Those are
     normally only stored in the computation tree and are not accessible to the user."""
 
     def __init__(
-        self, param: Parameter
+        self, param: Param
     ):
-        """ParameterCache constructor.
+        """ParamCache constructor.
 
         Args:
             param: the Parameter to keep the reference of.
         """
 
-        _BaseParameter.__init__(self, {}, None)
-        ParameterRef.__init__(self, param)
+        _BaseParam.__init__(self, {}, None)
+        ParamRef.__init__(self, param)
 
     def __getitem__(self, __key: str):
         return self._value[__key]
@@ -424,19 +424,19 @@ class ParameterCache(_BaseParameter, ParameterRef):
         return f"{t[:-1]}"
 
 
-class ParamsDict(Dict[str, _AbstractParameter]):
-    """A ParamsDict is a dictionary (name, var) with some additional methods to make manipulation of collections of
-    parameters easy. In particular, iterating through a ParamsDict will iterate through each unique parameter stored
+class ParamDict(Dict[str, _AbstractParam]):
+    """A ParamDict is a dictionary (name, var) with some additional methods to make manipulation of collections of
+    parameters easy. In particular, iterating through a ParamDict will iterate through each unique parameter stored
     in the dictionary, avoiding duplicate references."""
 
     def __init__(self, *args, **kwargs):
-        """ParamsDict constructor.
+        """ParamDict constructor.
 
         Simply initialise the dictionary with the given elements."""
         super().__init__(*args, **kwargs)
 
-    def __move__(self, __target: Optional['ParamsDict' | Dict[str, _AbstractParameter]] = None):
-        params = __target or ParamsDict()
+    def __move__(self, __target: Optional['ParamDict' | Dict[str, _AbstractParam]] = None):
+        params = __target or ParamDict()
 
         seen = {}
         for k, v in self.items():
@@ -448,15 +448,15 @@ class ParamsDict(Dict[str, _AbstractParameter]):
 
         return params
 
-    def __add__(self, __other: "ParamsDict") -> "ParamsDict":
-        """Overloaded add operator to compute the set union of two ParamsDicts."""
-        params = ParamsDict(self)
+    def __add__(self, __other: "ParamDict") -> "ParamDict":
+        """Overloaded add operator to compute the set union of two ParamDicts."""
+        params = ParamDict(self)
         params.update(__other)
         return params
 
-    def __sub__(self, __other: "ParamsDict") -> "ParamsDict":
-        """Overloaded sub operator to compute the set difference between two ParamsDicts."""
-        params = ParamsDict()
+    def __sub__(self, __other: "ParamDict") -> "ParamDict":
+        """Overloaded sub operator to compute the set difference between two ParamDicts."""
+        params = ParamDict()
         other_ids = set(map(lambda x: id(x), __other.values()))
 
         for k, v in self.items():
@@ -465,7 +465,7 @@ class ParamsDict(Dict[str, _AbstractParameter]):
 
         return params
 
-    def __iter__(self) -> Iterator[_AbstractParameter]:
+    def __iter__(self) -> Iterator[_AbstractParam]:
         """Create an iterator that iterates over the parameters (dict values) and visit them only once.
         If a parameters has two names, for example in the case of weight sharing, this iterator yields the variable only
         once."""
@@ -476,13 +476,13 @@ class ParamsDict(Dict[str, _AbstractParameter]):
                 seen.add(uid)
                 yield v
 
-    def __setitem__(self, __key: str, __value: _AbstractParameter):
+    def __setitem__(self, __key: str, __value: _AbstractParam):
         """Overload bracket assignment to catch potential conflicts during assignment."""
         if __key in self and self[__key] is not __value:
             raise ValueError("Name conflicts when appending to ParamsDict", __key)
         dict.__setitem__(self, __key, __value)
 
-    def update(self, other: Union["ParamsDict", Iterable[Tuple[str, _AbstractParameter]]]):
+    def update(self, other: Union["ParamDict", Iterable[Tuple[str, _AbstractParam]]]):
         """Overload dict.update method to catch potential conflicts during assignment."""
         if not isinstance(other, self.__class__):
             other = list(other)
@@ -509,9 +509,9 @@ class ParamsDict(Dict[str, _AbstractParameter]):
         text.append(f'{f"+Total({count})":{longest_string}}')
         return "\n".join(text)
 
-    def filter(self, filter: Union['_', Callable[[_AbstractParameter], bool]]):  # noqa F821 # type: ignore
+    def filter(self, filter: Union['_', Callable[[_AbstractParam], bool]]):  # noqa F821 # type: ignore
         """Filter the parameters in the ParamsDict according to the provided filter."""
-        params = ParamsDict()
+        params = ParamDict()
 
         if hasattr(filter, "apply"):
             params.update((name, v) for name, v in self.items() if filter.apply(v))
@@ -521,7 +521,7 @@ class ParamsDict(Dict[str, _AbstractParameter]):
         return params
 
     def rename(self, name):
-        return ParamsDict(
+        return ParamDict(
             {re.sub(r"\(.*?\)", name, k, count=1): v for k, v in self.items()}
         )
 
@@ -529,7 +529,7 @@ class ParamsDict(Dict[str, _AbstractParameter]):
 # Register ParamsDict in the JAX pytree flatten/unflatten util ########################################################
 
 
-def flatten_paramsdict(params: ParamsDict) -> Tuple[Any, Any]:
+def flatten_paramsdict(params: ParamDict) -> Tuple[Any, Any]:
     seen = {}
 
     for k, v in params.items():
@@ -548,22 +548,22 @@ def flatten_paramsdict(params: ParamsDict) -> Tuple[Any, Any]:
     return values, keys
 
 
-def flatten_paramsdict_with_keys(params: ParamsDict) -> Tuple[Any, Any]:
+def flatten_paramsdict_with_keys(params: ParamDict) -> Tuple[Any, Any]:
     values, keys = flatten_paramsdict(params)
 
     return tuple(zip(keys, values)), keys
 
 
-def unflatten_paramsdict(aux_data: Any, flatten_data: Any) -> ParamsDict:
+def unflatten_paramsdict(aux_data: Any, flatten_data: Any) -> ParamDict:
     if len(flatten_data) == 0:
-        return ParamsDict()
+        return ParamDict()
 
     indices, keys = zip(*((i, key) for i, keys in enumerate(aux_data) for key in keys))
     values = (flatten_data[i] for i in indices)
 
-    return ParamsDict(zip(keys, values))
+    return ParamDict(zip(keys, values))
 
 
 jax.tree_util.register_pytree_with_keys(
-    ParamsDict, flatten_paramsdict_with_keys, unflatten_paramsdict, flatten_paramsdict
+    ParamDict, flatten_paramsdict_with_keys, unflatten_paramsdict, flatten_paramsdict
 )

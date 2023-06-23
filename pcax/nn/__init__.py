@@ -3,7 +3,7 @@ __all__ = [
     "LayerNorm",
 ]
 
-from .link import (
+from .layer import (
     Linear,
     LayerNorm,
 )

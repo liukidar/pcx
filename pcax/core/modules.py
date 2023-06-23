@@ -10,7 +10,7 @@ import functools
 import jax
 
 from .util import repr_function
-from .parameters import _BaseParameter, ParamsDict
+from .parameters import _BaseParam, ParamDict
 
 ########################################################################################################################
 #
@@ -21,7 +21,7 @@ from .parameters import _BaseParameter, ParamsDict
 # Utils ################################################################################################################
 
 
-class _ParameterPlaceholder(_BaseParameter):
+class _ParameterPlaceholder(_BaseParam):
     """Used internally to represent an empty parameter when flattening/unflattening a module."""
     @property
     def value(self) -> None:
@@ -46,14 +46,14 @@ def flatten_module_with_keys(module: 'Module') -> Tuple[Any, Any]:
 
     for k, v in module.__dict__.items():
         keys.append(k)
-        if isinstance(v, _BaseParameter):
+        if isinstance(v, _BaseParam):
             parameters.append((k, v))
             values.append(_ParameterPlaceholder())
         else:
-            leaves, treedef = jax.tree_util.tree_flatten_with_path(v, is_leaf=lambda x: isinstance(x, _BaseParameter))
-            parameters.extend((f"{k}.{path}", leaf) for path, leaf in leaves if isinstance(leaf, _BaseParameter))
+            leaves, treedef = jax.tree_util.tree_flatten_with_path(v, is_leaf=lambda x: isinstance(x, _BaseParam))
+            parameters.extend((f"{k}.{path}", leaf) for path, leaf in leaves if isinstance(leaf, _BaseParam))
             v = (treedef, tuple(
-                (leaf if not isinstance(leaf, _BaseParameter) else _ParameterPlaceholder()) for _, leaf in leaves
+                (leaf if not isinstance(leaf, _BaseParam) else _ParameterPlaceholder()) for _, leaf in leaves
             ))
             values.append(v)
 
@@ -65,7 +65,7 @@ def unflatten_module(cls, static_data: Any, parameters: Any) -> 'Module':
     keys, values = static_data
     parameters_iter = iter(parameters)
     for key, value in zip(keys, values):
-        if isinstance(value, _BaseParameter):
+        if isinstance(value, _BaseParam):
             value = next(parameters_iter)
         else:
             treedef, leaves = value
@@ -104,11 +104,11 @@ class Module(metaclass=_ModuleMeta):
     def __init__(self) -> None:
         self._mode = None
 
-    def parameters(self) -> ParamsDict:
+    def parameters(self) -> ParamDict:
         """Returns a dictionary of all the parameters of the module."""
 
-        params = ParamsDict()
-        parameters, _ = jax.tree_util.tree_flatten_with_path(self, is_leaf=lambda x: isinstance(x, _BaseParameter))
+        params = ParamDict()
+        parameters, _ = jax.tree_util.tree_flatten_with_path(self, is_leaf=lambda x: isinstance(x, _BaseParam))
         scope = f"({self.__class__.__name__})."
         for k, v in parameters:
             params[scope + k[0]] = v
@@ -151,7 +151,7 @@ class Module(metaclass=_ModuleMeta):
 class Function(Module):
     """Turn a function into a Module by storing the parameters it uses."""
 
-    def __init__(self, f: Callable, params: ParamsDict):
+    def __init__(self, f: Callable, params: ParamDict):
         """Function constructor.
 
         Args:
@@ -159,16 +159,16 @@ class Function(Module):
             params: the ParamsDict of variables used by the function.
         """
         if hasattr(f, "__name__"):
-            self.params = ParamsDict((f"{{{f.__name__}}}{k}", v) for k, v in params.items())
+            self.params = ParamDict((f"{{{f.__name__}}}{k}", v) for k, v in params.items())
         else:
-            self.params = ParamsDict(params)
+            self.params = ParamDict(params)
         self.__wrapped__ = f
 
     def __call__(self, *args, **kwargs):
         """Call the wrapped function."""
         return self.__wrapped__(*args, **kwargs)
 
-    def parameters(self) -> ParamsDict:
+    def parameters(self) -> ParamDict:
         return self.params
 
     def __repr__(self):

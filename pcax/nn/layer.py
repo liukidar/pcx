@@ -4,14 +4,14 @@ import jax.tree_util as jt
 
 
 from ..core import (
-    Module as _Module,
+    Module,
     RKG,
 )
 
-from ..pc import LinkVar
+from ..pc import LayerParam
 
 
-class Link(_Module):
+class Layer(Module):
     def __init__(
         self,
         cls,
@@ -21,7 +21,7 @@ class Link(_Module):
     ):
         super().__init__()
         self.nn = jt.tree_map(
-            lambda w: LinkVar(w) if filter(w) else w,
+            lambda w: LayerParam(w) if filter(w) else w,
             cls(*args, **kwargs),
         )
 
@@ -29,14 +29,14 @@ class Link(_Module):
         return self.nn(*args, **kwargs, key=key)
 
 
-class Linear(Link):
+class Linear(Layer):
     def __init__(self, in_features: int, out_features: int, bias: bool = True):
         super().__init__(
             eqx.nn.Linear, in_features, out_features, bias, key=RKG()
         )
 
 
-class LayerNorm(Link):
+class LayerNorm(Layer):
     def __init__(
         self,
         shape: Optional[Tuple[int, ...]] = None,
