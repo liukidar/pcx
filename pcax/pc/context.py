@@ -1,6 +1,6 @@
-__all__ = ["train", "eval", "init_cache", "vectorize", "gradvalues", "jit"]
+__all__ = ["train", "eval", "init_cache", "vectorize", "grad_and_values", "jit"]
 
-from ..core import f, Vectorize, GradValues, Jit, Module
+from ..core import f, Vectorize, GradAndValues, Jit, Module
 from .variables import NodeVar
 from ..core.parameters import ParamsDict
 from .module import EnergyModule
@@ -93,12 +93,12 @@ def vectorize(
     return decorator
 
 
-def gradvalues(
+def grad_and_values(
     filter: Union[f, Callable[[ParamsDict], ParamsDict]],
     input_argnums: Tuple[int, ...] = (),
 ):
     def decorator(fn):
-        return GradValues(fn, filter, input_argnums)
+        return GradAndValues(fn, filter, input_argnums)
 
     return decorator
 

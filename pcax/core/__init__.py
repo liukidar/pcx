@@ -7,7 +7,7 @@ __all__ = [
     "ParamsDict",
     "Jit",
     "Vectorize",
-    "GradValues",
+    "GradAndValues",
     "f",
     "RandomKeyGenerator",
     "RKG"
@@ -26,7 +26,7 @@ from .parameters import (
 from .transform import (
     Jit,
     Vectorize,
-    GradValues
+    GradAndValues
 )
 from .filter import (
     f

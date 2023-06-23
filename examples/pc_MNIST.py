@@ -118,14 +118,14 @@ test_dataloader = TorchDataloader(
 )
 
 
-@px.gradvalues(filter=f(px.NodeVar)(frozen=False))
+@px.grad_and_values(filter=f(px.NodeVar)(frozen=False))
 @px.vectorize(filter=f(px.NodeVar, with_cache=True), in_axis=(0,), out_axis=("sum",))
 def train_x(x, *, model):
     model(x)
     return model.energy()
 
 
-@px.gradvalues(filter=f(px.LinkVar))
+@px.grad_and_values(filter=f(px.LinkVar))
 @px.vectorize(filter=f(px.NodeVar, with_cache=True), in_axis=(0,), out_axis=("sum",))
 def train_w(x, *, model, dummy_static_arg):
     if dummy_static_arg is True:

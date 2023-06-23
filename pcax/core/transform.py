@@ -2,7 +2,7 @@ __all__ = [
     "_AbstractTransformation",
     "Jit",
     "Vectorize",
-    "GradValues",
+    "GradAndValues",
 ]
 
 from typing import Optional, List, Union, Callable, Tuple, Any, Dict
@@ -392,7 +392,7 @@ class _DerivativeBase(_AbstractTransformation):
         return self.derivative_fn(derivative)
 
 
-class GradValues(_DerivativeBase):
+class GradAndValues(_DerivativeBase):
     """pcax transformation corresponding to jax.value_and_grad.
     The output gradients are returned according to the following specification:
     - if any input gradient is present: (g_wrt_inputs, g_wrt_parameters),
