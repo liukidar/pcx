@@ -7,6 +7,7 @@ import pcax as px  # same as import pcax.pc as px
 import pcax.nn as nn
 from pcax.core import f  # _ is the filter object, more about it later!
 from pcax.utils.data import TorchDataloader
+import pcax.utils.flow as flow
 
 import numpy as np
 from torchvision.datasets import MNIST
@@ -134,16 +135,26 @@ def train_w(x, *, model):
 
 @px.jit()
 def train_on_batch(x, y, *, model, optim_w, optim_x):
+    def x_step(x, *, model, optim_x):
+        with px.step(model):
+            g, (v,) = train_x(x, model=model)
+            optim_x(g)
+
+        return v
     # We are working on the input x, so we initialise the internal nodes with it (this also initialises the cache).
     with px.train(model, x, y) as (y_hat,):
+        # model.clear_cache()
+        # flow.scan(x_step)(x, model=model, optim_x=optim_x, length=params["T"])
+
         for i in range(params["T"]):
             # Each forward pass caches the intermediate values (such as activations and energies), so we can use them
             # to compute the gradients.
             # px.init_cache takes care of managing the cache.
             # !!! IMPORTANT: px.init_cache must always be used inside a px.init_nodes context !!!
-            with px.step(model):
-                g, (v,) = train_x(x, model=model)
-                optim_x(g)
+            flow.switch((x_step, x_step))(
+                0, x, model=model, optim_x=optim_x
+            )
+            # x_step(x, model=model, optim_x=optim_x)
 
         # !!! IMPORTANT: px.init_cache must always be used inside a px.init_nodes context !!!
         with px.step(model):

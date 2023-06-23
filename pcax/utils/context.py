@@ -1,9 +1,9 @@
 __all__ = ["train", "eval", "step", "vectorize", "grad_and_values", "jit"]
 
 from ..core import f, Vectorize, GradAndValues, Jit, Module
-from .parameters import NodeParam
+from ..pc.parameters import NodeParam
 from ..core.parameters import ParamDict
-from .energymodule import EnergyModule
+from ..pc.energymodule import EnergyModule
 
 import contextlib
 from typing import Callable, Tuple, Optional, Union

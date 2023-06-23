@@ -1,100 +1,81 @@
-import functools
 import jax
-from typing import Union, Callable, Optional, Tuple, Any
+from typing import Union, Callable, Tuple
 
-from ..core.util import make_args, kwargs_indices
-from ..core.transform import ModuleTransform
-from ..core.structure import Module, Function, VarCollection
-from ..core.filter import _
-from ..core.random import RKG
+from ..core.transform import _AbstractTransformation
+from ..core.modules import ParamDict
+from ..core.filter import f
 
 
-class Switch(ModuleTransform):
+class switch(_AbstractTransformation):
     def __init__(
         self,
-        fns: Tuple[Union[Module, Callable], ...],
-        vc_f: Union[_, Callable[[VarCollection], VarCollection]] = lambda vc: vc,
-        static_argnums: Tuple[int, ...] = (),
+        fns: Tuple[Union[_AbstractTransformation, Callable], ...],
+        filter: Union[f, Callable[[ParamDict], ParamDict]] = lambda *args: True,
     ):
-        super().__init__(Function(fns[0], sum(map(lambda fn: fn.vars(), fns), VarCollection())), vc_f)
+        super().__init__(fns, filter)
 
-        def switch(f):
-            @self._functional
-            def switched(params, args_list):
-                self.vc_target.load(*params)
-
-                for static_argnum in self.static_argnums:
-                    args_list[static_argnum] = self.static_args[static_argnum]
-
-                return f(*args_list), self.vc_target.dump()[:2]
-
-            return switched
-
-        self._call = lambda j, params, args_list: jax.lax.switch(
-            j,
-            self.fns,
-            params,
-            args_list,
+    def _call(self, params_partition, *args):
+        output, params_partition = self.transform(
+            params_partition,
+            *args
         )
-        self.fns = tuple(switch(f) for f in fns)
-        self.static_argnums = static_argnums
-        self.static_args = {}
-
-    @property
-    def vc_target(self) -> VarCollection:
-        return self.vc_f(self.vc) + VarCollection(RKG.vars())
-
-    def __call__(self, j: int, *args, **kwargs):
-        differentiable, dynamic, static = self.vc_target.dump()
-
-        args_list = make_args(
-            self.__wrapped__,
-            args,
-            kwargs
-        )
-
-        for static_argnum in self.static_argnums:
-            self.static_args[static_argnum] = args_list[static_argnum]
-            args_list[static_argnum] = None
-
-        output, changes = self._call(
-            j, (differentiable, dynamic), args_list
-        )
-        self.vc_target.load(*changes)
-        self.static_args = {}
 
         return output
 
-    def __repr__(self):
-        return f"{self.__class__.__name__}(f={self.__wrapped__})"
+    def _make_transform(self):
+        return lambda partition, j, args_list: jax.lax.switch(
+            j,
+            tuple(self._functional(fn) for fn in self.fn),
+            partition,
+            args_list,
+        )
 
 
-class Scan(ModuleTransform):
+class scan(_AbstractTransformation):
     def __init__(
         self,
-        f: Union[Module, Callable],
-        vc_f: Union[_, Callable[[VarCollection], VarCollection]] = lambda vc: vc,
-        js: Optional[Tuple[Any, ...]] = None,
-        length: Optional[int] = None,
+        fn: Union[_AbstractTransformation, Callable],
+        filter: Union[f, Callable[[ParamDict], ParamDict]] = lambda *args: True,
         map_outputs: Tuple[int, ...] = (),
-        static_argnums: Tuple[int, ...] = (),
     ):
-        super().__init__(f, vc_f)
+        super().__init__(fn, filter)
+        self.map_outputs = map_outputs
+        self.js = None
+        self.length = None
 
-        # not _functional to catch if the user changes static values inside the vc
+    def _call(self, params_partition, *args):
+        # Assert that exactly one between 'js' and 'length' is specified in self.kwargs
+        assert sum(map(lambda x: x in self.kwargs, ("js", "length"))) == 1, \
+            "Exactly one between 'js' and 'length' must be specified in kwargs"
+
+        if "js" in self.kwargs:
+            self.js = self.kwargs["js"]
+            del self.kwargs["js"]
+
+        if "length" in self.kwargs:
+            self.length = self.kwargs["length"]
+            del self.kwargs["length"]
+
+        if self.js is not None:
+            args = (None,) + args
+
+        output, params_partition = self.transform(
+            params_partition,
+            *args
+        )
+
+        return output
+
+    def _make_transform(self):
         def scan(
             carry, j
         ):
-            params, args_list = carry
-            self.vc_target.load(*params)
+            partition, args_list = carry
 
-            for static_argnum in self.static_argnums:
-                args_list[static_argnum] = self.static_args[static_argnum]
-
-            if self.has_aux:
-                r = f(j, *args_list[1:])
+            if self.js is not None:
+                r, partition = self._functional(self.fn)(partition, j, *args_list[1:])
             else:
-                r = f(*args_list)
+                r, partition = self._functional(self.fn)(partition, *args_list)
 
             # Update args
             if isinstance(r, tuple):
@@ -108,93 +89,12 @@ class Scan(ModuleTransform):
                 updated_args = r[0]
                 for updated_arg, map_output in zip(
                     updated_args,
-                    map_outputs + tuple(range(len(updated_args) - len(map_outputs)))
+                    self.map_outputs + tuple(range(len(updated_args) - len(self.map_outputs)))
                 ):
                     args_list[map_output] = updated_arg
             else:
                 y = r
 
-            # return only the target because it's the value passed in input,
-            # other changes are not captured not permitted since the shape must be constant.
-            return (self.vc_target.dump()[:2], args_list), y
+            return (partition, args_list), y
 
-        self._call = lambda params, args_list: jax.lax.scan(scan, (params, args_list), js, length)
-        self.static_argnums = static_argnums
-        self.static_args = {}
-        self.has_aux = js is not None
-
-    @property
-    def vc_target(self) -> VarCollection:
-        return self.vc_f(self.vc) + VarCollection(RKG.vars())
-
-    def __call__(self, *args, **kwargs):
-        differentiable, dynamic, static = self.vc_target.dump()
-
-        if self.has_aux:
-            args = (None,) + args
-
-        args_list = make_args(
-            self.__wrapped__,
-            args,
-            kwargs
-        )
-
-        for static_argnum in self.static_argnums:
-            self.static_args[static_argnum] = args_list[static_argnum]
-            args_list[static_argnum] = None
-
-        (changes, _), output = self._call(
-            (differentiable, dynamic), args_list
-        )
-        self.vc_target.load(*changes)
-        self.static_args = {}
-
-        return output
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(f={self.__wrapped__})"
-
-
-def scan(f):
-    @functools.wraps(f)
-    def wrapper(
-        filter: Union[_, Callable[[VarCollection], VarCollection]] = lambda vc: vc,
-        js: Optional[Tuple[Any, ...]] = None,
-        length: Optional[int] = None,
-        map_outputs: Tuple[int, ...] = (),
-        **static_kwargs
-    ):
-        scan = Scan(
-            f,
-            vc_f=filter,
-            js=js,
-            length=length,
-            map_outputs=map_outputs,
-            static_argnums=kwargs_indices(f, static_kwargs),
-        )
-
-        return Function(
-            functools.wraps(f)(lambda *args, **kwargs: scan(*args, **{**dict(static_kwargs), **kwargs})),
-            scan.vc
-        )
-
-    return wrapper
-
-
-def switch(*fns):
-    def wrapper(
-        filter: Union[_, Callable[[VarCollection], VarCollection]] = lambda vc: vc,
-        **static_kwargs
-    ):
-        switch = Switch(
-            fns,
-            vc_f=filter,
-            static_argnums=kwargs_indices(fns[0], static_kwargs),
-        )
-
-        return Function(
-            lambda j, *args, **kwargs: switch(j, *args, **{**dict(static_kwargs), **kwargs}),
-            switch.vc
-        )
-
-    return wrapper
+        return lambda partition, *args: jax.lax.scan(scan, (partition, args), self.js, self.length)

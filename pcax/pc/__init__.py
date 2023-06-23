@@ -23,7 +23,7 @@ from .parameters import (
     LayerParam
 )
 
-from .context import (
+from ..utils.context import (
     train,
     eval,
     init_module,

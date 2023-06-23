@@ -249,7 +249,7 @@ class Vectorize(_AbstractTransformation):
         out_axis: Tuple[Optional[int], ...] = (0,),
         axis_name: str = "batch",
     ):
-        """Jit constructor.
+        """Vectorize constructor.
 
             Args:
                 fn: the function/transformation to vectorize,
@@ -266,7 +266,6 @@ class Vectorize(_AbstractTransformation):
         self.axis_name = axis_name
 
     def _call(self, params_partition, *args):
-        params_copy = tuple(move(p) for p in params_partition)
         if len(self.in_axis) > 0:
             in_axis_argnums = [
                 (x, v) for x, v in enumerate(self.in_axis) if v is not None
@@ -275,13 +274,13 @@ class Vectorize(_AbstractTransformation):
                 in_axis_argnums[0][1]
             ]
         else:
-            nsplits = next(iter(params_copy[0].values())).shape[0]
+            nsplits = next(iter(params_partition[0].values())).shape[0]
 
-        for rkg in params_copy[0].filter(f(_RKGState)):
+        for rkg in params_partition[0].filter(f(_RKGState)):
             rkg.value = rkg.split(nsplits)
 
         output, params_partition = self.transform(
-            params_copy,
+            params_partition,
             *args
         )
         for p in params_partition[0]:
