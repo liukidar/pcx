@@ -7,7 +7,6 @@ import pcax as px  # same as import pcax.pc as px
 import pcax.nn as nn
 from pcax.core import f  # _ is the filter object, more about it later!
 from pcax.utils.data import TorchDataloader
-import pcax.utils.flow as flow
 
 import numpy as np
 from torchvision.datasets import MNIST
@@ -27,18 +26,16 @@ class Model(px.EnergyModule):
         """
         This is quite standard. We define the layers and links (one layer for each link).
         """
-        self.linear1 = nn.Linear(input_dim, hidden_dim)
-        self.linear_h = [nn.Linear(hidden_dim, hidden_dim) for _ in range(nm_layers)]
-        self.linear2 = nn.Linear(hidden_dim, output_dim)
+        self.fc_layers = [nn.Linear(input_dim, hidden_dim)] \
+            + [nn.Linear(hidden_dim, hidden_dim) for _ in range(nm_layers)] \
+            + [nn.Linear(hidden_dim, output_dim)]
 
-        self.pc1 = px.Node()
-        self.pc_h = [px.Node() for _ in range(nm_layers)]
-        self.pc2 = px.Node()
+        self.pc_nodes = [px.Node() for _ in range(nm_layers + 2)]
 
         """
         We normally use the x of the last layer as the target, therefore we don't want to update it.
         """
-        self.pc2.x.frozen = True
+        self.pc_nodes[-1].x.frozen = True
 
     """
     Here things are a bit different. __call__ accepts an optional target t (used during training),
@@ -51,20 +48,18 @@ class Model(px.EnergyModule):
         By default, these are the incoming activation (u), the node values (x) and the energy (e).
         You can access them by using the [] operator, e.g., self.pc["x"].
         """
-        x = self.pc1(self.act_fn(self.linear1(x)))["x"]
+        for n, l in zip(self.pc_nodes[:-1], self.fc_layers[:-1]):
+            x = n(self.act_fn(l(x)))["x"]
 
-        for i in range(len(self.linear_h)):
-            x = self.pc_h[i](self.act_fn(self.linear_h[i](x)))["x"]
-
-        x = self.pc2(self.linear2(x))["x"]
+        x = self.pc_nodes[-1](self.fc_layers[-1](x))["x"]
 
         if t is not None:
-            self.pc2["x"] = t
+            self.pc_nodes[-1]["x"] = t
 
         """
         The output of the network is the activation received by the last layer (since its x is clamped to the label).
         """
-        return self.pc2["u"]
+        return self.pc_nodes[-1]["u"]
 
 
 def one_hot(x, k):
@@ -151,8 +146,8 @@ def train_on_batch(x, y, *, model, optim_w, optim_x):
             # to compute the gradients.
             # px.init_cache takes care of managing the cache.
             # !!! IMPORTANT: px.init_cache must always be used inside a px.init_nodes context !!!
-            flow.switch((x_step, x_step))(
-                0, x, model=model, optim_x=optim_x
+            x_step(
+                x, model=model, optim_x=optim_x
             )
             # x_step(x, model=model, optim_x=optim_x)
 
