@@ -1,42 +1,74 @@
-__all__ = ["init_nodes", "init_cache", "vectorize", "gradvalues", "jit"]
+__all__ = ["train", "eval", "init_cache", "vectorize", "gradvalues", "jit"]
 
-from ..core import f, Vectorize, GradValues, Jit
-from .variables import NodeVar, ParameterCache
+from ..core import f, Vectorize, GradValues, Jit, Module
+from .variables import NodeVar
 from ..core.parameters import ParamsDict
+from .module import EnergyModule
 
 import contextlib
 from typing import Callable, Tuple, Optional, Union
 
 
 @contextlib.contextmanager
-def init_nodes(
-    model,
+def train(
+    model: Union[Module, EnergyModule],
     *args,
-    filter=f(NodeVar, ParameterCache),
-    in_axis=None,
-    out_axis=None,
-    clear_on_enter=True,
+    filter: Union[f, Callable] = f(NodeVar, with_cache=True),
+    in_axis: Optional[Tuple[Union[None, int]]] = None,
+    out_axis: Optional[Tuple[Union[None, int, str]]] = None,
     **kwargs
 ):
+    model.train()
+
     if len(args):
-        if in_axis is None:
-            in_axis = (0,) * len(args)
-        if out_axis is None:
-            out_axis = (0,)
-
-        def call(*args, model):
-            return model(*args)
-        r = Vectorize(call, filter, in_axis, out_axis)(*args, model=model, **kwargs)
-
-        if clear_on_enter:
-            model.clear_cache()
-
-        yield r
+        yield init_module(model, *args, filter=filter, in_axis=in_axis, out_axis=out_axis, **kwargs)
     else:
         yield
 
     model.clear_cache()
-    model.clear_nodes()
+
+
+@contextlib.contextmanager
+def eval(
+    model: Union[Module, EnergyModule],
+    *args,
+    filter: Union[f, Callable] = f(NodeVar, with_cache=True),
+    in_axis: Optional[Tuple[Union[None, int]]] = None,
+    out_axis: Optional[Tuple[Union[None, int, str]]] = None,
+    **kwargs
+):
+    model.eval()
+
+    if len(args):
+        yield init_module(model, *args, filter=filter, in_axis=in_axis, out_axis=out_axis, **kwargs)
+    else:
+        yield
+
+    model.clear_cache()
+
+
+def init_module(
+    model: Module | EnergyModule,
+    *args,
+    filter: Union[f, Callable] = f(NodeVar, with_cache=True),
+    in_axis: Optional[Tuple[Union[None, int]]] = None,
+    out_axis: Optional[Tuple[Union[None, int, str]]] = None,
+    **kwargs
+):
+    model.set_status(init=True)
+
+    in_axis = in_axis or ((0,) * len(args))
+    out_axis = out_axis or (0,)
+
+    @vectorize(filter=filter, in_axis=in_axis, out_axis=out_axis)
+    def forward(*args, model):
+        return model(*args)
+
+    r = forward(*args, model=model, **kwargs)
+
+    model.set_status(init=False)
+
+    return r
 
 
 @contextlib.contextmanager

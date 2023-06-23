@@ -17,7 +17,7 @@ os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 NM_LAYERS = 2
 
 
-class Model(px.Module):
+class Model(px.EnergyModule):
     def __init__(self, input_dim, hidden_dim, output_dim, nm_layers=NM_LAYERS) -> None:
         super().__init__()
 
@@ -139,7 +139,7 @@ def train_w(x, *, model, dummy_static_arg):
 @px.jit()
 def train_on_batch(x, y, *, model, optim_w, optim_x):
     # We are working on the input x, so we initialise the internal nodes with it (this also initialises the cache).
-    with px.init_nodes(model, x, y) as (y_hat,):
+    with px.train(model, x, y) as (y_hat,):
         for i in range(params["T"]):
             # Each forward pass caches the intermediate values (such as activations and energies), so we can use them
             # to compute the gradients.
@@ -159,7 +159,7 @@ def train_on_batch(x, y, *, model, optim_w, optim_x):
 def evaluate(x, y, *, model):
     # As in train_on_batch, we initialise the internal nodes with the input x. By doing so we also get the model's
     # output y_hat.
-    with px.init_nodes(model, x, y) as (y_hat,):
+    with px.eval(model, x, y) as (y_hat,):
         return (y_hat.argmax(-1) == y.argmax(-1)).mean()
 
 
@@ -189,7 +189,7 @@ model = Model(28 * 28, params["hidden_dim"], 10)
 # load_params(model.parameters().filter(_(px.LinkVar)), "mnist_params.npz")
 
 # dummy run to init the optimizer parameters
-with px.init_nodes(model, np.zeros((params["batch_size"], 28 * 28)), None):
+with px.train(model, np.zeros((params["batch_size"], 28 * 28)), None):
     optim_x = px.Optim(
         optax.sgd(params["x_learning_rate"]), model.parameters().filter(f(px.NodeVar)(frozen=False)),
     )

@@ -1,4 +1,4 @@
-__all__ = ["Module", "Layer"]
+__all__ = ["EnergyModule", "Layer"]
 
 import jax
 import jax.tree_util as jt
@@ -9,7 +9,7 @@ from .variables import NodeVar
 from ..core.parameters import _BaseParameter, Parameter, ParameterCache
 
 
-class Module(_Module):
+class EnergyModule(_Module):
     def __init__(self) -> None:
         super().__init__()
         self._status = None
@@ -31,7 +31,7 @@ class Module(_Module):
             lambda x, y: x + y,
             tuple(
                 m.energy()
-                for m in self.get_submodules(cls=Module)
+                for m in self.get_submodules(cls=EnergyModule)
             ),
         )
 
@@ -39,7 +39,7 @@ class Module(_Module):
         if "init" in status:
             self._init = status["init"]
 
-        for m in self.get_submodules(cls=Module):
+        for m in self.get_submodules(cls=EnergyModule):
             m.set_status(**status)
 
     @property
@@ -81,7 +81,7 @@ def _energy_fn(self, rkey):
     return 0.5 * (e * e).sum(axis=-1)
 
 
-class Layer(Module):
+class Layer(EnergyModule):
     def __init__(
         self,
         rkey=RKG,
@@ -118,7 +118,7 @@ class Layer(Module):
             else:
                 self.set_activation(key, value)
 
-        if self.x.value is None:
+        if self.is_init:
             self.init_fn(self, rkey)
         else:
             self.forward_fn(self, rkey)
