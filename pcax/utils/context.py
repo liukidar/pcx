@@ -74,7 +74,7 @@ def init_module(
     r = forward(*args, model=model, **kwargs)
 
     if isinstance(model, EnergyModule):
-        model.set_status(init=True)
+        model.set_status(init=False)
 
     return r
 
