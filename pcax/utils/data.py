@@ -1,4 +1,4 @@
-__all__ = ['TorchDataloader']
+__all__ = ['save_params', 'load_params', 'TorchDataloader']
 
 
 import numpy as np

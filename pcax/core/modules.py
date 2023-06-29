@@ -60,7 +60,7 @@ def flatten_module_with_keys(module: 'Module') -> Tuple[Any, Any]:
     return parameters, (keys, values)
 
 
-def unflatten_module(cls, static_data: Any, parameters: Any) -> 'Module':
+def unflatten_module(static_data: Any, parameters: Any, *, cls) -> 'Module':
     module = object.__new__(cls)
     keys, values = static_data
     parameters_iter = iter(parameters)
