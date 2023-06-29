@@ -19,13 +19,16 @@ def train(
     **kwargs
 ):
     model.train()
+    if isinstance(model, EnergyModule):
+        model.clear_cache()
 
     if len(args):
         yield init_module(model, *args, filter=filter, in_axis=in_axis, out_axis=out_axis, **kwargs)
     else:
         yield
 
-    model.clear_cache()
+    if isinstance(model, EnergyModule):
+        model.clear_cache()
 
 
 @contextlib.contextmanager
@@ -38,13 +41,16 @@ def eval(
     **kwargs
 ):
     model.eval()
+    if isinstance(model, EnergyModule):
+        model.clear_cache()
 
     if len(args):
         yield init_module(model, *args, filter=filter, in_axis=in_axis, out_axis=out_axis, **kwargs)
     else:
         yield
 
-    model.clear_cache()
+    if isinstance(model, EnergyModule):
+        model.clear_cache()
 
 
 def init_module(
@@ -55,7 +61,8 @@ def init_module(
     out_axis: Optional[Tuple[Union[None, int, str]]] = None,
     **kwargs
 ):
-    model.set_status(init=True)
+    if isinstance(model, EnergyModule):
+        model.set_status(init=True)
 
     in_axis = in_axis or ((0,) * len(args))
     out_axis = out_axis or (0,)
@@ -66,25 +73,28 @@ def init_module(
 
     r = forward(*args, model=model, **kwargs)
 
-    model.set_status(init=False)
+    if isinstance(model, EnergyModule):
+        model.set_status(init=True)
 
     return r
 
 
 @contextlib.contextmanager
 def step(model):
-    model.clear_cache()
+    if isinstance(model, EnergyModule):
+        model.clear_cache()
 
     yield
 
-    model.clear_cache()
+    if isinstance(model, EnergyModule):
+        model.clear_cache()
 
 
 # TRANSFORMS #########################################################################################################
 
 
 def vectorize(
-    filter: Union[f, Callable[[ParamDict], ParamDict]],
+    filter: Union[f, Callable[[ParamDict], ParamDict]] = lambda key, value: False,
     in_axis: Tuple[Optional[int], ...] = (0,),
     out_axis: Tuple[Optional[int], ...] = (0,),
     axis_name: str = "batch"
