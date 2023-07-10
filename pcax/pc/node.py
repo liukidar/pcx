@@ -48,8 +48,8 @@ class Node(EnergyModule):
     def __init__(
         self,
         rkg: RandomKeyGenerator = RKG,
-        init_fn: Callable[["Node"], None] = _init_fn,
-        forward_fn: Callable[["Node"], None] = _forward_fn,
+        init_fn: Optional[Callable[["Node"], None]] = None,
+        forward_fn: Optional[Callable[["Node"], None]] = None,
         energy_fn: Callable[[Any], jax.Array] = _energy_fn,
         blueprints: Dict[str, Callable[[Any], jax.Array]] = {},
         views: Dict[str, VarView] = {},
@@ -64,8 +64,8 @@ class Node(EnergyModule):
             **views,
         }
 
-        self.init_fn = init_fn
-        self.forward_fn = forward_fn
+        self.init_fn = init_fn or _init_fn
+        self.forward_fn = forward_fn or _forward_fn
 
         self.register_blueprints((("e", energy_fn),) + tuple(blueprints.items()))
 
