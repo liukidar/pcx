@@ -1,11 +1,11 @@
 __all__ = ["Optim"]
 
-from ..core import Module as _Module
+from ..core import Module
 from ..core.parameters import Param, ParamRef
 import jax.numpy as jnp
 
 
-class Optim(_Module):
+class Optim(Module):
     def __init__(self, optax_opt, vars, allow_none_grads=False):
         self.optax_opt = optax_opt
         self.train_refs = [ParamRef(x) for x in vars]
