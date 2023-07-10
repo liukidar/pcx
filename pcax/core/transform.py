@@ -81,13 +81,15 @@ class _AbstractTransformation(abc.ABC):
 
     def _build(self, params, kwargs):
         if isinstance(self.fn, _AbstractTransformation):
-            self.fn = self.fn._build(params, kwargs)
+            t = self.fn._build(params, kwargs)
+        else:
+            t = self.fn
 
         self.params = params
         self.kwargs = kwargs
 
         if self.transform is None:
-            self.transform = self._make_transform()
+            self.transform = self._make_transform(t)
 
         def fn(*args):
             return self._call(self.partition, *args)
@@ -97,7 +99,7 @@ class _AbstractTransformation(abc.ABC):
     def _functional(self, t: Callable) -> Callable:
         def wrapper(params_copy, *args):
             params_partition = tuple(move(c, p) for c, p in zip(params_copy, self.partition))
-            if isinstance(self.fn, Function):
+            if isinstance(t, Function):
                 output = t(*args)
             else:
                 output = t(*args, **self.kwargs)
@@ -117,7 +119,7 @@ class _AbstractTransformation(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _make_transform(self):
+    def _make_transform(self, fn):
         raise NotImplementedError()
 
     def __repr__(self):
@@ -225,9 +227,9 @@ class Jit(_AbstractTransformation):
 
         return super()._build(params, kwargs)
 
-    def _make_transform(self):
+    def _make_transform(self, fn):
         return jax.jit(
-            lambda params, _, *args: self._functional(self.fn)(params, *args),
+            lambda params, _, *args: self._functional(fn)(params, *args),
             static_argnums=(1,),
             donate_argnums=(0,) + tuple(x + 2 for x in self.donate_argnums),
             inline=self.inline,
@@ -288,12 +290,12 @@ class Vectorize(_AbstractTransformation):
 
         return output
 
-    def _make_transform(self):
+    def _make_transform(self, fn):
         def vmap(
             *args,
             **kwargs
         ):
-            outputs = self.fn(*args, **kwargs)
+            outputs = fn(*args, **kwargs)
             if not isinstance(outputs, tuple):
                 outputs = (outputs,)
 
@@ -375,13 +377,13 @@ class _DerivativeBase(_AbstractTransformation):
         else:
             return g
 
-    def _make_transform(self):
+    def _make_transform(self, fn):
         def derivative(params_inputs, params_other, *args):
             inputs, params_target = params_inputs
             for i, arg in zip(self.input_argnums, inputs):
                 args[i] = arg
 
-            output, params_partition = self._functional(self.fn)((params_target, params_other), *args)
+            output, params_partition = self._functional(fn)((params_target, params_other), *args)
 
             if not isinstance(output, tuple | list):
                 output = (output,)
