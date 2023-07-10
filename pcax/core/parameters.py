@@ -110,6 +110,12 @@ class _AbstractParam(metaclass=_AbstractParamMeta):
             "To check if variable is `None` use `is None` or `is not None` instead."
         )
 
+    def __hash__(self) -> int:
+        return id(self)
+
+    def __eq__(self, __value: object) -> bool:
+        return self is __value
+
     @abc.abstractmethod
     def reduce(self):
         """Method called by Vectorize to reduce a multiple-device (or batched in case of vectorization)
@@ -535,10 +541,10 @@ def flatten_paramsdict(params: ParamDict) -> Tuple[Any, Any]:
     for k, v in params.items():
         uid = id(v)
         if uid not in seen:
-            seen[uid] = (
+            seen[uid] = [
                 v,
                 (k,)
-            )
+            ]
         else:
             seen[uid][1] += (k,)
 
