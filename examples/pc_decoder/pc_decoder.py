@@ -1,9 +1,13 @@
 import os
+import gc
 from typing import Callable
 from argparse import ArgumentParser
-from functools import partial
+
+# from functools import partial
 import pathlib
-from itertools import islice
+
+# from itertools import islice
+import pprint
 
 import jax
 import jax.numpy as jnp
@@ -13,48 +17,24 @@ import pcax.utils as pxu
 import pcax.nn as nn
 import pcax.core as pxc
 import torch
+from ray.air import session
+from ray import air, tune
+from ray.tune.schedulers import ASHAScheduler
+from ray.tune.search import ConcurrencyLimiter
+from ray.tune.search.optuna import OptunaSearch
 import numpy as np
 import pandas as pd
 from torchvision import datasets, transforms
 from tqdm import tqdm
-from hyperparameters import HP, Hyperparams
+
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+from params import Params
 
 # Environment variables
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
-
-class ModelParams(Hyperparams):
-    internal_dim: int = HP("Dimension of the internal representation. Must be internal_dim << output_dim.", default=2)
-    output_dim: int = HP("Dimension of the data. Must be output_dim >> internal_dim.", default=784)
-    num_layers: int = HP("Number of layers in the generator, including the output layer.", default=16)
-    init_rand_weight: float = HP("Determines the fraction of randomness in the initialization value.", default=0.0)
-    init_forward_weight: float = HP(
-        "Determines the fraction of forward-pass value in the initialization value.", default=1.0
-    )
-    init_constant: float = HP("A constant to initialize the values.", default=0.0)
-    init_constant_weight: float = HP(
-        "Determines the fraction of the constant in the initialization value.", default=0.0
-    )
-
-
-class TrainingParams(ModelParams):
-    epochs: int = HP("Number of epochs to train for.", default=500)
-    batch_size: int = HP(
-        "Number of examples in a batch. Note the last batch will be discarded. Make sure all batches are of the same size!",
-        default=10000,
-    )
-    T: int = HP("Number of Predictive Coding iterations.", default=8)
-    optim_x_lr: float = HP("Learning rate for PC node values", default=5e-3)
-    optim_x_l2: float = HP("Weight decay for PC node values", default=0.05)
-    optim_w_lr: float = HP("Learning rate for model weights", default=3e-4)
-    optim_w_l2: float = HP("Weight decay for model weights.", default=0.05)
-    optim_w_momentum: float = HP("Momentum for model weights.", default=0.9)
-    optim_w_nesterov: bool = HP("Whether to use Nesterov for model weights", default=True)
-    result_dir: str = HP("Directory to save results to.", default="results")
 
 
 class PCGenerator(px.EnergyModule):
@@ -124,16 +104,16 @@ def predict(example: jax.Array, *, model) -> jax.Array:
     return model(example=example)
 
 
-class ReentryIsliceIterator:
-    def __init__(self, iterable, limit):
-        self.iterable = iterable
-        self.limit = limit
+# class ReentryIsliceIterator:
+#     def __init__(self, iterable, limit):
+#         self.iterable = iterable
+#         self.limit = limit
 
-    def __iter__(self):
-        return islice(self.iterable, self.limit).__iter__()
+#     def __iter__(self):
+#         return islice(self.iterable, self.limit).__iter__()
 
 
-def get_data_loaders(batch_size: int) -> tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
+def get_data_loaders(params: Params) -> tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
     transform = transforms.Compose(
         [
             transforms.ToTensor(),
@@ -141,18 +121,18 @@ def get_data_loaders(batch_size: int) -> tuple[torch.utils.data.DataLoader, torc
         ]
     )
 
-    train_dataset = datasets.MNIST(root="./data/MNIST", train=True, download=True, transform=transform)  # type: ignore
-    test_dataset = datasets.MNIST(root="./data/MNIST", train=False, download=True, transform=transform)  # type: ignore
+    train_dataset = datasets.MNIST(root=params.data_dir, train=True, download=True, transform=transform)  # type: ignore
+    test_dataset = datasets.MNIST(root=params.data_dir, train=False, download=True, transform=transform)  # type: ignore
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=batch_size,
+        batch_size=params.batch_size,
         shuffle=True,
         # drop_last=True,
     )
     test_loader = torch.utils.data.DataLoader(
         test_dataset,
-        batch_size=batch_size,
+        batch_size=params.batch_size,
         shuffle=False,
         # drop_last=True,
     )
@@ -241,12 +221,7 @@ def internal_init(node: px.Node, rkg: pxc.RandomKeyGenerator, internal_dim: int)
     node["x"] = value
 
 
-def main():
-    parser = ArgumentParser()
-    TrainingParams.add_arguments(parser)
-    args = parser.parse_args()
-    params = TrainingParams.from_arguments(args)
-
+def train_model(params: Params) -> None:
     model = PCGenerator(
         params.internal_dim, params.output_dim, params.num_layers, act_fn=jax.nn.tanh, internal_init_fn=internal_init
     )
@@ -284,7 +259,7 @@ def main():
         T=params.T,
     )
 
-    train_loader, test_loader = get_data_loaders(params.batch_size)
+    train_loader, test_loader = get_data_loaders(params)
 
     train_mses = []
     test_mses = []
@@ -320,6 +295,13 @@ def main():
             tepoch.set_postfix(train_mse=epoch_train_mse, test_mse=epoch_test_mse)
 
     assert len(train_mses) == len(test_mses)
+    session.report(
+        {
+            "test_mse": test_mses[-1],
+            "train_mse": train_mses[-1],
+            "epochs": len(test_mses),
+        }
+    )
 
     result_dir = pathlib.Path(params.result_dir)
     result_dir.mkdir(parents=True, exist_ok=True)
@@ -366,6 +348,89 @@ def main():
     plt.title("Internal representations of classes")
     plt.legend()
     plt.savefig(result_dir / "pc_decoder_mnist_internal_states.png")
+
+
+class Trainable:
+    def __init__(self, params: Params) -> None:
+        self.params = params
+
+    def __call__(self, config: dict):
+        gc.collect()
+        params = self.params.update(config, inplace=False, validate=True)
+        # https://docs.ray.io/en/latest/tune/api/doc/ray.tune.utils.wait_for_gpu.html#ray.tune.utils.wait_for_gpu
+        if params.hypertunning_gpu_memory_fraction_per_trial > 0:
+            tune.utils.wait_for_gpu(
+                target_util=1.0 - params.hypertunning_gpu_memory_fraction_per_trial,
+                retry=50,
+                delay_s=12,
+            )
+        train_model(params)
+        gc.collect()
+
+
+def main():
+    parser = ArgumentParser()
+    Params.add_arguments(parser)
+    args = parser.parse_args()
+    params = Params.from_arguments(args)
+    pp = pprint.PrettyPrinter(indent=4)
+
+    # Download datasets
+    get_data_loaders(params)
+
+    if params.hypertunning_gpu_memory_fraction_per_trial < 0 or params.hypertunning_gpu_memory_fraction_per_trial > 1:
+        raise ValueError(f"--hypertunning-gpu-memory-fraction-per-trial must be in [0, 1]")
+
+    if params.do_hypertunning:
+        trainable = Trainable(params)
+        trainable = tune.with_resources(
+            trainable,
+            {
+                "cpu": params.hypertunning_cpu_per_trial,
+                "gpu": params.hypertunning_gpu_memory_fraction_per_trial,
+            },
+        )
+        param_space = params.ray_tune_param_space()
+        search_algo = OptunaSearch(
+            # points_to_evaluate=points_to_evaluate,
+        )
+        if params.hypertunning_max_concurrency is not None:
+            search_algo = ConcurrencyLimiter(search_algo, max_concurrent=params.hypertunning_max_concurrency)
+        scheduler = None
+        if params.hypertunning_use_early_stop_scheduler:
+            scheduler = ASHAScheduler()
+        tuner = tune.Tuner(
+            trainable,
+            param_space=param_space,
+            tune_config=tune.TuneConfig(
+                num_samples=params.hypertunning_num_trials,
+                metric="test_mse",
+                mode="min",
+                search_alg=search_algo,
+                scheduler=scheduler,
+                reuse_actors=False,
+            ),
+            run_config=air.RunConfig(
+                name=params.experiment_name,
+                local_dir=params.result_dir,
+                failure_config=air.FailureConfig(max_failures=3),
+            ),
+        )
+        results = tuner.fit()
+        print("--- Hypertunning done! ---")
+        pp.pprint(results)
+        print("--- Best trial ---")
+        best_result = results.get_best_result()
+        pp.pprint(best_result.config)
+        pp.pprint(best_result.metrics)
+        pp.pprint(best_result.log_dir)
+
+        # FIXME: use the best reported score to compare results!
+        # Note: ray.tune interprets the last reported result of each trial as the "best" one:
+        # https://github.com/ray-project/ray_lightning/issues/81
+        results.get_dataframe().to_csv(os.path.join(params.result_dir, "hypertunning_results.csv"), index=False)
+    else:
+        train_model(params)
 
 
 if __name__ == "__main__":
