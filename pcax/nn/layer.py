@@ -31,9 +31,12 @@ class Layer(Module):
 
 class Linear(Layer):
     def __init__(self, in_features: int, out_features: int, bias: bool = True):
-        super().__init__(
-            eqx.nn.Linear, in_features, out_features, bias, key=RKG()
-        )
+        self.in_features = in_features
+        self.out_features = out_features
+        super().__init__(eqx.nn.Linear, in_features, out_features, bias, key=RKG())
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.in_features}, {self.out_features})"
 
 
 class LayerNorm(Layer):

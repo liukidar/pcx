@@ -14,13 +14,17 @@ class EnergyModule(Module):
         self._init = None
 
     def clear_cache(self):
-        parameters = jax.tree_util.tree_leaves(self, is_leaf=lambda x: isinstance(x, _BaseParam))
+        parameters = jax.tree_util.tree_leaves(
+            self, is_leaf=lambda x: isinstance(x, _BaseParam)
+        )
         for p in parameters:
             if isinstance(p, ParamCache):
                 p.clear()
 
     def clear_nodes(self):
-        parameters = jax.tree_util.tree_leaves(self, is_leaf=lambda x: isinstance(x, _BaseParam))
+        parameters = jax.tree_util.tree_leaves(
+            self, is_leaf=lambda x: isinstance(x, _BaseParam)
+        )
         for p in parameters:
             if isinstance(p, NodeParam):
                 p.value = None
@@ -28,10 +32,7 @@ class EnergyModule(Module):
     def energy(self):
         return jt.tree_reduce(
             lambda x, y: x + y,
-            tuple(
-                m.energy()
-                for m in self.get_submodules(cls=EnergyModule)
-            ),
+            tuple(m.energy() for m in self.get_submodules(cls=EnergyModule)),
         )
 
     def set_status(self, **status):
