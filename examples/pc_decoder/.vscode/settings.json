@@ -1,0 +1,18 @@
+{
+    "python.analysis.exclude": [
+        "data",
+        "results"
+    ],
+    "files.exclude": {
+        "**/__pycache__": true,
+        "data": true,
+        "wandb": true,
+        ".mypy_cache": true
+    },
+    "search.exclude": {
+        "**/__pycache__": true,
+        "data": true,
+        "wandb": true,
+        ".mypy_cache": true
+    }
+}
