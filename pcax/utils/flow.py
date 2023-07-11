@@ -30,10 +30,10 @@ class cond(_AbstractTransformation):
 
         return output
 
-    def _make_transform(self):
+    def _make_transform(self, fns):
         return lambda partition, cond, *args: jax.lax.cond(
             cond,
-            *tuple(self._functional(fn) for fn in self.fn),
+            *tuple(self._functional(fn) for fn in fns),
             partition,
             *args,
         )
@@ -55,10 +55,10 @@ class switch(_AbstractTransformation):
 
         return output
 
-    def _make_transform(self):
+    def _make_transform(self, fns):
         return lambda partition, j, *args: jax.lax.switch(
             j,
-            tuple(self._functional(fn) for fn in self.fn),
+            tuple(self._functional(fn) for fn in fns),
             partition,
             *args,
         )
@@ -99,16 +99,16 @@ class scan(_AbstractTransformation):
 
         return output
 
-    def _make_transform(self):
+    def _make_transform(self, fn):
         def scan(
             carry, j
         ):
             partition, args_list = carry
 
             if self.js is not None:
-                r, partition = self._functional(self.fn)(partition, j, *args_list[1:])
+                r, partition = self._functional(fn)(partition, j, *args_list[1:])
             else:
-                r, partition = self._functional(self.fn)(partition, *args_list)
+                r, partition = self._functional(fn)(partition, *args_list)
 
             # Update args
             if isinstance(r, tuple):
