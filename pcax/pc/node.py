@@ -13,10 +13,7 @@ from .energymodule import EnergyModule
 class VarView:
     def __init__(self, slices: Optional[Union[Tuple[slice], str]] = None) -> None:
         if isinstance(slices, str):
-            slices = tuple(
-                slice(*tuple(map(lambda i: int(i), s.split(":"))))
-                for s in slices.split(",")
-            )
+            slices = tuple(slice(*tuple(map(lambda i: int(i), s.split(":")))) for s in slices.split(","))
 
         self.slices = slices
 
@@ -48,7 +45,7 @@ class Node(EnergyModule):
     def __init__(
         self,
         rkg: RandomKeyGenerator = RKG,
-        init_fn: Callable[["Node"], None] = _init_fn,
+        init_fn: Callable[["Node", RandomKeyGenerator], None] = _init_fn,
         forward_fn: Callable[["Node"], None] = _forward_fn,
         energy_fn: Callable[[Any], jax.Array] = _energy_fn,
         blueprints: Dict[str, Callable[[Any], jax.Array]] = {},
@@ -69,9 +66,7 @@ class Node(EnergyModule):
 
         self.register_blueprints((("e", energy_fn),) + tuple(blueprints.items()))
 
-    def __call__(
-        self, u: jax.Array = None, rkg: RandomKeyGenerator = RKG, **kwargs
-    ):
+    def __call__(self, u: jax.Array = None, rkg: RandomKeyGenerator = RKG, **kwargs):
         if u is not None:
             self.set_activation("u", u)
 

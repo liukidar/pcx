@@ -11,6 +11,7 @@ from .parameters import NodeParam
 class EnergyModule(Module):
     def __init__(self) -> None:
         super().__init__()
+        self._init = False
         self._status = None
 
     def clear_cache(self):
@@ -28,10 +29,7 @@ class EnergyModule(Module):
     def energy(self):
         return jt.tree_reduce(
             lambda x, y: x + y,
-            tuple(
-                m.energy()
-                for m in self.get_submodules(cls=EnergyModule)
-            ),
+            tuple(m.energy() for m in self.get_submodules(cls=EnergyModule)),
         )
 
     def set_status(self, **status):
