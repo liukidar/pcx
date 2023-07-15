@@ -6,9 +6,10 @@ from hyperparameters.ray_tune_hyperparams import RayTuneHyperparamsMixin
 
 
 class ModelParams(Hyperparams):
-    internal_dim: int = HP("Dimension of the internal representation. Must be internal_dim << output_dim.", default=2)
+    internal_dim: int = HP("Dimension of the internal representation. Must be internal_dim << output_dim.", default=16)
+    hidden_dim: int = HP("Dimension of the hidden layers.", default=64)
     output_dim: int = HP("Dimension of the data. Must be output_dim >> internal_dim.", default=784)
-    num_layers: int = HP("Number of layers in the generator, including the output layer.", default=16)
+    num_hidden_layers: int = HP("Number of layers in the generator, including the output layer.", default=2)
     # init_rand_weight: float = HP("Determines the fraction of randomness in the initialization value.", default=0.0)
     # init_forward_weight: float = HP(
     #     "Determines the fraction of forward-pass value in the initialization value.", default=1.0
@@ -22,12 +23,20 @@ class ModelParams(Hyperparams):
 class Params(ModelParams, RayTuneHyperparamsMixin):
     experiment_name: str = HP(
         "Name of the experiment. An experiment contains many similar runs.",
-        default="pc_decoder_mnist",
+        default="development",
+    )
+    load_weights_from: Optional[str] = HP(
+        "Path to the directory containing saved W weights. Note that X values are not loaded (and not saved).",
+        default=None,
     )
     epochs: int = HP("Number of epochs to train for.", default=500)
     batch_size: int = HP(
         "Number of examples in a batch. Note the last batch will be discarded. Make sure all batches are of the same size!",
-        default=10000,
+        default=100,
+    )
+    use_n_batches_to_compute_metrics: int = HP(
+        "Number of last batches in the epoch used to compute average metrics on the train dataset",
+        default=40,
     )
     T: int = HP(
         "Number of Predictive Coding iterations.",
@@ -61,8 +70,22 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     optim_w_momentum: float = HP("Momentum for model weights.", default=0.9)
     optim_w_nesterov: bool = HP("Whether to use Nesterov for model weights", default=True)
+
     data_dir: str = HP("Directory to save data to.", default="data", adjust_relative_path=True)
     result_dir: str = HP("Directory to save results to.", default="results")
+
+    save_intermediate_results: bool = HP(
+        "Whether to save the intermediate models, graphs, and reports after every N epochs",
+        default=False,
+    )
+    save_results_every_n_epochs: int = HP(
+        "Save the intermediate results after every N epochs",
+        default=10,
+    )
+    save_best_model: bool = HP(
+        "Whether to save the best model",
+        default=True,
+    )
 
     do_hypertunning: bool = HP("Whether to do hypertunning.", default=False)
     hypertunning_num_trials: int = HP(
