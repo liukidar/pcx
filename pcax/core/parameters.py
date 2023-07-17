@@ -54,6 +54,22 @@ def reduce_id(x: jax.Array) -> jax.Array:
 # Core #################################################################################################################
 
 
+class _FlattenAbstractParam:
+    """A class to flatten/unflatten a parameter."""
+
+    def __init__(self, param: '_AbstractParam'):
+        self.param = param
+
+    def __hash__(self) -> int:
+        return self.param.__hash__()
+
+    def __eq__(self, __other: '_FlattenAbstractParam') -> bool:
+        return self.param is __other.param
+
+    def __ne__(self, __other: '_FlattenAbstractParam') -> bool:
+        return self.param is not __other.param
+
+
 class _AbstractParamMeta(abc.ABCMeta):
     """
     Metaclass to register all parameters in the JAX pytree flatten/unflatten util.
@@ -76,17 +92,18 @@ class _AbstractParamMeta(abc.ABCMeta):
         return cls
 
     @staticmethod
-    def flatten_parameter(var: '_AbstractParam') -> Tuple[Any, '_AbstractParam']:
-        return (var.value,), var
+    def flatten_parameter(param: '_AbstractParam') -> Tuple[Any, '_FlattenAbstractParam']:
+        return (param.value,), _FlattenAbstractParam(param)
 
     @staticmethod
-    def flatten_parameter_with_keys(var: '_AbstractParam') -> Tuple[Any, '_AbstractParam']:
-        return (("value", var.value),), var
+    def flatten_parameter_with_keys(param: '_AbstractParam') -> Tuple[Any, '_FlattenAbstractParam']:
+        return (("value", param.value),), _FlattenAbstractParam(param)
 
     @staticmethod
-    def unflatten_parameter(var: '_AbstractParam', data: Any) -> '_AbstractParam':
-        var.value = data[0]
-        return var
+    def unflatten_parameter(flatten_param: '_FlattenAbstractParam', data: Any) -> '_AbstractParam':
+        param = flatten_param.param
+        param.value = data[0]
+        return param
 
 
 class _AbstractParam(metaclass=_AbstractParamMeta):
