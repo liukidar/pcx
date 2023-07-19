@@ -68,8 +68,8 @@ def init_module(
     out_axis = out_axis or (0,)
 
     @vectorize(filter=filter, in_axis=in_axis, out_axis=out_axis)
-    def forward(*args, model):
-        return model(*args)
+    def forward(*args, model, **kwargs):
+        return model(*args, **kwargs)
 
     r = forward(*args, model=model, **kwargs)
 
