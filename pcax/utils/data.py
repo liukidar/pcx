@@ -104,9 +104,11 @@ class BatchAlignedSampler(torch.utils.data.Sampler):
             for indices in self.indices_by_class:
                 np.random.shuffle(indices)
 
+        min_len = min(len(indices) for indices in self.indices_by_class)
+
         yield from np.concatenate(
             tuple(
-                np.reshape(indices[:(len(indices) // self.index_len) * self.index_len], (-1, self.index_len))
+                np.reshape(indices[:(min_len // self.index_len) * self.index_len], (-1, self.index_len))
                 for indices in self.indices_by_class
             ),
             axis=1
