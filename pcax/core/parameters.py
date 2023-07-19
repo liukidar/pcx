@@ -434,6 +434,9 @@ class ParamCache(_BaseParam, ParamRef):
     def __contains__(self, __key: str):
         return __key in self._value
 
+    def get(self, __key: str, __default: Optional[jax.Array] = None):
+        return self._value.get(__key, __default)
+
     def clear(self):
         self._value = {}
 
