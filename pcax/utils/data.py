@@ -49,7 +49,7 @@ class TorchDataloader(torch.utils.data.DataLoader):
         self,
         dataset,
         batch_size=1,
-        shuffle=True,
+        shuffle=None,
         sampler=None,
         batch_sampler=None,
         num_workers=1,
@@ -68,9 +68,46 @@ class TorchDataloader(torch.utils.data.DataLoader):
             num_workers=num_workers,
             collate_fn=numpy_collate,
             pin_memory=pin_memory,
-            drop_last=True,
+            drop_last=True if batch_sampler is None else None,
             timeout=timeout,
             worker_init_fn=worker_init_fn,
             persistent_workers=persistent_workers,
             prefetch_factor=prefetch_factor,
+        )
+
+
+# BATCH ALIGNED SAMPLER
+
+class BatchAlignedSampler(torch.utils.data.Sampler):
+    def __init__(self, dataset, batch_size: int, shuffle: bool = True):
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+
+        # Create data buckets
+        buckets = {}
+        for i, (x, y) in enumerate(dataset):
+            buckets.setdefault(y, []).append(i)
+
+        self.indices_by_class = tuple(
+            np.array(bucket) for bucket in buckets.values()
+        )
+        self.index_len = self.batch_size // len(self.indices_by_class)
+
+        # Assert that batch_size is a multiple of the number of classes
+        assert self.batch_size % len(self.indices_by_class) == 0, \
+            f"Batch size (b={self.batch_size}) must be a multiple" \
+            f" of the number of classes (c={len(self.indices_by_class)})."
+
+    def __iter__(self):
+        # Shuffle indices
+        if self.shuffle:
+            for indices in self.indices_by_class:
+                np.random.shuffle(indices)
+
+        yield from np.concatenate(
+            tuple(
+                np.reshape(indices[:(len(indices) // self.index_len) * self.index_len], (-1, self.index_len))
+                for indices in self.indices_by_class
+            ),
+            axis=1
         )
