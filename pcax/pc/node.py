@@ -107,7 +107,7 @@ class Node(EnergyModule):
         if key not in self.x_tmp:
             self.call_blueprint(key, rkg)
 
-        return self.x_tmp[key]
+        return self.x_tmp.get(key, None)
 
     def set_activation(self, key: str, value: jax.Array):
         if key in self.x_tmp:
@@ -129,9 +129,8 @@ class Node(EnergyModule):
             self.blueprints[key] = blueprint
 
     def call_blueprint(self, key: str, rkg: RandomKeyGenerator = RKG):
-        blueprint = self.blueprints[key]
-
-        self.x_tmp[key] = blueprint(self, rkg)
+        if key in self.blueprints:
+            self.x_tmp[key] = self.blueprints[key](self, rkg)
 
 
 # def _layerwsigma_init_fn(layer, rkg: RandomKeyGenerator):
