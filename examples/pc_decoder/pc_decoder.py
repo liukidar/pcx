@@ -2,14 +2,12 @@ import os
 import gc
 from typing import Callable, Any
 from argparse import ArgumentParser
-from collections import defaultdict
 from uuid import uuid4
 import json
 from pathlib import Path
 from datetime import datetime
 import shutil
 
-# from functools import partial
 import pprint
 
 import jax
@@ -41,8 +39,6 @@ from params import Params, ModelParams
 
 # Environment variables
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
 
 DEBUG = os.environ.get("DEBUG", "0") == "1"
 DEBUG_BATCH_NUMBER = 10
@@ -50,13 +46,13 @@ DEBUG_BATCH_NUMBER = 10
 
 activation_functions: dict[str, Callable[[jax.Array], jax.Array]] = {
     "gelu": jax.nn.gelu,
-    "tanh": jax.nn.tanh,
     "relu": jax.nn.relu,
+    "tanh": jax.nn.tanh,
     "sigmoid": jax.nn.sigmoid,
 }
 
 
-class PCGenerator(px.EnergyModule):
+class PCDecoder(px.EnergyModule):
     def __init__(
         self,
         *,
@@ -203,12 +199,13 @@ class PCGenerator(px.EnergyModule):
 
 def internal_init(rkg: pxc.RandomKeyGenerator, internal_dim: int) -> jax.Array:
     # TODO: Play with different initialization strategies
-    value = jax.random.normal(rkg(), (internal_dim,))
+    # value = jax.random.normal(rkg(), (internal_dim,))
+    value = jnp.ones((internal_dim,))
     return value
 
 
 @pxu.vectorize(px.f(px.NodeParam, with_cache=True), in_axis=(0,), out_axis=("sum",))
-def loss(example: jax.Array, *, model: PCGenerator) -> jax.Array:
+def loss(example: jax.Array, *, model: PCDecoder) -> jax.Array:
     model(example=example)
     res = model.energy()
     assert isinstance(res, jax.Array)
@@ -222,8 +219,9 @@ def predict(example: jax.Array, *, model) -> jax.Array:
     return res
 
 
+# TODO: Why do I need to vectorize NodeParams if I don't use PCLayers in feed-forward prediction?
 @pxu.vectorize(px.f(px.NodeParam, with_cache=True), in_axis=(0,))
-def feed_forward_predict(internal_state: jax.Array, *, model: PCGenerator) -> jax.Array:
+def feed_forward_predict(internal_state: jax.Array, *, model: PCDecoder) -> jax.Array:
     res = model.feed_forward_predict(internal_state)
     assert isinstance(res, jax.Array)
     return res
@@ -337,41 +335,18 @@ def get_viz_samples(test_loader: DataLoader[Any]) -> tuple[jax.Array, jax.Array]
     return examples, labels
 
 
-# def stats(gradients):
-#     if not gradients:
-#         return {}
-#     return {
-#         "has_nan": any([bool(jnp.isnan(x).any()) for x in gradients.values()]),
-#         "has_inf": any([bool(jnp.isinf(x).any()) for x in gradients.values()]),
-#         "max": max([float(x.max()) for x in gradients.values()]),
-#         "min": min([float(x.min()) for x in gradients.values()]),
-#     }
-
-
 @pxu.jit()
 def train_on_batch(
-    examples: jax.Array, *, model: PCGenerator, optim_x, optim_w, loss, T
+    examples: jax.Array, *, model: PCDecoder, optim_x, optim_w, loss, T
 ) -> jax.Array:
     grad_and_values = pxu.grad_and_values(
         px.f(px.NodeParam)(frozen=False) | px.f(px.LayerParam),  # type: ignore
     )(loss)
 
-    # x_param_ids = {id(x) for x in model.parameters().filter(px.f(px.NodeParam)(frozen=False)).values()}
-    # w_param_ids = {id(x) for x in model.parameters().filter(px.f(px.LayerParam)).values()}
-
     with pxu.train(model, examples):
         for i in range(T):
             with pxu.step(model):
                 g, _ = grad_and_values(examples, model=model)
-                # g_x = {k: v for k, v in g.items() if k in x_param_ids}
-                # g_w = {k: v for k, v in g.items() if k in w_param_ids}
-                # g_x_stats = stats(g_x)
-                # g_w_stats = stats(g_w)
-                # assert len(g) == len(g_x) + len(g_w)
-                # assert not g_x_stats["has_nan"]
-                # assert not g_x_stats["has_inf"]
-                # assert not g_w_stats["has_nan"]
-                # assert not g_w_stats["has_inf"]
                 # TODO: try PC instead of PPC here
                 optim_x(g)
                 optim_w(g)
@@ -381,7 +356,7 @@ def train_on_batch(
 
 
 @pxu.jit()
-def test_on_batch(examples, *, model: PCGenerator, optim_x, loss, T) -> jax.Array:
+def test_on_batch(examples, *, model: PCDecoder, optim_x, loss, T) -> jax.Array:
     model.converge_on_batch(examples, optim_x=optim_x, loss=loss, T=T)
     predictions = feed_forward_predict(model.internal_state, model=model)[0]
     mse = jnp.mean((predictions - examples) ** 2)
@@ -390,7 +365,7 @@ def test_on_batch(examples, *, model: PCGenerator, optim_x, loss, T) -> jax.Arra
 
 @pxu.jit()
 def get_internal_states_on_batch(
-    examples, *, model: PCGenerator, optim_x, loss, T
+    examples, *, model: PCDecoder, optim_x, loss, T
 ) -> jax.Array:
     model.converge_on_batch(examples, optim_x=optim_x, loss=loss, T=T)
     assert model.internal_state is not None
@@ -419,7 +394,7 @@ def train_model(params: Params) -> None:
             )
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    model = PCGenerator(
+    model = PCDecoder(
         params=params,
         internal_init_fn=internal_init,
     )
@@ -432,12 +407,15 @@ def train_model(params: Params) -> None:
     )
     if params.do_hypertunning:
         run_name += f"--{tune.get_trial_id()}"
-    run = wandb.init(
-        project="pc-decoder",
-        name=run_name,
-        tags=["predictive-coding", "autoencoder", "decoder"],
-        config=params.dict(),
-    )
+
+    run = None
+    if not DEBUG:
+        run = wandb.init(
+            project="pc-decoder",
+            name=run_name,
+            tags=["predictive-coding", "autoencoder", "decoder"],
+            config=params.dict(),
+        )
 
     with pxu.train(model, jnp.zeros((params.batch_size, params.output_dim))):
         optim_x = pxu.Optim(
@@ -550,8 +528,8 @@ def train_model(params: Params) -> None:
                     T=params.T,
                 )
 
-                gen_dir = epoch_results / "generated"
-                gen_dir.mkdir()
+                generated_dir = epoch_results / "generated"
+                generated_dir.mkdir()
                 predictions = feed_forward_predict(internal_states, model=model)[0]
                 for i, (example, prediction, label) in enumerate(
                     zip(viz_examples, predictions, viz_labels)
@@ -573,7 +551,7 @@ def train_model(params: Params) -> None:
                     fig.suptitle(
                         f"Epochs {epoch + 1} Label {label} Example {i} MSE {mse}"
                     )
-                    fig.savefig(gen_dir / f"label_{label}_example_{i}.png")
+                    fig.savefig(generated_dir / f"label_{label}_example_{i}.png")
                     plt.close()
 
                 # TODO: configure UMAP
@@ -598,12 +576,16 @@ def train_model(params: Params) -> None:
                 plt.xlabel("x")
                 plt.ylabel("y")
                 plt.title("Internal representations of classes")
-                plt.legend()
+                # FIXME: Only 7/10 labels are present in the legend
+                plt.legend(
+                    title="Label", labels=list(range(10)), bbox_to_anchor=(1.05, 1)
+                )
                 plt.savefig(epoch_results / "pc_decoder_mnist_internal_states.png")
                 plt.close()
 
-            wandb.log(epoch_report)
-            session.report(epoch_report)
+            if not DEBUG:
+                wandb.log(epoch_report)
+                session.report(epoch_report)
 
             tepoch.set_postfix(train_mse=epoch_train_mse, test_mse=epoch_test_mse)
 
@@ -636,6 +618,8 @@ def main():
     params = Params.from_arguments(args)
     pp = pprint.PrettyPrinter(indent=4)
 
+    os.environ["CUDA_VISIBLE_DEVICES"] = params.use_gpus
+
     # Download datasets
     download_datasets(params)
 
@@ -657,9 +641,7 @@ def main():
             },
         )
         param_space = params.ray_tune_param_space()
-        search_algo = OptunaSearch(
-            # points_to_evaluate=points_to_evaluate,
-        )
+        search_algo = OptunaSearch()
         if params.hypertunning_max_concurrency is not None:
             search_algo = ConcurrencyLimiter(
                 search_algo, max_concurrent=params.hypertunning_max_concurrency
