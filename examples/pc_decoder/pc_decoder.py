@@ -491,6 +491,7 @@ def train_model(params: Params) -> None:
 
                 if should_save_best_results:
                     best_test_mse = epoch_test_mse
+                    (results_dir / "best").unlink(missing_ok=True)
                     (results_dir / "best").symlink_to(epoch_results.relative_to(results_dir), target_is_directory=True)
 
                 model.save_weights(str(epoch_results))
@@ -505,7 +506,7 @@ def train_model(params: Params) -> None:
                     T=params.T,
                 )
 
-                predictions = feed_forward_predict(internal_states, model)[0]
+                predictions = feed_forward_predict(internal_states, model=model)[0]
                 for i, (example, prediction, label) in enumerate(zip(viz_examples, predictions, viz_labels)):
                     fig, axes = plt.subplots(1, 2)
                     axes[0].imshow(restore_image(example, train_data_mean, train_data_std), cmap="gray")
@@ -517,7 +518,7 @@ def train_model(params: Params) -> None:
                     fig.savefig(epoch_results / f"label_{label}_example_{i}.png")
 
                 # TODO: configure UMAP
-                reduced_internal_states = umap.UMAP().fit_transform(internal_states.numpy())
+                reduced_internal_states = umap.UMAP().fit_transform(jnp.asarray(internal_states))
 
                 internal_states_data: dict[str, list[float]] = {
                     "x": [],
@@ -527,7 +528,7 @@ def train_model(params: Params) -> None:
                 internal_states_data["x"].extend(reduced_internal_states[:, 0].tolist())
                 internal_states_data["y"].extend(reduced_internal_states[:, 1].tolist())
                 internal_states_data["label"].extend(viz_labels.tolist())
-                internal_states_df = pd.DataFrame(internal_states_data)
+                internal_states_df = pd.DataFrame(internal_states_data).sort_values("label")
 
                 plt.clf()
                 sns.scatterplot(data=internal_states_df, x="x", y="y", hue="label")
@@ -537,7 +538,7 @@ def train_model(params: Params) -> None:
                 plt.legend()
                 plt.savefig(epoch_results / "pc_decoder_mnist_internal_states.png")
 
-            wandb.log(epoch_report)
+            # wandb.log(epoch_report)
             session.report(epoch_report)
 
             tepoch.set_postfix(train_mse=epoch_train_mse, test_mse=epoch_test_mse)
