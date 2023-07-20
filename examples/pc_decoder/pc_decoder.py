@@ -77,14 +77,21 @@ class PCGenerator(px.EnergyModule):
 
         self.fc_layers = (
             [nn.Linear(self.internal_dim, self.hidden_dim)]
-            + [nn.Linear(self.hidden_dim, self.hidden_dim) for _ in range(self.num_hidden_layers)]
+            + [
+                nn.Linear(self.hidden_dim, self.hidden_dim)
+                for _ in range(self.num_hidden_layers)
+            ]
             + [nn.Linear(self.hidden_dim, self.output_dim)]
         )
-        self.pc_nodes = [px.Node(init_fn=internal_node_init_fn)] + [px.Node() for _ in range(self.num_layers)]
+        self.pc_nodes = [px.Node(init_fn=internal_node_init_fn)] + [
+            px.Node() for _ in range(self.num_layers)
+        ]
 
         self.pc_nodes[-1].x.frozen = True
 
-    def __call__(self, example: jax.Array | None = None, internal_state: jax.Array | None = None) -> jax.Array:
+    def __call__(
+        self, example: jax.Array | None = None, internal_state: jax.Array | None = None
+    ) -> jax.Array:
         if internal_state is None:
             internal_state = self.internal_state  # this might be None as well.
         # Call the internal layer so it can initialize the internal state by calling init_fn.
@@ -172,7 +179,8 @@ class PCGenerator(px.EnergyModule):
 
         with np.load(os.path.join(savedir, "w_params.npz")) as npzfile:
             weights: dict[str, jax.Array] = {
-                id_to_name[param_id]: jnp.array(npzfile[param_id]) for param_id in npzfile.files
+                id_to_name[param_id]: jnp.array(npzfile[param_id])
+                for param_id in npzfile.files
             }
 
             missing_parameters = set()
@@ -187,7 +195,9 @@ class PCGenerator(px.EnergyModule):
                     missing_parameters.add(param_name)
 
         if missing_parameters:
-            print(f"ERROR: When loadings weights {len(missing_parameters)} were not found: {missing_parameters}")
+            print(
+                f"ERROR: When loadings weights {len(missing_parameters)} were not found: {missing_parameters}"
+            )
 
 
 def internal_init(rkg: pxc.RandomKeyGenerator, internal_dim: int) -> jax.Array:
@@ -238,7 +248,9 @@ if DEBUG:
             return getattr(self.iterable, attr)
 
 
-def get_data_loaders(params: Params) -> tuple[DataLoader[Any], DataLoader[Any], float, float]:
+def get_data_loaders(
+    params: Params,
+) -> tuple[DataLoader[Any], DataLoader[Any], float, float]:
     train_dataset = datasets.MNIST(root=params.data_dir, train=True)
 
     train_data = train_dataset.data / 255
@@ -256,10 +268,14 @@ def get_data_loaders(params: Params) -> tuple[DataLoader[Any], DataLoader[Any], 
     test_dataset = datasets.MNIST(root=params.data_dir, train=False, transform=transform)  # type: ignore
 
     assert (
-        len(train_dataset) % params.batch_size == len(test_dataset) % params.batch_size == 0
+        len(train_dataset) % params.batch_size
+        == len(test_dataset) % params.batch_size
+        == 0
     ), "All batches must have the same size!"
 
-    def collate_into_jax_arrays(examples: list[tuple[torch.Tensor, Any]]) -> tuple[jax.Array, list[Any]]:
+    def collate_into_jax_arrays(
+        examples: list[tuple[torch.Tensor, Any]]
+    ) -> tuple[jax.Array, list[Any]]:
         data = jnp.array([x[0].numpy() for x in examples]).reshape(len(examples), -1)
         targets = [x[1] for x in examples]
         return data, targets
@@ -293,15 +309,20 @@ def get_viz_samples(test_loader: DataLoader[Any]) -> tuple[jax.Array, jax.Array]
     num_per_label = batch_size // num_classes
     additional_examples = max(0, batch_size - num_per_label * num_classes)
 
-    selected_indexes = defaultdict(list)
+    selected_indexes: dict[int, list[int]] = {k: [] for k in range(num_classes)}
     for index, (_, label) in enumerate(test_loader.dataset):
         selected_indexes[label].append(index)
     for label in selected_indexes:
         additional_examples += max(0, num_per_label - len(selected_indexes[label]))
     for label in selected_indexes:
-        selected_indexes[label] = selected_indexes[label][: num_per_label + additional_examples]
+        selected_indexes[label] = selected_indexes[label][
+            : num_per_label + additional_examples
+        ]
         if len(selected_indexes[label]) > num_per_label:
             additional_examples = 0
+    for label, indexes in selected_indexes.items():
+        if not indexes:
+            print(f"WARNING: No visualization examples for label {label}!")
     selected_examples = []
     selected_labels = []
     for label, indexes in selected_indexes.items():
@@ -327,7 +348,9 @@ def get_viz_samples(test_loader: DataLoader[Any]) -> tuple[jax.Array, jax.Array]
 
 
 @pxu.jit()
-def train_on_batch(examples: jax.Array, *, model: PCGenerator, optim_x, optim_w, loss, T) -> jax.Array:
+def train_on_batch(
+    examples: jax.Array, *, model: PCGenerator, optim_x, optim_w, loss, T
+) -> jax.Array:
     grad_and_values = pxu.grad_and_values(
         px.f(px.NodeParam)(frozen=False) | px.f(px.LayerParam),  # type: ignore
     )(loss)
@@ -365,13 +388,17 @@ def test_on_batch(examples, *, model: PCGenerator, optim_x, loss, T) -> jax.Arra
 
 
 @pxu.jit()
-def get_internal_states_on_batch(examples, *, model: PCGenerator, optim_x, loss, T) -> jax.Array:
+def get_internal_states_on_batch(
+    examples, *, model: PCGenerator, optim_x, loss, T
+) -> jax.Array:
     model.converge_on_batch(examples, optim_x=optim_x, loss=loss, T=T)
     assert model.internal_state is not None
     return model.internal_state
 
 
-def restore_image(image_array: jax.Array, train_data_mean: float, train_data_std: float) -> NDArray[np.uint8]:
+def restore_image(
+    image_array: jax.Array, train_data_mean: float, train_data_std: float
+) -> NDArray[np.uint8]:
     x = np.asarray(image_array)
     x = x.reshape(28, 28)
     x = x * train_data_std + train_data_mean
@@ -382,8 +409,14 @@ def restore_image(image_array: jax.Array, train_data_mean: float, train_data_std
 
 def train_model(params: Params) -> None:
     results_dir = Path(params.results_dir) / params.experiment_name
-    if results_dir.exists() and any(results_dir.iterdir()):
-        raise RuntimeError(f"Results dir {results_dir} already exists and is not empty!")
+    if (
+        not params.overwrite_results_dir
+        and results_dir.exists()
+        and any(results_dir.iterdir())
+    ):
+        raise RuntimeError(
+            f"Results dir {results_dir} already exists and is not empty!"
+        )
     results_dir.mkdir(parents=True, exist_ok=True)
 
     model = PCGenerator(
@@ -394,7 +427,9 @@ def train_model(params: Params) -> None:
     if params.load_weights_from is not None:
         model.load_weights(params.load_weights_from)
 
-    run_name = f"{params.experiment_name}--{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
+    run_name = (
+        f"{params.experiment_name}--{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
+    )
     if params.do_hypertunning:
         run_name += f"--{tune.get_trial_id()}"
     # run = wandb.init(
@@ -440,7 +475,9 @@ def train_model(params: Params) -> None:
         T=params.T,
     )
 
-    train_loader, test_loader, train_data_mean, train_data_std = get_data_loaders(params)
+    train_loader, test_loader, train_data_mean, train_data_std = get_data_loaders(
+        params
+    )
 
     train_mses = []
     test_mses = []
@@ -459,7 +496,9 @@ def train_model(params: Params) -> None:
                     metric = train_batch_fn(examples).item()
                     epoch_train_mses.append(metric)
                     tbatch.set_postfix(mse=metric)
-            epoch_train_mse = np.mean(epoch_train_mses[-params.use_last_n_batches_to_compute_metrics :])
+            epoch_train_mse = np.mean(
+                epoch_train_mses[-params.use_last_n_batches_to_compute_metrics :]
+            )
             train_mses.append(epoch_train_mse)
 
             epoch_test_mses = []
@@ -479,9 +518,12 @@ def train_model(params: Params) -> None:
             }
 
             should_save_intermediate_results = (
-                params.save_intermediate_results and (epoch + 1) % params.save_results_every_n_epochs == 0
+                params.save_intermediate_results
+                and (epoch + 1) % params.save_results_every_n_epochs == 0
             )
-            should_save_best_results = params.save_best_results and epoch_test_mse < best_test_mse
+            should_save_best_results = (
+                params.save_best_results and epoch_test_mse < best_test_mse
+            )
             if should_save_intermediate_results or should_save_best_results:
                 print(
                     f"Saving results for epoch {epoch + 1}. Best epoch: {should_save_best_results}. MSE: {epoch_test_mse}"
@@ -492,33 +534,52 @@ def train_model(params: Params) -> None:
                 if should_save_best_results:
                     best_test_mse = epoch_test_mse
                     (results_dir / "best").unlink(missing_ok=True)
-                    (results_dir / "best").symlink_to(epoch_results.relative_to(results_dir), target_is_directory=True)
+                    (results_dir / "best").symlink_to(
+                        epoch_results.relative_to(results_dir), target_is_directory=True
+                    )
 
                 model.save_weights(str(epoch_results))
                 with open(os.path.join(epoch_results, "report.json"), "w") as outfile:
                     json.dump(epoch_report, outfile, indent=4)
 
                 internal_states = get_internal_states_on_batch(
-                    examples=viz_examples,  # FIXME: select test images in a stratified manner
+                    examples=viz_examples,
                     model=model,
                     optim_x=optim_x,
                     loss=loss,
                     T=params.T,
                 )
 
+                gen_dir = epoch_results / "generated"
+                gen_dir.mkdir()
                 predictions = feed_forward_predict(internal_states, model=model)[0]
-                for i, (example, prediction, label) in enumerate(zip(viz_examples, predictions, viz_labels)):
+                for i, (example, prediction, label) in enumerate(
+                    zip(viz_examples, predictions, viz_labels)
+                ):
+                    mse = jnp.mean((prediction - example) ** 2).item()
+
                     fig, axes = plt.subplots(1, 2)
-                    axes[0].imshow(restore_image(example, train_data_mean, train_data_std), cmap="gray")
+                    axes[0].imshow(
+                        restore_image(example, train_data_mean, train_data_std),
+                        cmap="gray",
+                    )
                     axes[0].set_title("Original")
-                    axes[1].imshow(restore_image(prediction, train_data_mean, train_data_std), cmap="gray")
+                    axes[1].imshow(
+                        restore_image(prediction, train_data_mean, train_data_std),
+                        cmap="gray",
+                    )
                     axes[1].set_title("Prediction")
                     # Set figure title
-                    fig.suptitle(f"Epoch {epoch + 1} Label {label} Example {i}")
-                    fig.savefig(epoch_results / f"label_{label}_example_{i}.png")
+                    fig.suptitle(
+                        f"Epochs {epoch + 1} Label {label} Example {i} MSE {mse}"
+                    )
+                    fig.savefig(gen_dir / f"label_{label}_example_{i}.png")
+                    plt.close()
 
                 # TODO: configure UMAP
-                reduced_internal_states = umap.UMAP().fit_transform(jnp.asarray(internal_states))
+                reduced_internal_states = umap.UMAP().fit_transform(
+                    jnp.asarray(internal_states)
+                )
 
                 internal_states_data: dict[str, list[float]] = {
                     "x": [],
@@ -528,7 +589,9 @@ def train_model(params: Params) -> None:
                 internal_states_data["x"].extend(reduced_internal_states[:, 0].tolist())
                 internal_states_data["y"].extend(reduced_internal_states[:, 1].tolist())
                 internal_states_data["label"].extend(viz_labels.tolist())
-                internal_states_df = pd.DataFrame(internal_states_data).sort_values("label")
+                internal_states_df = pd.DataFrame(internal_states_data).sort_values(
+                    "label"
+                )
 
                 plt.clf()
                 sns.scatterplot(data=internal_states_df, x="x", y="y", hue="label")
@@ -537,6 +600,7 @@ def train_model(params: Params) -> None:
                 plt.title("Internal representations of classes")
                 plt.legend()
                 plt.savefig(epoch_results / "pc_decoder_mnist_internal_states.png")
+                plt.close()
 
             # wandb.log(epoch_report)
             session.report(epoch_report)
@@ -587,8 +651,13 @@ def main():
     # Download datasets
     download_datasets(params)
 
-    if params.hypertunning_gpu_memory_fraction_per_trial < 0 or params.hypertunning_gpu_memory_fraction_per_trial > 1:
-        raise ValueError(f"--hypertunning-gpu-memory-fraction-per-trial must be in [0, 1]")
+    if (
+        params.hypertunning_gpu_memory_fraction_per_trial < 0
+        or params.hypertunning_gpu_memory_fraction_per_trial > 1
+    ):
+        raise ValueError(
+            f"--hypertunning-gpu-memory-fraction-per-trial must be in [0, 1]"
+        )
 
     if params.do_hypertunning:
         trainable = Trainable(params)
@@ -604,7 +673,9 @@ def main():
             # points_to_evaluate=points_to_evaluate,
         )
         if params.hypertunning_max_concurrency is not None:
-            search_algo = ConcurrencyLimiter(search_algo, max_concurrent=params.hypertunning_max_concurrency)
+            search_algo = ConcurrencyLimiter(
+                search_algo, max_concurrent=params.hypertunning_max_concurrency
+            )
         scheduler = None
         if params.hypertunning_use_early_stop_scheduler:
             scheduler = ASHAScheduler()
@@ -637,7 +708,9 @@ def main():
         # FIXME: use the best reported score to compare results!
         # Note: ray.tune interprets the last reported result of each trial as the "best" one:
         # https://github.com/ray-project/ray_lightning/issues/81
-        results.get_dataframe().to_csv(os.path.join(params.result_dir, "hypertunning_results.csv"), index=False)
+        results.get_dataframe().to_csv(
+            os.path.join(params.result_dir, "hypertunning_results.csv"), index=False
+        )
     else:
         train_model(params)
 
