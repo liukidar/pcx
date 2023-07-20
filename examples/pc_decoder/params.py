@@ -20,7 +20,8 @@ class ModelParams(Hyperparams):
     activation: str = HP(
         "Activation function to use in the generator.",
         default="gelu",
-        choices=["gelu", "tanh", "relu", "sigmoid"],
+        choices=["gelu", "relu", "tanh", "sigmoid"],
+        tunable=True,
     )
     # init_rand_weight: float = HP("Determines the fraction of randomness in the initialization value.", default=0.0)
     # init_forward_weight: float = HP(
@@ -104,6 +105,10 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     save_results_every_n_epochs: int = HP(
         "Save the intermediate results after every N epochs",
         default=4,
+    )
+    use_gpus: str = HP(
+        "Comma-separated list of GPUs to use",
+        default="0",
     )
 
     do_hypertunning: bool = HP("Whether to do hypertunning.", default=False)
