@@ -531,12 +531,14 @@ def train_model(params: Params) -> None:
                 generated_dir = epoch_results / "generated"
                 generated_dir.mkdir()
                 predictions = feed_forward_predict(internal_states, model=model)[0]
+
+                plt.clf()
+                fig, axes = plt.subplots(1, 2)
                 for i, (example, prediction, label) in enumerate(
                     zip(viz_examples, predictions, viz_labels)
                 ):
                     mse = jnp.mean((prediction - example) ** 2).item()
 
-                    fig, axes = plt.subplots(1, 2)
                     axes[0].imshow(
                         restore_image(example, train_data_mean, train_data_std),
                         cmap="gray",
@@ -552,7 +554,7 @@ def train_model(params: Params) -> None:
                         f"Epochs {epoch + 1} Label {label} Example {i} MSE {mse}"
                     )
                     fig.savefig(generated_dir / f"label_{label}_example_{i}.png")
-                    plt.close()
+                    plt.cla()
 
                 # TODO: configure UMAP
                 reduced_internal_states = umap.UMAP().fit_transform(
@@ -577,11 +579,8 @@ def train_model(params: Params) -> None:
                 plt.ylabel("y")
                 plt.title("Internal representations of classes")
                 # FIXME: Only 7/10 labels are present in the legend
-                plt.legend(
-                    title="Label", labels=list(range(10)), bbox_to_anchor=(1.05, 1)
-                )
+                plt.legend()
                 plt.savefig(epoch_results / "pc_decoder_mnist_internal_states.png")
-                plt.close()
 
             if not DEBUG:
                 wandb.log(epoch_report)
