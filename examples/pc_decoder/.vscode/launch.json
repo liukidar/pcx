@@ -1,0 +1,67 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Single run",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/pc_decoder.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "DEBUG": "1"
+            },
+            "args": [
+                "--experiment-name=debug",
+                "--overwrite-results-dir",
+                "--epochs=2",
+                "--batch-size=10",
+                "--T=4",
+                "--use-last-n-batches-to-compute-metrics=5",
+                "--save-best-results",
+                "--save-intermediate-results",
+                "--save-results-every-n-epochs=1"
+            ]
+        },
+        {
+            "name": "Single run",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/pc_decoder.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--experiment-name=dev",
+                "--overwrite-results-dir",
+                "--epochs=3"
+            ]
+        },
+        {
+            "name": "Hypertunning",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/pc_decoder.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--experiment-name=dev-hypertunning",
+                "--do-hypertunning",
+                "--overwrite-results-dir",
+                "--epochs=10",
+                "--hypertunning-num-trials=100",
+                "--hypertunning-use-early-stop-scheduler"
+            ]
+        },
+        {
+            "name": "Long Run",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/pc_decoder.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+        }
+    ]
+}
