@@ -7,6 +7,7 @@ from uuid import uuid4
 import json
 from pathlib import Path
 from datetime import datetime
+import shutil
 
 # from functools import partial
 import pprint
@@ -409,14 +410,13 @@ def restore_image(
 
 def train_model(params: Params) -> None:
     results_dir = Path(params.results_dir) / params.experiment_name
-    if (
-        not params.overwrite_results_dir
-        and results_dir.exists()
-        and any(results_dir.iterdir())
-    ):
-        raise RuntimeError(
-            f"Results dir {results_dir} already exists and is not empty!"
-        )
+    if results_dir.exists() and any(results_dir.iterdir()):
+        if params.overwrite_results_dir:
+            shutil.rmtree(results_dir)
+        else:
+            raise RuntimeError(
+                f"Results dir {results_dir} already exists and is not empty!"
+            )
     results_dir.mkdir(parents=True, exist_ok=True)
 
     model = PCGenerator(
@@ -432,12 +432,12 @@ def train_model(params: Params) -> None:
     )
     if params.do_hypertunning:
         run_name += f"--{tune.get_trial_id()}"
-    # run = wandb.init(
-    #     project="pc-decoder",
-    #     name=run_name,
-    #     tags=["predictive-coding", "autoencoder", "decoder"],
-    #     config=params.to_dict(),
-    # )
+    run = wandb.init(
+        project="pc-decoder",
+        name=run_name,
+        tags=["predictive-coding", "autoencoder", "decoder"],
+        config=params.dict(),
+    )
 
     with pxu.train(model, jnp.zeros((params.batch_size, params.output_dim))):
         optim_x = pxu.Optim(
@@ -602,10 +602,13 @@ def train_model(params: Params) -> None:
                 plt.savefig(epoch_results / "pc_decoder_mnist_internal_states.png")
                 plt.close()
 
-            # wandb.log(epoch_report)
+            wandb.log(epoch_report)
             session.report(epoch_report)
 
             tepoch.set_postfix(train_mse=epoch_train_mse, test_mse=epoch_test_mse)
+
+    if run is not None:
+        run.finish()
 
 
 class Trainable:
@@ -632,21 +635,6 @@ def main():
     args = parser.parse_args()
     params = Params.from_arguments(args)
     pp = pprint.PrettyPrinter(indent=4)
-
-    if DEBUG:
-        import shutil
-
-        params.experiment_name = "debug"
-        results_dir = os.path.join(params.results_dir, params.experiment_name)
-        if os.path.exists(results_dir):
-            shutil.rmtree(results_dir)
-        params.epochs = 2
-        params.batch_size = 10
-        params.T = 4
-        params.use_last_n_batches_to_compute_metrics = 5
-        params.save_best_results = True
-        params.save_intermediate_results = True
-        params.save_results_every_n_epochs = 1
 
     # Download datasets
     download_datasets(params)
@@ -709,7 +697,10 @@ def main():
         # Note: ray.tune interprets the last reported result of each trial as the "best" one:
         # https://github.com/ray-project/ray_lightning/issues/81
         results.get_dataframe().to_csv(
-            os.path.join(params.result_dir, "hypertunning_results.csv"), index=False
+            os.path.join(
+                params.results_dir, params.experiment_name, "hypertunning_results.csv"
+            ),
+            index=False,
         )
     else:
         train_model(params)
