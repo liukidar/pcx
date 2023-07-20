@@ -19,7 +19,7 @@ class ModelParams(Hyperparams):
     )
     activation: str = HP(
         "Activation function to use in the generator.",
-        default="gelu",
+        default="relu",
         choices=["gelu", "relu", "tanh", "sigmoid"],
         tunable=True,
     )
@@ -36,13 +36,13 @@ class ModelParams(Hyperparams):
 class Params(ModelParams, RayTuneHyperparamsMixin):
     experiment_name: str = HP(
         "Name of the experiment. An experiment contains many similar runs.",
-        default="development",
+        default="best-parameters-long-run",
     )
     load_weights_from: Optional[str] = HP(
         "Path to the directory containing saved W weights. Note that X values are not loaded (and not saved).",
         default=None,
     )
-    epochs: int = HP("Number of epochs to train for.", default=10)
+    epochs: int = HP("Number of epochs to train for.", default=100)
     batch_size: int = HP(
         "Number of examples in a batch. Note the last batch will be discarded. Make sure all batches are of the same size!",
         default=100,
@@ -59,25 +59,25 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     optim_x_lr: float = HP(
         "Learning rate for PC node values",
-        default=0.05,
+        default=0.02256,
         search_space=tune.loguniform(1e-5, 1e-1),
         tunable=True,
     )
     optim_x_l2: float = HP(
         "Weight decay for PC node values",
-        default=0.06,
+        default=0.3935,
         search_space=tune.loguniform(1e-2, 5e-1),
         tunable=True,
     )
     optim_w_lr: float = HP(
         "Learning rate for model weights",
-        default=0.01,
+        default=0.0002183,
         search_space=tune.loguniform(1e-5, 1e-1),
         tunable=True,
     )
     optim_w_l2: float = HP(
         "Weight decay for model weights.",
-        default=0.2,
+        default=0.17,
         search_space=tune.loguniform(1e-2, 5e-1),
         tunable=True,
     )
