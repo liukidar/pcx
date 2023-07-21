@@ -412,6 +412,7 @@ def train_model(params: Params) -> None:
     if not DEBUG:
         run = wandb.init(
             project="pc-decoder",
+            group=params.experiment_name,
             name=run_name,
             tags=["predictive-coding", "autoencoder", "decoder"],
             config=params.dict(),
@@ -513,7 +514,8 @@ def train_model(params: Params) -> None:
                     best_test_mse = epoch_test_mse
                     (results_dir / "best").unlink(missing_ok=True)
                     (results_dir / "best").symlink_to(
-                        epoch_results.relative_to(results_dir), target_is_directory=True
+                        epoch_results.relative_to(results_dir),
+                        target_is_directory=True,
                     )
 
                 model.save_weights(str(epoch_results))
