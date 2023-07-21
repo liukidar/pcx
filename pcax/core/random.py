@@ -1,43 +1,76 @@
-__all__ = ["DEFAULT_GENERATOR", "Generator"]
+__all__ = ["_RKGState", "RKG", "RandomKeyGenerator"]
 
-from .structure import RandomState, VarCollection, Module
-
-from typing import Optional
+from typing import Optional, List
 import time
 
+import jax
 
-class Generator(Module):
-    """Random number generator module."""
+from .modules import Module
+from .parameters import _BaseParam, reduce_none
+
+########################################################################################################################
+#
+# RANDOM
+#
+# jax requires to keep track of the random generator state. This is done by passing a PRNGKey to every random function.
+# pcax offers a random generator class that keeps track of the state and can be used to generate random keys. RKG is
+# the default random generator used provided by pcax.
+#
+########################################################################################################################
+
+# Utils ################################################################################################################
+
+
+class _RKGState(_BaseParam):
+    """RKGState is a state parameter that tracks a random generator state. It is meant to be used internally."""
+
+    def __init__(self, seed: int):
+        """_RKGState constructor.
+
+        Args:
+            seed: the initial seed of the random number generator.
+        """
+        super().__init__(jax.random.PRNGKey(seed), reduce_none)
+
+    def seed(self, seed: int):
+        """Sets a new random seed.
+
+        Args:
+            seed: the new initial seed of the random number generator.
+        """
+        self.value = jax.random.PRNGKey(seed)
+
+    def split(self, n: int) -> List[jax.Array]:
+        """Create multiple seeds from the current seed. This is used internally by pcax.Vectorize to ensure
+        that random numbers are different in parallel computations.
+
+        Args:
+            n: the number of seeds to generate.
+        """
+        values = jax.random.split(self.value, n + 1)
+        self._value = values[0]
+        return values[1:]
+
+
+# Random ###############################################################################################################
+
+
+class RandomKeyGenerator(Module):
+    """Random number generator module. Provide an imperative interface to generate random keys."""
 
     def __init__(self, seed: int = 0):
         """Create a random key generator, seed is the random generator initial seed."""
         super().__init__()
-        self.initial_seed = seed
-        self._key: Optional[RandomState] = None
-
-    @property
-    def key(self):
-        """The random generator state (a tensor of 2 int32)."""
-        if self._key is None:
-            self._key = RandomState(self.initial_seed)
-        return self._key
+        self._key: Optional[_RKGState] = _RKGState(seed)
 
     def seed(self, seed: int = 0):
         """Sets a new random generator seed."""
-        self.initial_seed = seed
-        if self._key is not None:
-            self._key.seed(seed)
+        self._key.seed(seed)
 
     def __call__(self):
-        """Generate a new generator state."""
-        return self.key.split(1)[0]
-
-    def vars(self, scope: str = "") -> VarCollection:
-        self.key  # Make sure the key is created before collecting the vars.
-        return super().vars(scope=scope)
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(seed={self.initial_seed})"
+        """Generate a new key."""
+        return self._key.split(1)[0]
 
 
-DEFAULT_GENERATOR = Generator(time.time_ns())
+"""Default random key generator. """
+RKG = RandomKeyGenerator(time.time_ns())
