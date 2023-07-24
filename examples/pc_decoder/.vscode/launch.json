@@ -34,9 +34,9 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--experiment-name=dev",
+                "--experiment-name=new-dev",
                 "--overwrite-results-dir",
-                "--epochs=3"
+                "--epochs=5"
             ]
         },
         {
@@ -47,7 +47,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--experiment-name=dev-hypertunning",
+                "--experiment-name=new-dev-hypertunning",
                 "--do-hypertunning",
                 "--overwrite-results-dir",
                 "--epochs=10",
