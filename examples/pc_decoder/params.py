@@ -10,27 +10,18 @@ class ModelParams(Hyperparams):
         "Dimension of the internal representation. Must be internal_dim << output_dim.",
         default=16,
     )
-    hidden_dim: int = HP("Dimension of the hidden layers.", default=64)
+    hidden_dim: int = HP("Dimension of the hidden layers.", default=128)
     output_dim: int = HP(
         "Dimension of the data. Must be output_dim >> internal_dim.", default=784
     )
     num_hidden_layers: int = HP(
-        "Number of layers in the generator, including the output layer.", default=2
+        "Number of the hidden layers in the generator, excluding input and output layers.",
+        default=2,
     )
     activation: str = HP(
         "Activation function to use in the generator.",
-        default="relu",
-        choices=["gelu", "relu", "tanh", "sigmoid"],
-        tunable=True,
+        default="gelu",
     )
-    # init_rand_weight: float = HP("Determines the fraction of randomness in the initialization value.", default=0.0)
-    # init_forward_weight: float = HP(
-    #     "Determines the fraction of forward-pass value in the initialization value.", default=1.0
-    # )
-    # init_constant: float = HP("A constant to initialize the values.", default=0.0)
-    # init_constant_weight: float = HP(
-    #     "Determines the fraction of the constant in the initialization value.", default=0.0
-    # )
 
 
 class Params(ModelParams, RayTuneHyperparamsMixin):
@@ -45,7 +36,7 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     epochs: int = HP("Number of epochs to train for.", default=100)
     batch_size: int = HP(
         "Number of examples in a batch. Note the last batch will be discarded. Make sure all batches are of the same size!",
-        default=100,
+        default=200,
     )
     use_last_n_batches_to_compute_metrics: int = HP(
         "Number of last batches in the epoch used to compute average metrics on the train dataset",
@@ -53,37 +44,33 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     T: int = HP(
         "Number of Predictive Coding iterations.",
-        default=4,
-        choices=[1, 4, 8, 16],
+        default=8,
+        choices=[1, 4, 5, 8, 11, 16],
         tunable=True,
     )
     optim_x_lr: float = HP(
         "Learning rate for PC node values",
-        default=0.02256,
-        search_space=tune.loguniform(1e-5, 1e-1),
+        default=0.1,
+        search_space=tune.loguniform(1e-3, 1.0),
         tunable=True,
     )
     optim_x_l2: float = HP(
         "Weight decay for PC node values",
-        default=0.3935,
+        default=0.0,
         search_space=tune.loguniform(1e-2, 5e-1),
-        tunable=True,
+        tunable=False,
     )
     optim_w_lr: float = HP(
         "Learning rate for model weights",
-        default=0.0002183,
+        default=0.00025,
         search_space=tune.loguniform(1e-5, 1e-1),
         tunable=True,
     )
     optim_w_l2: float = HP(
         "Weight decay for model weights.",
-        default=0.17,
+        default=0.001,
         search_space=tune.loguniform(1e-2, 5e-1),
-        tunable=True,
-    )
-    optim_w_momentum: float = HP("Momentum for model weights.", default=0.9)
-    optim_w_nesterov: bool = HP(
-        "Whether to use Nesterov for model weights", default=True
+        tunable=False,
     )
 
     data_dir: str = HP(

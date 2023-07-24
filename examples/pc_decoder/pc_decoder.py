@@ -8,8 +8,6 @@ from pathlib import Path
 from datetime import datetime
 import shutil
 
-import pprint
-
 import jax
 import jax.numpy as jnp
 import optax
@@ -18,7 +16,7 @@ import pcax.utils as pxu  # type: ignore
 import pcax.nn as nn  # type: ignore
 import pcax.core as pxc  # type: ignore
 import torch
-from torch.utils.data import Dataset, DataLoader  # type: ignore
+from torch.utils.data import DataLoader  # type: ignore
 from ray.air import session
 from ray import air, tune
 from ray.tune.schedulers import ASHAScheduler
@@ -31,6 +29,8 @@ from torchvision import datasets, transforms
 from tqdm import tqdm
 import wandb
 import umap
+import pprint
+
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -117,12 +117,20 @@ class PCDecoder(px.EnergyModule):
             x = act_fn(self.fc_layers[i](x))
         return x
 
-    def converge_on_batch(self, examples: jax.Array, *, optim_x, loss, T) -> None:
+    def converge_on_batch(
+        self,
+        examples: jax.Array,
+        *,
+        optim_x,
+        loss,
+        T,
+    ) -> None:
         grad_and_values = pxu.grad_and_values(
             px.f(px.NodeParam)(frozen=False),
         )(loss)
         with pxu.eval(self, examples):
-            for i in range(T):
+            # TODO: run to convergence. Since while loops are hard in JAX, we run for a fixed number of steps.
+            for i in range(20 * T):
                 with pxu.step(self):
                     g, _ = grad_and_values(examples, model=self)
 
@@ -199,9 +207,8 @@ class PCDecoder(px.EnergyModule):
 
 def internal_init(rkg: pxc.RandomKeyGenerator, internal_dim: int) -> jax.Array:
     # TODO: Play with different initialization strategies
-    # value = jax.random.normal(rkg(), (internal_dim,))
-    value = jnp.ones((internal_dim,))
-    return value
+    values = jnp.zeros((internal_dim,))
+    return values
 
 
 @pxu.vectorize(px.f(px.NodeParam, with_cache=True), in_axis=(0,), out_axis=("sum",))
@@ -337,7 +344,13 @@ def get_viz_samples(test_loader: DataLoader[Any]) -> tuple[jax.Array, jax.Array]
 
 @pxu.jit()
 def train_on_batch(
-    examples: jax.Array, *, model: PCDecoder, optim_x, optim_w, loss, T
+    examples: jax.Array,
+    *,
+    model: PCDecoder,
+    optim_x,
+    optim_w,
+    loss,
+    T,
 ) -> jax.Array:
     grad_and_values = pxu.grad_and_values(
         px.f(px.NodeParam)(frozen=False) | px.f(px.LayerParam),  # type: ignore
@@ -429,11 +442,9 @@ def train_model(params: Params) -> None:
         )
         optim_w = pxu.Optim(
             optax.chain(
-                optax.add_decayed_weights(weight_decay=params.optim_w_l2),
-                optax.sgd(
+                optax.adamw(
                     params.optim_w_lr / params.batch_size,
-                    momentum=params.optim_w_momentum,
-                    nesterov=params.optim_w_nesterov,
+                    weight_decay=params.optim_w_l2,
                 ),
             ),
             model.get_w_parameters(),
@@ -460,7 +471,9 @@ def train_model(params: Params) -> None:
 
     train_mses = []
     test_mses = []
+    best_train_mse = float("inf")
     best_test_mse = float("inf")
+    t_step: int = 0
 
     viz_examples, viz_labels = get_viz_samples(test_loader=test_loader)
 
@@ -473,10 +486,13 @@ def train_model(params: Params) -> None:
                 for examples, _ in tbatch:
                     tbatch.set_description(f"Train Batch {tbatch.n + 1}")
                     metric = train_batch_fn(examples).item()
+                    t_step += params.T
                     epoch_train_mses.append(metric)
                     tbatch.set_postfix(mse=metric)
-            epoch_train_mse = np.mean(
-                epoch_train_mses[-params.use_last_n_batches_to_compute_metrics :]
+            epoch_train_mse: float = float(
+                np.mean(
+                    epoch_train_mses[-params.use_last_n_batches_to_compute_metrics :]
+                )
             )
             train_mses.append(epoch_train_mse)
 
@@ -487,7 +503,7 @@ def train_model(params: Params) -> None:
                     metric = test_batch_fn(examples).item()
                     epoch_test_mses.append(metric)
                     tbatch.set_postfix(mse=metric)
-            epoch_test_mse = np.mean(epoch_test_mses)
+            epoch_test_mse: float = float(np.mean(epoch_test_mses))
             test_mses.append(epoch_test_mse)
 
             epoch_report = {
@@ -503,6 +519,8 @@ def train_model(params: Params) -> None:
             should_save_best_results = (
                 params.save_best_results and epoch_test_mse < best_test_mse
             )
+            best_train_mse = min(best_train_mse, epoch_train_mse)
+            best_test_mse = min(best_test_mse, epoch_test_mse)
             if should_save_intermediate_results or should_save_best_results:
                 print(
                     f"Saving results for epoch {epoch + 1}. Best epoch: {should_save_best_results}. MSE: {epoch_test_mse}"
@@ -511,16 +529,11 @@ def train_model(params: Params) -> None:
                 epoch_results.mkdir()
 
                 if should_save_best_results:
-                    best_test_mse = epoch_test_mse
                     (results_dir / "best").unlink(missing_ok=True)
                     (results_dir / "best").symlink_to(
                         epoch_results.relative_to(results_dir),
                         target_is_directory=True,
                     )
-
-                model.save_weights(str(epoch_results))
-                with open(os.path.join(epoch_results, "report.json"), "w") as outfile:
-                    json.dump(epoch_report, outfile, indent=4)
 
                 internal_states = get_internal_states_on_batch(
                     examples=viz_examples,
@@ -529,6 +542,13 @@ def train_model(params: Params) -> None:
                     loss=loss,
                     T=params.T,
                 )
+
+                epoch_report["internal_states_mean"] = jnp.mean(internal_states).item()
+                epoch_report["internal_states_std"] = jnp.std(internal_states).item()
+
+                model.save_weights(str(epoch_results))
+                with open(os.path.join(epoch_results, "report.json"), "w") as outfile:
+                    json.dump(epoch_report, outfile, indent=4)
 
                 generated_dir = epoch_results / "generated"
                 generated_dir.mkdir()
@@ -591,6 +611,8 @@ def train_model(params: Params) -> None:
             tepoch.set_postfix(train_mse=epoch_train_mse, test_mse=epoch_test_mse)
 
     if run is not None:
+        run.summary["best_train_mse"] = best_train_mse
+        run.summary["best_test_mse"] = best_test_mse
         run.finish()
 
 
