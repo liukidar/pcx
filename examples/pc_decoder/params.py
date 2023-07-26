@@ -104,7 +104,6 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     overwrite_results_dir: bool = HP(
         "Whether to overwrite the results directory", default=False
     )
-
     save_best_results: bool = HP(
         "Whether to save the best model",
         default=True,
@@ -117,6 +116,11 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
         "Save the intermediate results after every N epochs",
         default=4,
     )
+    visualize_n_images_per_label: int = HP(
+        "When visualizing generated images, up to this number of examples per label will be generated.",
+        default=3,
+    )
+
     use_gpus: str = HP(
         "Comma-separated list of GPUs to use",
         default="0",
