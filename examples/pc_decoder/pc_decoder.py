@@ -8,6 +8,8 @@ from pathlib import Path
 from datetime import datetime
 import shutil
 import re
+import logging
+from collections import defaultdict
 
 import jax
 import jax.numpy as jnp
@@ -30,13 +32,19 @@ from torchvision import datasets, transforms
 from tqdm import tqdm
 import wandb
 import umap
-import pprint
 
 
 import seaborn as sns
 import matplotlib.pyplot as plt
 
 from params import Params, ModelParams
+
+
+logging.basicConfig(
+    format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level=logging.INFO,
+)
 
 # Environment variables
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
@@ -206,8 +214,8 @@ class PCDecoder(px.EnergyModule):
                     missing_parameters.add(param_name)
 
         if missing_parameters:
-            print(
-                f"ERROR: When loadings weights {len(missing_parameters)} were not found: {missing_parameters}"
+            logging.error(
+                f"When loadings weights {len(missing_parameters)} were not found: {missing_parameters}"
             )
 
 
@@ -338,7 +346,7 @@ def get_viz_samples(test_loader: DataLoader[Any]) -> tuple[jax.Array, jax.Array]
             additional_examples = 0
     for label, indexes in selected_indexes.items():
         if not indexes:
-            print(f"WARNING: No visualization examples for label {label}!")
+            logging.warning(f"No visualization examples for label {label}!")
     selected_examples = []
     selected_labels = []
     for label, indexes in selected_indexes.items():
@@ -538,6 +546,7 @@ def train_model(params: Params) -> None:
     with tqdm(range(params.epochs), unit="epoch") as tepoch:
         for epoch in tepoch:
             tepoch.set_description(f"Train Epoch {epoch + 1}")
+            logging.info(f"Starting epoch {epoch + 1}")
 
             epoch_train_mses = []
             with tqdm(train_loader, unit="batch") as tbatch:
@@ -614,6 +623,7 @@ def train_model(params: Params) -> None:
                 )
             )
             train_mses.append(epoch_train_mse)
+            logging.info(f"Finished training in epoch {epoch + 1}")
 
             epoch_test_mses = []
             with tqdm(test_loader, unit="batch") as tbatch:
@@ -624,6 +634,7 @@ def train_model(params: Params) -> None:
                     tbatch.set_postfix(mse=metric)
             epoch_test_mse: float = float(np.mean(epoch_test_mses))
             test_mses.append(epoch_test_mse)
+            logging.info(f"Finished testing in epoch {epoch + 1}")
 
             epoch_report = {
                 "epochs": epoch + 1,
@@ -641,7 +652,7 @@ def train_model(params: Params) -> None:
             best_train_mse = min(best_train_mse, epoch_train_mse)
             best_test_mse = min(best_test_mse, epoch_test_mse)
             if should_save_intermediate_results or should_save_best_results:
-                print(
+                logging.info(
                     f"Saving results for epoch {epoch + 1}. Best epoch: {should_save_best_results}. MSE: {epoch_test_mse}"
                 )
                 epoch_results = results_dir / f"epochs_{epoch + 1}"
@@ -673,11 +684,20 @@ def train_model(params: Params) -> None:
                 generated_dir.mkdir()
                 predictions = feed_forward_predict(internal_states, model=model)[0]
 
+                logging.info(
+                    f"Got internal states and predictions for epoch {epoch + 1}, generating images..."
+                )
+
                 plt.clf()
                 fig, axes = plt.subplots(1, 2)
+                visualized_labels = defaultdict(int)
                 for i, (example, prediction, label) in enumerate(
                     zip(viz_examples, predictions, viz_labels)
                 ):
+                    label = label.item()
+                    if visualized_labels[label] >= params.visualize_n_images_per_label:
+                        continue
+                    visualized_labels[label] += 1
                     mse = jnp.mean((prediction - example) ** 2).item()
 
                     axes[0].imshow(  # type: ignore
@@ -723,16 +743,23 @@ def train_model(params: Params) -> None:
                 plt.legend()
                 plt.savefig(epoch_results / "pc_decoder_mnist_internal_states.png")
 
+                logging.info(f"Finished generating images for epoch {epoch + 1}")
+
             if not DEBUG:
                 wandb.log(epoch_report)
                 session.report(epoch_report)
 
+            logging.info(f"Finished epoch {epoch + 1}")
             tepoch.set_postfix(train_mse=epoch_train_mse, test_mse=epoch_test_mse)
 
     if run is not None:
         run.summary["train_mse"] = best_train_mse
         run.summary["test_mse"] = best_test_mse
         run.finish()
+
+    logging.info(
+        f"Finished training for {params.epochs} epochs, test_mse={best_test_mse}"
+    )
 
 
 class Trainable:
@@ -758,7 +785,6 @@ def main():
     Params.add_arguments(parser)
     args = parser.parse_args()
     params = Params.from_arguments(args)
-    pp = pprint.PrettyPrinter(indent=4)
 
     os.environ["CUDA_VISIBLE_DEVICES"] = params.use_gpus
 
@@ -810,13 +836,7 @@ def main():
             ),
         )
         results = tuner.fit()
-        print("--- Hypertunning done! ---")
-        pp.pprint(results)
-        print("--- Best trial ---")
-        best_result = results.get_best_result()
-        pp.pprint(best_result.config)
-        pp.pprint(best_result.metrics)
-        pp.pprint(best_result.log_dir)
+        logging.info("--- Hypertunning done! ---")
 
         # FIXME: use the best reported score to compare results!
         # Note: ray.tune interprets the last reported result of each trial as the "best" one:
