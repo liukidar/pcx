@@ -36,11 +36,12 @@
             "args": [
                 "--experiment-name=new-dev",
                 "--overwrite-results-dir",
-                "--epochs=5"
+                "--epochs=10",
+                "--pc-mode=pc"
             ]
         },
         {
-            "name": "Hypertunning",
+            "name": "Dev Hypertunning",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/pc_decoder.py",
@@ -62,6 +63,23 @@
             "program": "${workspaceFolder}/pc_decoder.py",
             "console": "integratedTerminal",
             "justMyCode": true,
-        }
+        },
+        {
+            "name": "Long Hypertunning",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/pc_decoder.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--experiment-name=long-hypertunning",
+                "--do-hypertunning",
+                "--hypertunning-num-trials=1000",
+                "--epochs=100",
+                "--batch-size=2000",
+                "--no-save-intermediate-results",
+                "--no-hypertunning-use-early-stop-scheduler"
+            ]
+        },
     ]
 }
