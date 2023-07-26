@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 import shutil
+import re
 
 import jax
 import jax.numpy as jnp
@@ -57,30 +58,32 @@ class PCDecoder(px.EnergyModule):
         self,
         *,
         params: ModelParams,
-        internal_init_fn: Callable[[pxc.RandomKeyGenerator, int], jax.Array],
+        internal_state_init_fn: Callable[[pxc.RandomKeyGenerator, int], jax.Array],
     ) -> None:
         super().__init__()
 
-        self.internal_dim = params.internal_dim
-        self.hidden_dim = params.hidden_dim
-        self.output_dim = params.output_dim
-        self.num_hidden_layers = params.num_hidden_layers
+        self.p = params.copy()
         self.act_fn = activation_functions[params.activation]
 
         def internal_node_init_fn(node: px.Node, rkg: pxc.RandomKeyGenerator) -> None:
-            value = internal_init_fn(rkg, self.internal_dim)
-            node.set_activation("u", value)
+            value = internal_state_init_fn(rkg, self.p.internal_dim)
+            if not self.p.use_prior_layer:
+                node.set_activation("u", value)
             node.x.value = value
 
-        self.fc_layers = (
-            [nn.Linear(self.internal_dim, self.hidden_dim)]
+        self.prior_layer: nn.Linear | None = None
+        if self.p.use_prior_layer:
+            # Weights are sampled from the uniform distribution
+            self.prior_layer = nn.Linear(1, self.p.internal_dim)
+        self.fc_layers: list[nn.Linear] = (
+            [nn.Linear(self.p.internal_dim, self.p.hidden_dim)]
             + [
-                nn.Linear(self.hidden_dim, self.hidden_dim)
-                for _ in range(self.num_hidden_layers)
+                nn.Linear(self.p.hidden_dim, self.p.hidden_dim)
+                for _ in range(self.p.num_hidden_layers)
             ]
-            + [nn.Linear(self.hidden_dim, self.output_dim)]
+            + [nn.Linear(self.p.hidden_dim, self.p.output_dim)]
         )
-        self.pc_nodes = [px.Node(init_fn=internal_node_init_fn)] + [
+        self.pc_nodes: list[px.Node] = [px.Node(init_fn=internal_node_init_fn)] + [
             px.Node() for _ in range(self.num_layers)
         ]
 
@@ -90,9 +93,12 @@ class PCDecoder(px.EnergyModule):
         self, example: jax.Array | None = None, internal_state: jax.Array | None = None
     ) -> jax.Array:
         if internal_state is None:
-            internal_state = self.internal_state  # this might be None as well.
+            if self.prior_layer is not None:
+                internal_state = self.prior_layer(jnp.ones((1,)))
+            else:
+                internal_state = self.internal_state  # this might be None as well.
         # Call the internal layer so it can initialize the internal state by calling init_fn.
-        x = self.pc_nodes[0](internal_state)["x"]
+        x = self.pc_nodes[0](internal_state)["x"]  # type: ignore
 
         for i in range(self.num_layers):
             # No activation function at the last layer
@@ -129,8 +135,8 @@ class PCDecoder(px.EnergyModule):
             px.f(px.NodeParam)(frozen=False),
         )(loss)
         with pxu.eval(self, examples):
-            # TODO: run to convergence. Since while loops are hard in JAX, we run for a fixed number of steps.
-            for i in range(20 * T):
+            # Run to convergence. Since while loops are hard in JAX, we run for a fixed number of steps.
+            for i in range(T * self.p.T_convergence_multiplier):
                 with pxu.step(self):
                     g, _ = grad_and_values(examples, model=self)
 
@@ -138,7 +144,7 @@ class PCDecoder(px.EnergyModule):
 
     @property
     def num_layers(self) -> int:
-        return self.num_hidden_layers + 2
+        return self.p.num_hidden_layers + 2
 
     @property
     def prediction(self) -> jax.Array:
@@ -154,12 +160,12 @@ class PCDecoder(px.EnergyModule):
         assert res is None or isinstance(res, jax.Array)
         return res
 
-    def get_x_parameters(self) -> pxc.ParamDict:
+    def x_parameters(self) -> pxc.ParamDict:
         res = self.parameters().filter(px.f(px.NodeParam)(frozen=False))
         assert isinstance(res, pxc.ParamDict)
         return res
 
-    def get_w_parameters(self) -> pxc.ParamDict:
+    def w_parameters(self) -> pxc.ParamDict:
         res = self.parameters().filter(px.f(px.LayerParam))
         assert isinstance(res, pxc.ParamDict)
         return res
@@ -169,7 +175,7 @@ class PCDecoder(px.EnergyModule):
 
         weights = {}
         id_to_name = {}
-        for param_name, param_value in self.get_w_parameters().items():
+        for param_name, param_value in self.w_parameters().items():
             param_id = str(uuid4())
             id_to_name[param_id] = param_name
             weights[param_id] = param_value.value
@@ -189,7 +195,7 @@ class PCDecoder(px.EnergyModule):
             }
 
             missing_parameters = set()
-            for param_name, param in self.get_w_parameters().items():
+            for param_name, param in self.w_parameters().items():
                 if param_name in weights:
                     if param.value.shape != weights[param_name].shape:
                         raise ValueError(
@@ -205,13 +211,13 @@ class PCDecoder(px.EnergyModule):
             )
 
 
-def internal_init(rkg: pxc.RandomKeyGenerator, internal_dim: int) -> jax.Array:
+def internal_state_init(rkg: pxc.RandomKeyGenerator, internal_dim: int) -> jax.Array:
     # TODO: Play with different initialization strategies
     values = jnp.zeros((internal_dim,))
     return values
 
 
-@pxu.vectorize(px.f(px.NodeParam, with_cache=True), in_axis=(0,), out_axis=("sum",))
+@pxu.vectorize(px.f(px.NodeParam, with_cache=True), in_axis=(0,), out_axis=("sum",))  # type: ignore
 def loss(example: jax.Array, *, model: PCDecoder) -> jax.Array:
     model(example=example)
     res = model.energy()
@@ -220,15 +226,15 @@ def loss(example: jax.Array, *, model: PCDecoder) -> jax.Array:
 
 
 @pxu.vectorize(px.f(px.NodeParam, with_cache=True), in_axis=(0,))
-def predict(example: jax.Array, *, model) -> jax.Array:
+def predict(example: jax.Array, *, model: PCDecoder) -> jax.Array:
     res = model(example=example)
     assert isinstance(res, jax.Array)
     return res
 
 
-# TODO: Why do I need to vectorize NodeParams if I don't use PCLayers in feed-forward prediction?
-@pxu.vectorize(px.f(px.NodeParam, with_cache=True), in_axis=(0,))
+@pxu.vectorize(in_axis=(0,))
 def feed_forward_predict(internal_state: jax.Array, *, model: PCDecoder) -> jax.Array:
+    """Feed forward predict is not using PCLayers. Instead, it runs internal_state through model weights"""
     res = model.feed_forward_predict(internal_state)
     assert isinstance(res, jax.Array)
     return res
@@ -248,7 +254,10 @@ if DEBUG:
             self.limit = limit
 
         def __iter__(self):
-            return islice(self.iterable, self.limit).__iter__()
+            return iter(islice(self.iterable, self.limit))
+
+        def __len__(self):
+            return min(self.limit, len(self.iterable))
 
         def __getattr__(self, attr):
             return getattr(self.iterable, attr)
@@ -316,7 +325,8 @@ def get_viz_samples(test_loader: DataLoader[Any]) -> tuple[jax.Array, jax.Array]
     additional_examples = max(0, batch_size - num_per_label * num_classes)
 
     selected_indexes: dict[int, list[int]] = {k: [] for k in range(num_classes)}
-    for index, (_, label) in enumerate(test_loader.dataset):
+    label: int
+    for index, (_, label) in enumerate(test_loader.dataset):  # type: ignore
         selected_indexes[label].append(index)
     for label in selected_indexes:
         additional_examples += max(0, num_per_label - len(selected_indexes[label]))
@@ -351,21 +361,38 @@ def train_on_batch(
     optim_w,
     loss,
     T,
-) -> jax.Array:
+) -> tuple[jax.Array, list[list[jax.Array]], list[dict[str, jax.Array]]]:
     grad_and_values = pxu.grad_and_values(
         px.f(px.NodeParam)(frozen=False) | px.f(px.LayerParam),  # type: ignore
     )(loss)
+
+    energies: list[list[jax.Array]] = []
+    gradients: list[dict[str, jax.Array]] = []
+
+    model_parameters = model.parameters()
 
     with pxu.train(model, examples):
         for i in range(T):
             with pxu.step(model):
                 g, _ = grad_and_values(examples, model=model)
-                # TODO: try PC instead of PPC here
+
+                energies.append([jnp.sum(x.energy()) for x in model.pc_nodes])
+
+                grads = {}
+                for param_name, param_value in model_parameters.items():
+                    if id(param_value) in g:
+                        grads[param_name] = g[id(param_value)]
+                gradients.append(grads)
+
                 optim_x(g)
-                optim_w(g)
+                if model.p.pc_mode == "ppc":
+                    optim_w(g)
+        if model.p.pc_mode == "pc":
+            g, _ = grad_and_values(examples, model=model)
+            optim_w(g)
     predictions = feed_forward_predict(model.internal_state, model=model)[0]
     mse = jnp.mean((predictions - examples) ** 2)
-    return mse
+    return mse, energies, gradients
 
 
 @pxu.jit()
@@ -396,8 +423,23 @@ def restore_image(
     return x
 
 
+simple_param_name_pattern = re.compile(
+    r"\(PCDecoder\)\.(?P<param>[^\.]+)\.\(\"nn\.\(GetAttrKey\(name='(?P<p_type>[^\.]+)'\),\)\",\)"
+)
+deep_param_name_pattern = re.compile(
+    r"\(PCDecoder\)\.(?P<group>[^\.]+)\.\(SequenceKey\(idx=(?P<level>\d+)\), "
+    r"(?:\"nn\.\(GetAttrKey\(name='(?P<w_type>[^']+)'\),\)\"\)|'(?P<x_type>[^']+)')"
+)
+
+param_type_shortcuts = {
+    "weight": "w",
+    "bias": "b",
+    "x": "x",
+}
+
+
 def train_model(params: Params) -> None:
-    results_dir = Path(params.results_dir) / params.experiment_name
+    results_dir = Path(params.results_dir) / params.experiment_name  # type: ignore
     if results_dir.exists() and any(results_dir.iterdir()):
         if params.overwrite_results_dir:
             shutil.rmtree(results_dir)
@@ -409,7 +451,7 @@ def train_model(params: Params) -> None:
 
     model = PCDecoder(
         params=params,
-        internal_init_fn=internal_init,
+        internal_state_init_fn=internal_state_init,
     )
 
     if params.load_weights_from is not None:
@@ -419,17 +461,33 @@ def train_model(params: Params) -> None:
         f"{params.experiment_name}--{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
     )
     if params.do_hypertunning:
-        run_name += f"--{tune.get_trial_id()}"
+        run_name += f"--{tune.get_trial_id()}"  # type: ignore
 
     run = None
     if not DEBUG:
+        params_update = {
+            "results_dir": str(results_dir.absolute()),  # type: ignore
+        }
+        if params.do_hypertunning:
+            params_update["trial_id"] = tune.get_trial_id()  # type: ignore
+            params_update["trial_name"] = tune.get_trial_name()  # type: ignore
+            params_update["trial_dir"] = tune.get_trial_dir()  # type: ignore
         run = wandb.init(
             project="pc-decoder",
             group=params.experiment_name,
             name=run_name,
             tags=["predictive-coding", "autoencoder", "decoder"],
-            config=params.dict(),
+            config={
+                **params.dict(),
+                **params_update,
+            },
         )
+        wandb.define_metric("energy/*", step_metric="t_step")
+        wandb.define_metric("grad/*", step_metric="t_step")
+        wandb.define_metric("train_mse", step_metric="epochs")
+        wandb.define_metric("test_mse", step_metric="epochs")
+        wandb.define_metric("internal_states_mean", step_metric="epochs")
+        wandb.define_metric("internal_states_std", step_metric="epochs")
 
     with pxu.train(model, jnp.zeros((params.batch_size, params.output_dim))):
         optim_x = pxu.Optim(
@@ -437,7 +495,7 @@ def train_model(params: Params) -> None:
                 optax.add_decayed_weights(weight_decay=params.optim_x_l2),
                 optax.sgd(params.optim_x_lr / params.batch_size),
             ),
-            model.get_x_parameters(),
+            model.x_parameters(),
             allow_none_grads=True,
         )
         optim_w = pxu.Optim(
@@ -447,22 +505,22 @@ def train_model(params: Params) -> None:
                     weight_decay=params.optim_w_l2,
                 ),
             ),
-            model.get_w_parameters(),
+            model.w_parameters(),
         )
 
     train_batch_fn = train_on_batch.snapshot(
         model=model,
         optim_x=optim_x,
         optim_w=optim_w,
-        loss=loss,
-        T=params.T,
+        loss=loss,  # type: ignore
+        T=params.T,  # type: ignore
     )
 
     test_batch_fn = test_on_batch.snapshot(
         model=model,
         optim_x=optim_x,
-        loss=loss,
-        T=params.T,
+        loss=loss,  # type: ignore
+        T=params.T,  # type: ignore
     )
 
     train_loader, test_loader, train_data_mean, train_data_std = get_data_loaders(
@@ -485,7 +543,68 @@ def train_model(params: Params) -> None:
             with tqdm(train_loader, unit="batch") as tbatch:
                 for examples, _ in tbatch:
                     tbatch.set_description(f"Train Batch {tbatch.n + 1}")
-                    metric = train_batch_fn(examples).item()
+                    metric, energies, gradients = train_batch_fn(examples)
+                    metric = metric.item()
+                    assert len(energies) == len(gradients) == params.T
+                    total_energy = jnp.asarray(energies).sum(axis=1).tolist()
+                    for i, (t_energies, t_gradients) in enumerate(
+                        zip(energies, gradients)
+                    ):
+                        t_metrics = {
+                            "t_step": t_step + i,
+                            "energy/total": total_energy[i],
+                            "grad/total": np.sum(
+                                [jnp.abs(x).sum().item() for x in t_gradients.values()]
+                            ),
+                        }
+                        for node_index, energy in enumerate(t_energies):
+                            t_metrics[f"energy/node_{node_index}"] = energy.item()
+                        for long_param_name, param_grad in t_gradients.items():
+                            m = deep_param_name_pattern.match(long_param_name)
+                            if m is not None:
+                                group = m.group("group")
+                                level = m.group("level")
+                                w_type = m.group("w_type")
+                                x_type = m.group("x_type")
+                                param_type = param_type_shortcuts[w_type or x_type]
+                                param_name = f"{group}[{level}].{param_type}"
+                            else:
+                                m = simple_param_name_pattern.match(long_param_name)
+                                if m is None:
+                                    raise RuntimeError(
+                                        f"Could not parse param name {long_param_name}"
+                                    )
+                                p_name = m.group("param")
+                                p_type = m.group("p_type")
+                                param_type = param_type_shortcuts[p_type]
+                                param_name = f"{p_name}.{param_type}"
+                            if param_type == "b":
+                                continue
+                            if (
+                                param_name.startswith("fc_layers")
+                                and not "[0]" in param_name
+                                and not f"[{model.num_layers - 2}]" in param_name
+                                and not f"[{model.num_layers - 1}]" in param_name
+                            ):
+                                continue
+                            if (
+                                param_name.startswith("pc_nodes")
+                                and not "[0]" in param_name
+                                and not f"[{model.num_layers - 2}]" in param_name
+                                and not f"[{model.num_layers - 1}]" in param_name
+                            ):
+                                continue
+
+                            t_metrics[f"grad/{param_name}.sum"] = jnp.sum(
+                                jnp.abs(param_grad)
+                            )
+                            # t_metrics[f"grad/{param_name}.mean"] = jnp.mean(
+                            #     jnp.abs(param_grad)
+                            # )
+                            # t_metrics[f"grad/{param_name}.std"] = jnp.std(param_grad)
+
+                        if run is not None:
+                            run.log(t_metrics)
                     t_step += params.T
                     epoch_train_mses.append(metric)
                     tbatch.set_postfix(mse=metric)
@@ -546,7 +665,7 @@ def train_model(params: Params) -> None:
                 epoch_report["internal_states_mean"] = jnp.mean(internal_states).item()
                 epoch_report["internal_states_std"] = jnp.std(internal_states).item()
 
-                model.save_weights(str(epoch_results))
+                model.save_weights(str(epoch_results))  # type: ignore
                 with open(os.path.join(epoch_results, "report.json"), "w") as outfile:
                     json.dump(epoch_report, outfile, indent=4)
 
@@ -561,21 +680,21 @@ def train_model(params: Params) -> None:
                 ):
                     mse = jnp.mean((prediction - example) ** 2).item()
 
-                    axes[0].imshow(
+                    axes[0].imshow(  # type: ignore
                         restore_image(example, train_data_mean, train_data_std),
                         cmap="gray",
                     )
-                    axes[0].set_title("Original")
-                    axes[1].imshow(
+                    axes[0].set_title("Original")  # type: ignore
+                    axes[1].imshow(  # type: ignore
                         restore_image(prediction, train_data_mean, train_data_std),
                         cmap="gray",
                     )
-                    axes[1].set_title("Prediction")
+                    axes[1].set_title("Prediction")  # type: ignore
                     # Set figure title
                     fig.suptitle(
                         f"Epochs {epoch + 1} Label {label} Example {i} MSE {mse}"
                     )
-                    fig.savefig(generated_dir / f"label_{label}_example_{i}.png")
+                    fig.savefig(str(generated_dir / f"label_{label}_example_{i}.png"))  # type: ignore
                     plt.cla()
 
                 # TODO: configure UMAP
@@ -600,7 +719,7 @@ def train_model(params: Params) -> None:
                 plt.xlabel("x")
                 plt.ylabel("y")
                 plt.title("Internal representations of classes")
-                # FIXME: Only 7/10 labels are present in the legend
+                # Only 7/10 labels are present in the legend, but the data is plotted correctly
                 plt.legend()
                 plt.savefig(epoch_results / "pc_decoder_mnist_internal_states.png")
 
@@ -611,8 +730,8 @@ def train_model(params: Params) -> None:
             tepoch.set_postfix(train_mse=epoch_train_mse, test_mse=epoch_test_mse)
 
     if run is not None:
-        run.summary["best_train_mse"] = best_train_mse
-        run.summary["best_test_mse"] = best_test_mse
+        run.summary["train_mse"] = best_train_mse
+        run.summary["test_mse"] = best_test_mse
         run.finish()
 
 
@@ -625,7 +744,7 @@ class Trainable:
         params = self.params.update(config, inplace=False, validate=True)
         # https://docs.ray.io/en/latest/tune/api/doc/ray.tune.utils.wait_for_gpu.html#ray.tune.utils.wait_for_gpu
         if params.hypertunning_gpu_memory_fraction_per_trial > 0:
-            tune.utils.wait_for_gpu(
+            tune.utils.wait_for_gpu(  # type: ignore
                 target_util=1.0 - params.hypertunning_gpu_memory_fraction_per_trial,
                 retry=50,
                 delay_s=12,
@@ -660,6 +779,7 @@ def main():
             trainable,
             {
                 "cpu": params.hypertunning_cpu_per_trial,
+                "memory": params.hypertunning_ram_gb_per_trial * 1024**3,
                 "gpu": params.hypertunning_gpu_memory_fraction_per_trial,
             },
         )
