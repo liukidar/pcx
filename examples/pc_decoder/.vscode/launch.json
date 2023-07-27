@@ -8,7 +8,7 @@
             "name": "Debug Single run",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/pc_decoder.py",
+            "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "env": {
@@ -19,18 +19,20 @@
                 "--overwrite-results-dir",
                 "--epochs=2",
                 "--batch-size=10",
-                "--T=4",
+                "--T=8",
+                "--T-convergence-multiplier=1",
                 "--use-last-n-batches-to-compute-metrics=5",
                 "--save-best-results",
                 "--save-intermediate-results",
-                "--save-results-every-n-epochs=1"
+                "--save-results-every-n-epochs=1",
+                "--no-wandb-logging"
             ]
         },
         {
             "name": "Single run",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/pc_decoder.py",
+            "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
@@ -41,26 +43,35 @@
             ]
         },
         {
-            "name": "Dev Hypertunning",
+            "name": "Debug Hypertunning",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/pc_decoder.py",
+            "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "justMyCode": true,
+            "env": {
+                "DEBUG": "1"
+            },
             "args": [
-                "--experiment-name=new-dev-hypertunning",
+                "--experiment-name=debug-hypertunning",
                 "--do-hypertunning",
                 "--overwrite-results-dir",
-                "--epochs=10",
-                "--hypertunning-num-trials=100",
-                "--hypertunning-use-early-stop-scheduler"
+                "--epochs=2",
+                "--batch-size=10",
+                "--hypertunning-num-trials=2",
+                "--hypertunning-use-early-stop-scheduler",
+                "--T-convergence-multiplier=1",
+                "--use-last-n-batches-to-compute-metrics=5",
+                "--save-best-results",
+                "--save-intermediate-results",
+                "--save-results-every-n-epochs=1"
             ]
         },
         {
             "name": "Long Run",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/pc_decoder.py",
+            "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "justMyCode": true,
         },
@@ -68,7 +79,7 @@
             "name": "Long Hypertunning",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/pc_decoder.py",
+            "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [

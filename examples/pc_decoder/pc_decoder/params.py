@@ -1,8 +1,8 @@
-from ray import tune
 from typing import Optional
 
 from hyperparameters import HP, Hyperparams
 from hyperparameters.ray_tune_hyperparams import RayTuneHyperparamsMixin
+from ray import tune
 
 
 class ModelParams(Hyperparams):
@@ -20,8 +20,8 @@ class ModelParams(Hyperparams):
     )
     hidden_dim: int = HP(
         "Dimension of the hidden layers.",
-        default=128,
-        search_space=tune.choice([64, 128, 256]),
+        default=256,
+        search_space=tune.choice([32, 64, 128, 256, 512, 1024]),
         tunable=True,
     )
     output_dim: int = HP(
@@ -29,7 +29,7 @@ class ModelParams(Hyperparams):
     )
     num_hidden_layers: int = HP(
         "Number of the hidden layers in the generator, excluding input and output layers.",
-        default=2,
+        default=1,
         search_space=tune.choice([1, 2, 3, 4]),
         tunable=True,
     )
@@ -60,7 +60,7 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     epochs: int = HP("Number of epochs to train for.", default=100)
     batch_size: int = HP(
         "Number of examples in a batch. Note the last batch will be discarded. Make sure all batches are of the same size!",
-        default=500,
+        default=2000,
     )
     use_last_n_batches_to_compute_metrics: int = HP(
         "Number of last train batches in the epoch used to compute average metrics on the train dataset",
@@ -68,13 +68,13 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     T: int = HP(
         "Number of Predictive Coding iterations.",
-        default=12,
-        search_space=tune.choice([4, 7, 12, 16, 25, 40, 100]),
+        default=26,
+        search_space=tune.choice(list(range(8, 100, 3))),
         tunable=True,
     )
     optim_x_lr: float = HP(
         "Learning rate for PC node values",
-        default=1.0,
+        default=0.357,
         search_space=tune.loguniform(1e-2, 1e2),
         tunable=True,
     )
@@ -86,7 +86,7 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     optim_w_lr: float = HP(
         "Learning rate for model weights",
-        default=0.000025,
+        default=5.185e-4,
         search_space=tune.loguniform(1e-5, 1e-3),
         tunable=True,
     )
@@ -118,7 +118,7 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     visualize_n_images_per_label: int = HP(
         "When visualizing generated images, up to this number of examples per label will be generated.",
-        default=3,
+        default=2,
     )
 
     use_gpus: str = HP(
@@ -126,7 +126,14 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
         default="0",
     )
 
-    do_hypertunning: bool = HP("Whether to do hypertunning.", default=False)
+    wandb_logging: bool = HP(
+        "Whether to log results to wandb.ai",
+        default=True,
+    )
+    do_hypertunning: bool = HP(
+        "Whether to do hypertunning.",
+        default=False,
+    )
     hypertunning_num_trials: int = HP(
         "Number of hypertunning run trials",
         default=100,
@@ -142,12 +149,12 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     hypertunning_ram_gb_per_trial: float = HP(
         "GB of RAM required for a single trial.",
-        default=3.5,
+        default=4.0,
     )
     hypertunning_gpu_memory_fraction_per_trial: float = HP(
         "Logical fraction of GPU memory required for a single trial. Must be in [0, 1]. "
         "However, keep in mind that GPUs have only around 85%-90% memory free when sitting idle",
-        default=1 / 16,
+        default=1 / 10,
     )
     hypertunning_use_early_stop_scheduler: bool = HP(
         "Whether to enable ray.tune scheduler that performs early stopping of trials.",
