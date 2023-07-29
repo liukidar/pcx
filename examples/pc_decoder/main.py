@@ -58,24 +58,40 @@ def main():
         scheduler = None
         if params.hypertunning_use_early_stop_scheduler:
             scheduler = ASHAScheduler()
-        tuner = tune.Tuner(
-            trainable,
-            param_space=param_space,
-            tune_config=tune.TuneConfig(
-                num_samples=params.hypertunning_num_trials,
-                metric="test_mse",
-                mode="min",
-                search_alg=search_algo,
-                scheduler=scheduler,
-                # This may help avoid XLA compilations that take more than 10 minutes for each new process
-                reuse_actors=True,
-            ),
-            run_config=air.RunConfig(
-                name=params.experiment_name,
-                local_dir=params.results_dir,
-                failure_config=air.FailureConfig(max_failures=3),
-            ),
-        )
+        experiment_dir = os.path.join(params.results_dir, params.experiment_name)
+        if params.hypertunning_resume_run and tune.Tuner.can_restore(experiment_dir):
+            logging.info(
+                f"Resuming previous hypertunning run with the same name: {params.experiment_name}"
+            )
+            logging.warning(
+                "Resuming unfinished and errored trials may overwrite their result directories!"
+            )
+            tuner = tune.Tuner.restore(
+                experiment_dir,
+                trainable=trainable,
+                resume_unfinished=True,
+                resume_errored=True,
+            )
+        else:
+            logging.info(f"Starting new hypertunning run: {params.experiment_name}")
+            tuner = tune.Tuner(
+                trainable,
+                param_space=param_space,
+                tune_config=tune.TuneConfig(
+                    num_samples=params.hypertunning_num_trials,
+                    metric="test_mse",
+                    mode="min",
+                    search_alg=search_algo,
+                    scheduler=scheduler,
+                    # Reusing actors accumulates RAM usage over time and leads to OOM.
+                    reuse_actors=False,
+                ),
+                run_config=air.RunConfig(
+                    name=params.experiment_name,
+                    local_dir=params.results_dir,
+                    failure_config=air.FailureConfig(max_failures=3),
+                ),
+            )
         results = tuner.fit()
         logging.info("--- Hypertunning done! ---")
 

@@ -134,6 +134,10 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
         "Whether to do hypertunning.",
         default=False,
     )
+    hypertunning_resume_run: bool = HP(
+        "Whether to resume the previous hypertunning run with the same name, if present.",
+        default=False,
+    )
     hypertunning_num_trials: int = HP(
         "Number of hypertunning run trials",
         default=100,

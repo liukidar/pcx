@@ -117,7 +117,11 @@ def test_on_batch(examples, *, model: PCDecoder, optim_x, loss, T) -> jax.Array:
 def run_training_experiment(params: Params) -> None:
     results_dir = Path(params.results_dir) / params.experiment_name  # type: ignore
     if results_dir.exists() and any(results_dir.iterdir()):
-        if params.overwrite_results_dir:
+        if params.do_hypertunning and params.hypertunning_resume_run:
+            shutil.move(
+                results_dir, results_dir.with_suffix(f".backup-{tune.get_trial_id()}")
+            )
+        elif params.overwrite_results_dir:
             shutil.rmtree(results_dir)
         else:
             raise RuntimeError(
