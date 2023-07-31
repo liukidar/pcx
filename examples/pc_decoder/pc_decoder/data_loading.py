@@ -33,6 +33,11 @@ def get_data_loaders(
     train_dataset = datasets.MNIST(root=params.data_dir, train=True, transform=transform)  # type: ignore
     test_dataset = datasets.MNIST(root=params.data_dir, train=False, transform=transform)  # type: ignore
 
+    train_dataset.data = train_dataset.data[1][None]
+    train_dataset.targets = train_dataset.targets[1][None]
+    test_dataset.data = test_dataset.data[3][None]
+    test_dataset.targets = test_dataset.targets[3][None]
+
     assert (
         len(train_dataset) % params.batch_size
         == len(test_dataset) % params.batch_size

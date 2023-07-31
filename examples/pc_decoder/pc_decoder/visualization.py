@@ -89,6 +89,79 @@ def visualize_predictions(
     logging.info(f"Visualized {sum(visualized_labels.values())} examples.")
 
 
+def visualize_predictions(
+    *,
+    out_dir: Path,
+    run: wandb.wandb_sdk.wandb_run.Run | None,
+    examples: jax.Array,
+    predictions: jax.Array,
+    labels: jax.Array,
+    params: Params,
+    epochs: int,
+    train_data_mean: float,
+    train_data_std: float,
+) -> None:
+    logging.info(
+        f"Visualizing predictions, up to {params.visualize_n_images_per_label} per label..."
+    )
+    plt.clf()
+    fig, axes = plt.subplots(1, 2)
+    visualized_labels = defaultdict(int)
+    for i, (example, prediction, label) in enumerate(
+        zip(examples, predictions, labels)
+    ):
+        label = label.item()
+        if visualized_labels[label] >= params.visualize_n_images_per_label:
+            continue
+        visualized_labels[label] += 1
+        mse = jnp.mean((prediction - example) ** 2).item()
+
+        axes[0].imshow(  # type: ignore
+            restore_image(example, train_data_mean, train_data_std),
+            cmap="gray",
+        )
+        axes[0].set_title("Original")  # type: ignore
+        axes[1].imshow(  # type: ignore
+            restore_image(prediction, train_data_mean, train_data_std),
+            cmap="gray",
+        )
+        axes[1].set_title("Prediction")  # type: ignore
+        # Set figure title
+        fig.suptitle(f"Epochs {epochs} Label {label} Example {i} MSE {mse}")
+        filename = f"label_{label}_example_{i}.png"
+        image_path = str(out_dir / filename)
+        fig.savefig(image_path)  # type: ignore
+        if run is not None:
+            run.log({filename: wandb.Image(image_path), "epochs": epochs})
+        plt.cla()
+    plt.clf()
+    logging.info(f"Visualized {sum(visualized_labels.values())} examples.")
+
+
+def plot_training_exmaple(
+    *,
+    example: jax.Array,
+    prediction: jax.Array,
+    out_dir: Path,
+    train_data_mean: float,
+    train_data_std: float,
+) -> None:
+    fig, axes = plt.subplots(1, 2)
+    axes[0].imshow(  # type: ignore
+        restore_image(example, train_data_mean, train_data_std),
+        cmap="gray",
+    )
+    axes[0].set_title("Original")  # type: ignore
+    axes[1].imshow(  # type: ignore
+        restore_image(prediction, train_data_mean, train_data_std),
+        cmap="gray",
+    )
+    axes[1].set_title("Prediction")  # type: ignore
+    # Set figure title
+    image_path = str(out_dir / "training_example.png")
+    fig.savefig(image_path)  # type: ignore
+
+
 def visualize_internal_states_clustering(
     *,
     out_dir: Path,
