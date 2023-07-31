@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import shutil
+from functools import partial
 from pathlib import Path
 from typing import NamedTuple
 
@@ -11,11 +12,16 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import wandb
+from matplotlib import pyplot as plt
 from pc_decoder.data_loading import get_data_loaders
-from pc_decoder.logging import init_wandb, log_train_t_step_metrics
+from pc_decoder.logging import (
+    init_wandb,
+    log_test_t_step_metrics,
+    log_train_t_step_metrics,
+)
 from pc_decoder.model import PCDecoder, feed_forward_predict, loss
 from pc_decoder.params import Params
-from pc_decoder.visualization import create_all_visualizations
+from pc_decoder.visualization import create_all_visualizations, plot_training_exmaple
 from ray import tune
 from ray.air import session
 from tqdm import tqdm
@@ -25,7 +31,7 @@ import pcax.core as pxc  # type: ignore
 import pcax.utils as pxu  # type: ignore
 
 DEBUG = os.environ.get("DEBUG", "0") == "1"
-DEBUG_BATCH_NUMBER = 10
+DEBUG_BATCH_NUMBER = 1
 
 logging.basicConfig(
     format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
@@ -63,7 +69,7 @@ class TrainOnBatchResult(NamedTuple):
     gradients: list[dict[str, jax.Array]]
 
 
-@pxu.jit()
+# @pxu.jit()
 def train_on_batch(
     examples: jax.Array,
     *,
@@ -106,12 +112,14 @@ def train_on_batch(
     return TrainOnBatchResult(mse=mse, energies=energies, gradients=gradients)
 
 
-@pxu.jit()
-def test_on_batch(examples, *, model: PCDecoder, optim_x, loss, T) -> jax.Array:
-    model.converge_on_batch(examples, optim_x=optim_x, loss=loss, T=T)
+# @pxu.jit()
+def test_on_batch(
+    examples, *, model: PCDecoder, optim_x, loss, T
+) -> tuple[jax.Array, list[list[jax.Array]]]:
+    energies = model.converge_on_batch(examples, optim_x=optim_x, loss=loss, T=T)
     predictions = feed_forward_predict(model.internal_state, model=model)[0]
     mse = jnp.mean((predictions - examples) ** 2)
-    return mse
+    return mse, energies
 
 
 def run_training_experiment(params: Params) -> None:
@@ -170,7 +178,8 @@ def train_model(
             model.w_parameters(),
         )
 
-    train_batch_fn = train_on_batch.snapshot(
+    train_batch_fn = partial(
+        train_on_batch,
         model=model,
         optim_x=optim_x,
         optim_w=optim_w,
@@ -178,7 +187,8 @@ def train_model(
         T=params.T,  # type: ignore
     )
 
-    test_batch_fn = test_on_batch.snapshot(
+    test_batch_fn = partial(
+        test_on_batch,
         model=model,
         optim_x=optim_x,
         loss=loss,  # type: ignore
@@ -196,7 +206,8 @@ def train_model(
     test_mses = []
     best_train_mse = float("inf")
     best_test_mse = float("inf")
-    t_step: int = 0
+    train_t_step: int = 0
+    test_t_step: int = 0
 
     with tqdm(range(params.epochs), unit="epoch") as tepoch:
         for epoch in tepoch:
@@ -211,12 +222,12 @@ def train_model(
                     mse = batch_res.mse.item()
                     log_train_t_step_metrics(
                         run=run,
-                        t_step=t_step,
+                        t_step=train_t_step,
                         energies=batch_res.energies,
                         gradients=batch_res.gradients,
                         params=params,
                     )
-                    t_step += params.T
+                    train_t_step += len(batch_res.energies)
                     epoch_train_mses.append(mse)
                     tbatch.set_postfix(mse=mse)
 
@@ -236,7 +247,14 @@ def train_model(
             with tqdm(test_loader, unit="batch") as tbatch:
                 for examples, _ in tbatch:
                     tbatch.set_description(f"Test Batch {tbatch.n + 1}")
-                    mse = test_batch_fn(examples).item()
+                    mse, energies = test_batch_fn(examples)
+                    mse = mse.item()
+                    log_test_t_step_metrics(
+                        run=run,
+                        t_step=test_t_step,
+                        energies=energies,
+                    )
+                    test_t_step += len(energies)
                     epoch_test_mses.append(mse)
                     tbatch.set_postfix(mse=mse)
             epoch_test_mse: float = float(np.mean(epoch_test_mses))
@@ -293,6 +311,13 @@ def train_model(
             optim_x=optim_x,
             test_loader=test_loader,
             params=params,
+            train_data_mean=train_data_mean,
+            train_data_std=train_data_std,
+        )
+        plot_training_exmaple(
+            example=next(iter(train_loader))[0],
+            prediction=feed_forward_predict(model.internal_state, model=model)[0],
+            out_dir=best_epoch_dir,
             train_data_mean=train_data_mean,
             train_data_std=train_data_std,
         )

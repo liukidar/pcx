@@ -16,16 +16,6 @@
             },
             "args": [
                 "--experiment-name=debug",
-                "--overwrite-results-dir",
-                "--epochs=2",
-                "--batch-size=10",
-                "--T=8",
-                "--T-convergence-multiplier=1",
-                "--use-last-n-batches-to-compute-metrics=5",
-                "--save-best-results",
-                "--save-intermediate-results",
-                "--save-results-every-n-epochs=1",
-                "--no-wandb-logging"
             ]
         },
         {

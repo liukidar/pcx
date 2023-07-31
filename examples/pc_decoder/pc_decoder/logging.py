@@ -106,7 +106,27 @@ def log_train_t_step_metrics(
                 continue
 
             t_metrics[f"grad/{param_name}.sum"] = jnp.sum(jnp.abs(param_grad))
-            t_metrics[f"grad/{param_name}.mean"] = jnp.mean(jnp.abs(param_grad))
-            t_metrics[f"grad/{param_name}.std"] = jnp.std(param_grad)
+            # t_metrics[f"grad/{param_name}.mean"] = jnp.mean(jnp.abs(param_grad))
+            # t_metrics[f"grad/{param_name}.std"] = jnp.std(param_grad)
+
+        run.log(t_metrics)
+
+
+def log_test_t_step_metrics(
+    *,
+    run: wandb.wandb_sdk.wandb_run.Run | None,
+    t_step: int,
+    energies: list[list[jax.Array]],
+) -> None:
+    if run is None:
+        return
+    total_energy = jnp.asarray(energies).sum(axis=1).tolist()
+    for t, t_energies in enumerate(energies):
+        t_metrics = {
+            "t_step": t_step + t,
+            "energy/test_total": total_energy[t],
+        }
+        for node_index, energy in enumerate(t_energies):
+            t_metrics[f"energy/test_node_{node_index}"] = energy.item()
 
         run.log(t_metrics)

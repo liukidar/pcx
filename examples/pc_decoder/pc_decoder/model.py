@@ -100,22 +100,12 @@ class PCDecoder(px.EnergyModule):
         optim_x,
         loss,
         T,
-    ) -> None:
+    ) -> list[list[jax.Array]]:
         grad_and_values = pxu.grad_and_values(
             px.f(px.NodeParam)(frozen=False),
         )(loss)
 
-        # from functools import partial
-
-        # @partial(jax.jit, static_argnums=(1,))
-        # def body_fn(i, model):
-        #     with pxu.step(self):
-        #         g, _ = grad_and_values(examples, model=self)
-        #         optim_x(g)
-        #     return model
-
-        # with pxu.eval(self, examples):
-        #     jax.lax.fori_loop(0, T * self.p.T_convergence_multiplier, body_fn, self)
+        energies: list[list[jax.Array]] = []
 
         with pxu.eval(self, examples):
             # Run to convergence. Since while loops are hard in JAX, we run for a fixed number of steps.
@@ -124,7 +114,10 @@ class PCDecoder(px.EnergyModule):
                 with pxu.step(self):
                     g, _ = grad_and_values(examples, model=self)
 
+                    energies.append([jnp.sum(x.energy()) for x in self.pc_nodes])
+
                     optim_x(g)
+        return energies
 
     @property
     def num_layers(self) -> int:

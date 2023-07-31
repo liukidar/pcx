@@ -10,7 +10,7 @@ class ModelParams(Hyperparams):
         "Predictive Coding mode: PC or PPC. "
         "PC updates only X each T iteration and then updates W once. "
         "PPC updates both X and W every T iteration.",
-        default="ppc",
+        default="pc",
         choices=["pc", "ppc"],
         tunable=True,
     )
@@ -39,12 +39,12 @@ class ModelParams(Hyperparams):
     )
     use_prior_layer: bool = HP(
         "Whether to use a prior layer that generates a set of priors for the topmost PCLayer.",
-        default=True,
+        default=False,
         tunable=True,
     )
     T_convergence_multiplier: int = HP(
         "Multiplier for the number of iterations to achieve approximate convergence.",
-        default=25,
+        default=10,
     )
 
 
@@ -57,24 +57,25 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
         "Path to the directory containing saved W weights. Note that X values are not loaded (and not saved).",
         default=None,
     )
-    epochs: int = HP("Number of epochs to train for.", default=100)
+    epochs: int = HP("Number of epochs to train for.", default=10)
     batch_size: int = HP(
         "Number of examples in a batch. Note the last batch will be discarded. Make sure all batches are of the same size!",
-        default=2000,
+        default=1,
     )
     use_last_n_batches_to_compute_metrics: int = HP(
         "Number of last train batches in the epoch used to compute average metrics on the train dataset",
-        default=20,
+        default=1,
     )
     T: int = HP(
         "Number of Predictive Coding iterations.",
-        default=26,
+        default=100,
         search_space=tune.choice(list(range(8, 100, 3))),
         tunable=True,
     )
     optim_x_lr: float = HP(
         "Learning rate for PC node values",
-        default=0.357,
+        # default=0.357,
+        default=0.1,
         search_space=tune.loguniform(1e-2, 1e2),
         tunable=True,
     )
@@ -86,7 +87,8 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     optim_w_lr: float = HP(
         "Learning rate for model weights",
-        default=5.185e-4,
+        # default=5.185e-4,
+        default=0.0005,
         search_space=tune.loguniform(1e-5, 1e-3),
         tunable=True,
     )
@@ -102,7 +104,7 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     results_dir: str = HP("Directory to save results to.", default="results")
     overwrite_results_dir: bool = HP(
-        "Whether to overwrite the results directory", default=False
+        "Whether to overwrite the results directory", default=True
     )
     save_best_results: bool = HP(
         "Whether to save the best model",
@@ -110,11 +112,11 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     save_intermediate_results: bool = HP(
         "Whether to save the intermediate models, graphs, and reports after every N epochs",
-        default=False,
+        default=True,
     )
     save_results_every_n_epochs: int = HP(
         "Save the intermediate results after every N epochs",
-        default=4,
+        default=1,
     )
     visualize_n_images_per_label: int = HP(
         "When visualizing generated images, up to this number of examples per label will be generated.",
