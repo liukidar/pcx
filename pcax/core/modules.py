@@ -60,7 +60,7 @@ class Module(metaclass=_ModuleMeta):
     """
 
     def __init__(self) -> None:
-        self._mode = None
+        self._mode: str | None = None
 
     def parameters(self) -> ParamDict:
         """Returns a dictionary of all the parameters of the module."""

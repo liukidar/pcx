@@ -75,16 +75,16 @@ def log_train_t_step_metrics(
     for t, (t_energies, t_gradients) in enumerate(zip(energies, gradients)):
         t_metrics = {
             "t_step": t_step + t,
-            "energy/total": total_energy[t],
-            "grad/total.sum": np.sum(
+            "energy/00_total": total_energy[t],
+            "grad/00_total.sum": np.sum(
                 [jnp.abs(x).sum().item() for x in t_gradients.values()]
             ),
-            "grad/total.mean": np.mean(
-                [jnp.abs(x).mean().item() for x in t_gradients.values()]
-            ),
+            # "grad/01_total.mean": np.mean(
+            #     [jnp.abs(x).mean().item() for x in t_gradients.values()]
+            # ),
         }
         for node_index, energy in enumerate(t_energies):
-            t_metrics[f"energy/node_{node_index}"] = energy.item()
+            t_metrics[f"energy/10_node_{node_index}"] = energy.item()
         for long_param_name, param_grad in t_gradients.items():
             m = deep_param_name_pattern.match(long_param_name)
             if m is not None:
@@ -105,6 +105,13 @@ def log_train_t_step_metrics(
             if param_type == "b":
                 continue
 
+            if "pc_nodes" in param_name:
+                param_name = "10_" + param_name
+            elif "fc_layers" in param_name:
+                param_name = "20_" + param_name
+            else:
+                param_name = "30_" + param_name
+
             t_metrics[f"grad/{param_name}.sum"] = jnp.sum(jnp.abs(param_grad))
             # t_metrics[f"grad/{param_name}.mean"] = jnp.mean(jnp.abs(param_grad))
             # t_metrics[f"grad/{param_name}.std"] = jnp.std(param_grad)
@@ -124,9 +131,9 @@ def log_test_t_step_metrics(
     for t, t_energies in enumerate(energies):
         t_metrics = {
             "t_step": t_step + t,
-            "energy/test_total": total_energy[t],
+            "energy/20_test_total": total_energy[t],
         }
         for node_index, energy in enumerate(t_energies):
-            t_metrics[f"energy/test_node_{node_index}"] = energy.item()
+            t_metrics[f"energy/21_test_node_{node_index}"] = energy.item()
 
         run.log(t_metrics)

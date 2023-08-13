@@ -28,19 +28,18 @@ class PCDecoder(px.EnergyModule):
         self,
         *,
         params: ModelParams,
-        internal_state_init_fn: Callable[[pxc.RandomKeyGenerator, int], jax.Array],
+        internal_state_init_fn: Callable[
+            [ModelParams, jax.random.KeyArray], tuple[jax.Array, jax.random.KeyArray]
+        ],
     ) -> None:
         super().__init__()
 
         self.p = params.copy()
         self.act_fn = activation_functions[params.activation]
-
-        def internal_node_init_fn(node: px.Node, rkg: pxc.RandomKeyGenerator) -> None:
-            value = internal_state_init_fn(rkg, self.p.internal_dim)
-            if not self.p.use_prior_layer:
-                node.set_activation("u", value)
-            node.x.value = value
-
+        self.internal_state_init_fn = internal_state_init_fn
+        self.init_prng_key = jax.random.PRNGKey(100)
+        self.saved_internal_state: jax.Array | None = None
+        self.saved_pc_states: list[jax.Array] = []
         self.prior_layer: nn.Linear | None = None
         if self.p.use_prior_layer:
             # Weights are sampled from the uniform distribution
@@ -53,22 +52,23 @@ class PCDecoder(px.EnergyModule):
             ]
             + [nn.Linear(self.p.hidden_dim, self.p.output_dim)]
         )
-        self.pc_nodes: list[px.Node] = [px.Node(init_fn=internal_node_init_fn)] + [
-            px.Node() for _ in range(self.num_layers)
-        ]
+        self.pc_nodes: list[px.Node] = [px.Node() for _ in range(self.num_layers + 1)]
 
         self.pc_nodes[-1].x.frozen = True
 
     def __call__(
-        self, example: jax.Array | None = None, internal_state: jax.Array | None = None
+        self, example: jax.Array | None = None, network_input: jax.Array | None = None
     ) -> jax.Array:
-        if internal_state is None:
+        if network_input is None:
             if self.prior_layer is not None:
-                internal_state = self.prior_layer(jnp.ones((1,)))
+                network_input = self.prior_layer(jnp.ones((1,)))
             else:
-                internal_state = self.internal_state  # this might be None as well.
-        # Call the internal layer so it can initialize the internal state by calling init_fn.
-        x = self.pc_nodes[0](internal_state)["x"]  # type: ignore
+                if self.pc_nodes[0].is_init:
+                    network_input, self.init_prng_key = self._init_internal_state()
+                else:
+                    network_input = self.internal_state
+        assert network_input is not None
+        x = self.pc_nodes[0](network_input)["x"]
 
         for i in range(self.num_layers):
             # No activation function at the last layer
@@ -81,6 +81,32 @@ class PCDecoder(px.EnergyModule):
             self.pc_nodes[-1]["x"] = example
 
         return self.prediction
+
+    def _init_internal_state(self):
+        internal_state = self.pc_nodes[0]["x"]
+        if (
+            self.p.preserve_internal_state_between_batches
+            and self._mode is not None
+            and self._mode == "train"
+            and internal_state is not None
+        ):
+            # Note: this doesn't work with the prior layer, and maybe it shouldn't.
+            return internal_state, self.init_prng_key
+        return self.internal_state_init_fn(self.p, self.init_prng_key)
+
+    def train_batch_start(self):
+        if (
+            self.p.preserve_internal_state_between_batches
+            and self.saved_internal_state is not None
+        ):
+            self.pc_nodes[0]["x"] = self.saved_internal_state
+            self.saved_internal_state = None
+
+    def train_batch_end(self):
+        if self.p.preserve_internal_state_between_batches:
+            self.saved_internal_state = self.pc_nodes[0]["x"]
+            if self.p.preserve_all_pc_states_between_batches:
+                self.saved_pc_states = [node["x"] for node in self.pc_nodes[1:]]
 
     def feed_forward_predict(self, x: jax.Array | None = None) -> jax.Array:
         if x is None:
@@ -132,9 +158,9 @@ class PCDecoder(px.EnergyModule):
         return res
 
     @property
-    def internal_state(self) -> jax.Array | None:
+    def internal_state(self) -> jax.Array:
         res = self.pc_nodes[0]["x"]
-        assert res is None or isinstance(res, jax.Array)
+        assert isinstance(res, jax.Array)
         return res
 
     def x_parameters(self) -> pxc.ParamDict:
@@ -211,7 +237,7 @@ def feed_forward_predict(internal_state: jax.Array, *, model: PCDecoder) -> jax.
     return res
 
 
-@pxu.jit()
+# @pxu.jit()
 def get_internal_states_on_batch(
     examples, *, model: PCDecoder, optim_x, loss, T
 ) -> jax.Array:

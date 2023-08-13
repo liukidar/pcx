@@ -10,16 +10,17 @@ __all__ = [
     "cond",
     "switch",
     "scan",
-    "Optim"
+    "Optim",
 ]
 
 from .context import (
     train,
     eval,
     step,
+    pc_train_on_batch,
     vectorize,
     grad_and_values,
-    jit
+    jit,
 )
 
 from .data import (
@@ -27,12 +28,6 @@ from .data import (
     load_params,
 )
 
-from .flow import (
-    cond,
-    switch,
-    scan
-)
+from .flow import cond, switch, scan
 
-from .optim import (
-    Optim
-)
+from .optim import Optim
