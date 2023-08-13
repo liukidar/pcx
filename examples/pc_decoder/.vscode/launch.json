@@ -15,7 +15,8 @@
                 "DEBUG": "1"
             },
             "args": [
-                "--experiment-name=debug",
+                "--experiment-name=debug"
+                // "--no-wandb-logging"
             ]
         },
         {

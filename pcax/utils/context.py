@@ -16,14 +16,16 @@ def train(
     filter: Union[f, Callable] = f(NodeParam, with_cache=True),
     in_axis: Optional[Tuple[Union[None, int]]] = None,
     out_axis: Optional[Tuple[Union[None, int, str]]] = None,
-    **kwargs
+    **kwargs,
 ):
     model.train()
     if isinstance(model, EnergyModule):
         model.clear_cache()
 
     if len(args):
-        yield init_module(model, *args, filter=filter, in_axis=in_axis, out_axis=out_axis, **kwargs)
+        yield init_module(
+            model, *args, filter=filter, in_axis=in_axis, out_axis=out_axis, **kwargs
+        )
     else:
         yield
 
@@ -38,19 +40,28 @@ def eval(
     filter: Union[f, Callable] = f(NodeParam, with_cache=True),
     in_axis: Optional[Tuple[Union[None, int]]] = None,
     out_axis: Optional[Tuple[Union[None, int, str]]] = None,
-    **kwargs
+    **kwargs,
 ):
     model.eval()
     if isinstance(model, EnergyModule):
         model.clear_cache()
 
     if len(args):
-        yield init_module(model, *args, filter=filter, in_axis=in_axis, out_axis=out_axis, **kwargs)
+        yield init_module(
+            model, *args, filter=filter, in_axis=in_axis, out_axis=out_axis, **kwargs
+        )
     else:
         yield
 
     if isinstance(model, EnergyModule):
         model.clear_cache()
+
+
+@contextlib.contextmanager
+def pc_train_on_batch(model: EnergyModule):
+    model.train_batch_start()
+    yield
+    model.train_batch_end()
 
 
 def init_module(
@@ -59,7 +70,7 @@ def init_module(
     filter: Union[f, Callable] = f(NodeParam, with_cache=True),
     in_axis: Optional[Tuple[Union[None, int]]] = None,
     out_axis: Optional[Tuple[Union[None, int, str]]] = None,
-    **kwargs
+    **kwargs,
 ):
     if isinstance(model, EnergyModule):
         model.set_status(init=True)
@@ -97,7 +108,7 @@ def vectorize(
     filter: Union[f, Callable[[ParamDict], ParamDict]] = lambda key, value: False,
     in_axis: Tuple[Optional[int], ...] = (0,),
     out_axis: Tuple[Optional[int], ...] = (0,),
-    axis_name: str = "batch"
+    axis_name: str = "batch",
 ):
     def decorator(fn):
         return Vectorize(fn, filter, in_axis, out_axis, axis_name)
@@ -118,7 +129,7 @@ def grad_and_values(
 def jit(
     filter: Union[f, Callable[[ParamDict], ParamDict]] = lambda key, value: True,
     donate_argnums: Tuple[int, ...] = (),
-    inline: bool = False
+    inline: bool = False,
 ):
     def decorator(fn):
         return Jit(fn, filter, donate_argnums, inline)

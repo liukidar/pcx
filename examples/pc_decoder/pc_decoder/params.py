@@ -46,6 +46,14 @@ class ModelParams(Hyperparams):
         "Multiplier for the number of iterations to achieve approximate convergence.",
         default=10,
     )
+    preserve_internal_state_between_batches: bool = HP(
+        "Whether to preserve the x values of the first PCLayer in between batches during training",
+        default=True,
+    )
+    preserve_all_pc_states_between_batches: bool = HP(
+        "Whether to preserve the x values of all PCLayers in between batches during training",
+        default=False,
+    )
 
 
 class Params(ModelParams, RayTuneHyperparamsMixin):
@@ -88,7 +96,7 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     optim_w_lr: float = HP(
         "Learning rate for model weights",
         # default=5.185e-4,
-        default=0.0005,
+        default=5e-4,
         search_space=tune.loguniform(1e-5, 1e-3),
         tunable=True,
     )
@@ -97,6 +105,20 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
         default=0.001,
         search_space=tune.loguniform(1e-2, 5e-1),
         tunable=False,
+    )
+    optimizer_x: str = HP(
+        "Optimizer to use for PC node X values",
+        default="sgd",
+        choices=["adamw", "sgd"],
+    )
+    reset_optimizer_x_state: bool = HP(
+        "Since we updated the values of x directly, we need to reset the momentums in the x optimizer.",
+        default=False,
+    )
+    optimizer_w: str = HP(
+        "Optimizer to use for model weights",
+        default="sgd",
+        choices=["adamw", "sgd"],
     )
 
     data_dir: str = HP(

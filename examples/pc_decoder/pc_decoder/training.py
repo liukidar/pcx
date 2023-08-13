@@ -20,7 +20,7 @@ from pc_decoder.logging import (
     log_train_t_step_metrics,
 )
 from pc_decoder.model import PCDecoder, feed_forward_predict, loss
-from pc_decoder.params import Params
+from pc_decoder.params import Params, ModelParams
 from pc_decoder.visualization import create_all_visualizations, plot_training_exmaple
 from ray import tune
 from ray.air import session
@@ -57,10 +57,13 @@ if DEBUG:
             return getattr(self.iterable, attr)
 
 
-def internal_state_init(rkg: pxc.RandomKeyGenerator, internal_dim: int) -> jax.Array:
+def internal_state_init(
+    params: ModelParams,
+    prng_key: jax.random.KeyArray,
+) -> tuple[jax.Array, jax.random.KeyArray]:
     # TODO: Play with different initialization strategies
-    values = jnp.zeros((internal_dim,))
-    return values
+    value = jnp.zeros((params.internal_dim,))
+    return value, prng_key
 
 
 class TrainOnBatchResult(NamedTuple):
@@ -74,10 +77,10 @@ def train_on_batch(
     examples: jax.Array,
     *,
     model: PCDecoder,
-    optim_x,
-    optim_w,
+    optim_x: pxu.Optim,
+    optim_w: pxu.Optim,
     loss,
-    T,
+    params: Params,
 ) -> TrainOnBatchResult:
     grad_and_values = pxu.grad_and_values(
         px.f(px.NodeParam)(frozen=False) | px.f(px.LayerParam),  # type: ignore
@@ -88,8 +91,13 @@ def train_on_batch(
 
     model_parameters = model.parameters()
 
-    with pxu.train(model, examples):
-        for i in range(T):
+    with pxu.pc_train_on_batch(model), pxu.train(model, examples):
+        if params.reset_optimizer_x_state:
+            optim_x.init_state()
+        if params.preserve_all_pc_states_between_batches and model.saved_pc_states:
+            for pc_node, state in zip(model.pc_nodes[1:], model.saved_pc_states):
+                pc_node["x"] = state
+        for i in range(params.T):
             with pxu.step(model):
                 g, _ = grad_and_values(examples, model=model)
 
@@ -160,23 +168,48 @@ def train_model(
 ) -> None:
     best_epoch_dir = results_dir / "best"
     with pxu.train(model, jnp.zeros((params.batch_size, params.output_dim))):
-        optim_x = pxu.Optim(
-            optax.chain(
-                optax.add_decayed_weights(weight_decay=params.optim_x_l2),
-                optax.sgd(params.optim_x_lr / params.batch_size),
-            ),
-            model.x_parameters(),
-            allow_none_grads=True,
-        )
-        optim_w = pxu.Optim(
-            optax.chain(
-                optax.adamw(
-                    params.optim_w_lr / params.batch_size,
-                    weight_decay=params.optim_w_l2,
+        if params.optimizer_x == "sgd":
+            optim_x = pxu.Optim(
+                optax.chain(
+                    optax.add_decayed_weights(weight_decay=params.optim_x_l2),
+                    optax.sgd(params.optim_x_lr / params.batch_size),
                 ),
-            ),
-            model.w_parameters(),
-        )
+                model.x_parameters(),
+                allow_none_grads=True,
+            )
+        elif params.optimizer_x == "adamw":
+            optim_x = pxu.Optim(
+                optax.adamw(
+                    params.optim_x_lr / params.batch_size,
+                    weight_decay=params.optim_x_l2,
+                ),
+                model.x_parameters(),
+                allow_none_grads=True,
+            )
+        else:
+            raise ValueError(f"Unknown optimizer_x: {params.optimizer_x}")
+        if params.optimizer_w == "sgd":
+            optim_w = pxu.Optim(
+                optax.chain(
+                    optax.add_decayed_weights(weight_decay=params.optim_w_l2),
+                    optax.sgd(params.optim_w_lr / params.batch_size),
+                ),
+                model.w_parameters(),
+                allow_none_grads=True,
+            )
+        elif params.optimizer_w == "adamw":
+            optim_w = pxu.Optim(
+                optax.chain(
+                    optax.adamw(
+                        params.optim_w_lr / params.batch_size,
+                        weight_decay=params.optim_w_l2,
+                    ),
+                ),
+                model.w_parameters(),
+                allow_none_grads=True,
+            )
+        else:
+            raise ValueError(f"Unknown optimizer_w: {params.optimizer_w}")
 
     train_batch_fn = partial(
         train_on_batch,
@@ -184,7 +217,7 @@ def train_model(
         optim_x=optim_x,
         optim_w=optim_w,
         loss=loss,  # type: ignore
-        T=params.T,  # type: ignore
+        params=params,
     )
 
     test_batch_fn = partial(
@@ -318,6 +351,7 @@ def train_model(
             example=next(iter(train_loader))[0],
             prediction=feed_forward_predict(model.internal_state, model=model)[0],
             out_dir=best_epoch_dir,
+            run=run,
             train_data_mean=train_data_mean,
             train_data_std=train_data_std,
         )

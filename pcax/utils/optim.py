@@ -9,9 +9,7 @@ class Optim(Module):
     def __init__(self, optax_opt, vars, allow_none_grads=False):
         self.optax_opt = optax_opt
         self.train_refs = [ParamRef(x) for x in vars]
-        self.state = Param(
-            self.optax_opt.init({id(var.ref): var.ref.value for var in self.train_refs})
-        )
+        self.init_state()
         self.allow_none_grads = allow_none_grads
 
     def __call__(self, grads):
@@ -30,8 +28,13 @@ class Optim(Module):
             if update is not None:
                 var.ref.value += update
 
+    def init_state(self) -> None:
+        self.state = Param(
+            self.optax_opt.init({id(var.ref): var.ref.value for var in self.train_refs})
+        )
+
     @property
-    def step_count(self) -> 'jnp.ndarray[int]':
+    def step_count(self) -> "jnp.ndarray[int]":
         try:
             return self.state.value[-1][-1].count
         except AttributeError:
