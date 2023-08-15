@@ -35,7 +35,11 @@ class PCDecoder(px.EnergyModule):
         super().__init__()
 
         self.p = params.copy()
-        self.act_fn = activation_functions[params.activation]
+        self.act_fn_hidden = activation_functions[params.activation_hidden]
+        if params.activation_output is not None:
+            self.act_fn_output = activation_functions[params.activation_output]
+        else:
+            self.act_fn_output = lambda x: x
         self.internal_state_init_fn = internal_state_init_fn
         self.init_prng_key = jax.random.PRNGKey(100)
         self.saved_internal_state: jax.Array | None = None
@@ -72,7 +76,9 @@ class PCDecoder(px.EnergyModule):
 
         for i in range(self.num_layers):
             # No activation function at the last layer
-            act_fn = self.act_fn if i < self.num_layers - 1 else lambda x: x
+            act_fn = (
+                self.act_fn_hidden if i < self.num_layers - 1 else self.act_fn_output
+            )
             x = self.pc_nodes[i + 1](act_fn(self.fc_layers[i](x)))["x"]
 
         # During training, fix target to the input
@@ -115,7 +121,9 @@ class PCDecoder(px.EnergyModule):
             raise RuntimeError("Internal state is none.")
         for i in range(self.num_layers):
             # No activation function at the last layer
-            act_fn = self.act_fn if i < self.num_layers - 1 else lambda x: x
+            act_fn = (
+                self.act_fn_hidden if i < self.num_layers - 1 else self.act_fn_output
+            )
             x = act_fn(self.fc_layers[i](x))
         return x
 
