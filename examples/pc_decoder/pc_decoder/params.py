@@ -33,9 +33,12 @@ class ModelParams(Hyperparams):
         search_space=tune.choice([1, 2, 3, 4]),
         tunable=True,
     )
-    activation: str = HP(
+    activation_hidden: str = HP(
         "Activation function to use in the generator.",
         default="gelu",
+    )
+    activation_output: Optional[str] = HP(
+        "Activation function to use in the output layer of the generator. None means no activation function on the output layer.",
     )
     use_prior_layer: bool = HP(
         "Whether to use a prior layer that generates a set of priors for the topmost PCLayer.",
@@ -44,7 +47,7 @@ class ModelParams(Hyperparams):
     )
     T_convergence_multiplier: int = HP(
         "Multiplier for the number of iterations to achieve approximate convergence.",
-        default=10,
+        default=1,
     )
     preserve_internal_state_between_batches: bool = HP(
         "Whether to preserve the x values of the first PCLayer in between batches during training",
@@ -83,7 +86,7 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     optim_x_lr: float = HP(
         "Learning rate for PC node values",
         # default=0.357,
-        default=0.1,
+        default=0.2,
         search_space=tune.loguniform(1e-2, 1e2),
         tunable=True,
     )
@@ -108,16 +111,16 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     optimizer_x: str = HP(
         "Optimizer to use for PC node X values",
-        default="sgd",
+        default="adamw",
         choices=["adamw", "sgd"],
     )
     reset_optimizer_x_state: bool = HP(
-        "Since we updated the values of x directly, we need to reset the momentums in the x optimizer.",
-        default=False,
+        "Since we updated the values of x directly, we need to reset the momentums in the x optimizer. Recommended for Adam and AdamW optimizers for X.",
+        default=True,
     )
     optimizer_w: str = HP(
         "Optimizer to use for model weights",
-        default="sgd",
+        default="adamw",
         choices=["adamw", "sgd"],
     )
 

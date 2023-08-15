@@ -34,7 +34,13 @@ def restore_image(
 ) -> NDArray[np.uint8]:
     x = np.asarray(image_array)
     x = x.reshape(28, 28)
+    # x = (x - x.min() + 1e-6) / (x.max() - x.min() + 1e-6)  # scale values to [0, 1]
+    # low_bound = jnp.percentile(x, 1)
+    # high_bound = jnp.percentile(x, 99)
+    # x = (x - low_bound + 1e-6) / (high_bound - low_bound + 1e-6)
     x = x * train_data_std + train_data_mean
+    # Make sure values are in [0, 1] so we don't get integer overflow on negative values when transforming into uint8.
+    x = np.clip(x, 0, 1)
     x = x * 255
     x = x.astype(np.uint8)
     return x
