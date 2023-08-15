@@ -14,4 +14,4 @@ module load python/anaconda3 > /dev/null
 eval "$(conda shell.bash hook)"
 conda activate pcax
 
-python pc_MNIST.py
+python mnist.py
