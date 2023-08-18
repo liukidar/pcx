@@ -5,7 +5,7 @@ import os
 import shutil
 from functools import partial
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, Callable
 
 import jax
 import jax.numpy as jnp
@@ -19,7 +19,7 @@ from pc_decoder.logging import (
     log_test_t_step_metrics,
     log_train_t_step_metrics,
 )
-from pc_decoder.model import PCDecoder, feed_forward_predict, loss
+from pc_decoder.model import PCDecoder, feed_forward_predict, model_energy_loss
 from pc_decoder.params import Params, ModelParams
 from pc_decoder.visualization import create_all_visualizations, plot_training_exmaple
 from ray import tune
@@ -27,7 +27,8 @@ from ray.air import session
 from tqdm import tqdm
 
 import pcax as px  # type: ignore
-import pcax.core as pxc  # type: ignore
+import pcax.core as pxc
+from pcax.pc import node  # type: ignore
 import pcax.utils as pxu  # type: ignore
 
 DEBUG = os.environ.get("DEBUG", "0") == "1"
@@ -68,8 +69,61 @@ def internal_state_init(
 
 class TrainOnBatchResult(NamedTuple):
     mse: jax.Array
-    energies: list[list[jax.Array]]
-    gradients: list[dict[str, jax.Array]]
+    energies: jax.Array
+
+
+class _LoopState(NamedTuple):
+    iter_index: jax.Array
+    prev_energy: jax.Array
+    curr_energy: jax.Array
+
+    all_energies: jax.Array
+
+    examples: jax.Array
+    model: PCDecoder
+    optim_x: pxu.Optim
+    optim_w: pxu.Optim
+
+
+def _build_loop_body(
+    update_params: Callable[[pxu.Optim, pxu.Optim, jax.Array], None],
+    loss: Callable,
+):
+    grad_and_values = pxu.grad_and_values(
+        px.f(px.NodeParam)(frozen=False) | px.f(px.LayerParam),  # type: ignore
+    )(loss)
+
+    def loop_body(state: _LoopState) -> _LoopState:
+        with pxu.step(state.model):
+            gradients, prev_energy = grad_and_values(state.examples, model=state.model)
+
+            update_params(state.optim_x, state.optim_w, gradients)
+
+            # Re-compute energies after parameter updates
+            curr_energy = loss(state.examples, model=state.model)
+            nodes_energies = jnp.array(
+                [jnp.sum(x.energy()) for x in state.model.pc_nodes]
+            )
+            all_energies = state.all_energies.at[state.iter_index].set(nodes_energies)
+
+            # grads = {}
+            # for param_name, param_value in model_parameters.items():
+            #     if id(param_value) in g:
+            #         grads[param_name] = g[id(param_value)]
+            # all_gradients = state.all_gradients.at[state.iter_index].set(grads)
+
+        return _LoopState(
+            iter_index=state.iter_index + 1,
+            prev_energy=jnp.sum(prev_energy),
+            curr_energy=jnp.sum(curr_energy),
+            all_energies=all_energies,
+            examples=state.examples,
+            model=state.model,
+            optim_x=state.optim_x,
+            optim_w=state.optim_w,
+        )
+
+    return loop_body
 
 
 # @pxu.jit()
@@ -79,17 +133,48 @@ def train_on_batch(
     model: PCDecoder,
     optim_x: pxu.Optim,
     optim_w: pxu.Optim,
-    loss,
+    loss: Callable,
     params: Params,
 ) -> TrainOnBatchResult:
-    grad_and_values = pxu.grad_and_values(
-        px.f(px.NodeParam)(frozen=False) | px.f(px.LayerParam),  # type: ignore
-    )(loss)
+    t_iterations = params.T
+    if params.pc_mode == "efficient_ppc":
+        t_iterations -= params.T_min_w_updates
+    total_iterations = params.T
+    if params.pc_mode == "pc":
+        total_iterations += 1
 
-    energies: list[list[jax.Array]] = []
-    gradients: list[dict[str, jax.Array]] = []
+    def t_loop_should_continue(state: _LoopState) -> jax.Array:
+        cond = state.iter_index < t_iterations
+        if params.pc_mode == "efficient_ppc":
+            eppc_cond = jnp.logical_or(
+                jnp.abs(state.curr_energy - state.prev_energy)
+                > params.energy_convergence_threshold,
+                state.iter_index == 0,
+            )
+            cond = jnp.logical_and(
+                cond,
+                eppc_cond,
+            )
+        return cond
 
-    model_parameters = model.parameters()
+    def w_loop_should_continue(state: _LoopState) -> jax.Array:
+        return state.iter_index < total_iterations
+
+    def t_loop_update(
+        optim_x: pxu.Optim,
+        optim_w: pxu.Optim,
+        gradients: jax.Array,
+    ) -> None:
+        optim_x(gradients)
+        if params.pc_mode == "ppc":
+            optim_w(gradients)
+
+    def w_loop_update(
+        optim_x: pxu.Optim,
+        optim_w: pxu.Optim,
+        gradients: jax.Array,
+    ) -> None:
+        optim_w(gradients)
 
     with pxu.pc_train_on_batch(model), pxu.train(model, examples):
         if params.reset_optimizer_x_state:
@@ -97,27 +182,37 @@ def train_on_batch(
         if params.preserve_all_pc_states_between_batches and model.saved_pc_states:
             for pc_node, state in zip(model.pc_nodes[1:], model.saved_pc_states):
                 pc_node["x"] = state
-        for i in range(params.T):
-            with pxu.step(model):
-                g, _ = grad_and_values(examples, model=model)
 
-                energies.append([jnp.sum(x.energy()) for x in model.pc_nodes])
+        initial_state = _LoopState(
+            iter_index=jnp.array(0),
+            prev_energy=jnp.array(0.0),
+            curr_energy=jnp.array(0.0),
+            all_energies=jnp.zeros(
+                (total_iterations, len(model.pc_nodes)), dtype=jnp.float32
+            ),
+            examples=examples,
+            model=model,
+            optim_x=optim_x,
+            optim_w=optim_w,
+        )
+        t_state = jax.lax.while_loop(
+            t_loop_should_continue,
+            _build_loop_body(t_loop_update, loss),
+            initial_state,
+        )
+        final_state = t_state
+        if params.pc_mode in ["pc", "efficient_ppc"]:
+            w_state = jax.lax.while_loop(
+                w_loop_should_continue,
+                _build_loop_body(w_loop_update, loss),
+                t_state,
+            )
+            final_state = w_state
 
-                grads = {}
-                for param_name, param_value in model_parameters.items():
-                    if id(param_value) in g:
-                        grads[param_name] = g[id(param_value)]
-                gradients.append(grads)
-
-                optim_x(g)
-                if model.p.pc_mode == "ppc":
-                    optim_w(g)
-        if model.p.pc_mode == "pc":
-            g, _ = grad_and_values(examples, model=model)
-            optim_w(g)
+    model = final_state.model
     predictions = feed_forward_predict(model.internal_state, model=model)[0]
     mse = jnp.mean((predictions - examples) ** 2)
-    return TrainOnBatchResult(mse=mse, energies=energies, gradients=gradients)
+    return TrainOnBatchResult(mse=mse, energies=final_state.all_energies)
 
 
 # @pxu.jit()
@@ -216,7 +311,7 @@ def train_model(
         model=model,
         optim_x=optim_x,
         optim_w=optim_w,
-        loss=loss,  # type: ignore
+        loss=model_energy_loss,  # type: ignore
         params=params,
     )
 
@@ -224,7 +319,7 @@ def train_model(
         test_on_batch,
         model=model,
         optim_x=optim_x,
-        loss=loss,  # type: ignore
+        loss=model_energy_loss,  # type: ignore
         T=params.T,  # type: ignore
     )
 
@@ -256,8 +351,9 @@ def train_model(
                     log_train_t_step_metrics(
                         run=run,
                         t_step=train_t_step,
-                        energies=batch_res.energies,
-                        gradients=batch_res.gradients,
+                        # FIXME: report energies and gradients
+                        energies=[],
+                        gradients=[],
                         params=params,
                     )
                     train_t_step += len(batch_res.energies)

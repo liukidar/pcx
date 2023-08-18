@@ -9,9 +9,10 @@ class ModelParams(Hyperparams):
     pc_mode: str = HP(
         "Predictive Coding mode: PC or PPC. "
         "PC updates only X each T iteration and then updates W once. "
-        "PPC updates both X and W every T iteration.",
-        default="pc",
-        choices=["pc", "ppc"],
+        "PPC updates both X and W every T iteration. "
+        "EfficientPPC first updates X till convergence and then updates W for the rest of the T iterations.",
+        default="efficient_ppc",
+        choices=["pc", "ppc", "efficient_ppc"],
         tunable=True,
     )
     internal_dim: int = HP(
@@ -22,7 +23,7 @@ class ModelParams(Hyperparams):
         "Dimension of the hidden layers.",
         default=256,
         search_space=tune.choice([32, 64, 128, 256, 512, 1024]),
-        tunable=True,
+        tunable=False,
     )
     output_dim: int = HP(
         "Dimension of the data. Must be output_dim >> internal_dim.", default=784
@@ -31,7 +32,7 @@ class ModelParams(Hyperparams):
         "Number of the hidden layers in the generator, excluding input and output layers.",
         default=1,
         search_space=tune.choice([1, 2, 3, 4]),
-        tunable=True,
+        tunable=False,
     )
     activation_hidden: str = HP(
         "Activation function to use in the generator.",
@@ -82,6 +83,14 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
         default=100,
         search_space=tune.choice(list(range(8, 100, 3))),
         tunable=True,
+    )
+    T_min_w_updates: int = HP(
+        "For EfficientPPC only. Minimum number of W updates after X updates. The X will be updated till convergence if T budget allows, W will be updated for the rest of the T iterations.",
+        default=1,
+    )
+    energy_convergence_threshold: float = HP(
+        "Threshold for the energy convergence. If the energy change is less than this threshold, the X updates will stop.",
+        default=1e-3,
     )
     optim_x_lr: float = HP(
         "Learning rate for PC node values",

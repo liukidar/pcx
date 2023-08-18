@@ -17,7 +17,7 @@ from pc_decoder.model import (
     PCDecoder,
     feed_forward_predict,
     get_internal_states_on_batch,
-    loss,
+    model_energy_loss,
 )
 from pc_decoder.params import Params
 from torch.utils.data import DataLoader
@@ -179,7 +179,7 @@ def create_all_visualizations(
         examples=examples,
         model=model,
         optim_x=optim_x,
-        loss=loss,
+        loss=model_energy_loss,
         T=params.T,
     )
     predictions = feed_forward_predict(internal_states, model=model)[0]
