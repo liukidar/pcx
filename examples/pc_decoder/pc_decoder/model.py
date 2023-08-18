@@ -223,7 +223,7 @@ class PCDecoder(px.EnergyModule):
 
 
 @pxu.vectorize(px.f(px.NodeParam, with_cache=True), in_axis=(0,), out_axis=("sum",))  # type: ignore
-def loss(example: jax.Array, *, model: PCDecoder) -> jax.Array:
+def model_energy_loss(example: jax.Array, *, model: PCDecoder) -> jax.Array:
     model(example=example)
     res = model.energy()
     assert isinstance(res, jax.Array)
