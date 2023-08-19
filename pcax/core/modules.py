@@ -18,47 +18,11 @@ from .parameters import _AbstractParam, ParamDict
 #
 ########################################################################################################################
 
-# Utils ################################################################################################################
-
-
-# class _ParameterPlaceholder(_AbstractParam):
-#     """Used internally to represent an empty parameter when flattening/unflattening a module."""
-#     @property
-#     def value(self) -> None:
-#         return None
-
-#     @value.setter
-#     def value(self, _: None):
-#         return
-
 
 # Core #################################################################################################################
 
 
 def flatten_module_with_keys(module: 'Module') -> Tuple[Any, Any]:
-    """Flatten a module into a tuple of its parameters and a tuple of its submodules. This is different from how JAX
-    flattens a pytree, which is a tuple of leaves and a tree definition. This is because we want to be able to simply
-    extract all the parameters of a module to track them through a JAX transformation."""
-
-    # parameters = []
-    # keys = []
-    # values = []
-
-    # for k, v in module.__dict__.items():
-    #     keys.append(k)
-    #     if isinstance(v, _AbstractParam):
-    #         parameters.append((k, v))
-    #         values.append(_ParameterPlaceholder())
-    #     else:
-    #         leaves, treedef = jax.tree_util.tree_flatten_with_path(v, is_leaf=lambda x: isinstance(x, _AbstractParam))
-    #         parameters.extend((f"{k}.{path}", leaf) for path, leaf in leaves if isinstance(leaf, _AbstractParam))
-    #         v = (treedef, tuple(
-    #             (leaf if not isinstance(leaf, _AbstractParam) else _ParameterPlaceholder()) for _, leaf in leaves
-    #         ))
-    #         values.append(v)
-
-    # return parameters, (keys, values)
-
     return tuple(module.__dict__.items()), tuple(module.__dict__.keys())
 
 
@@ -67,17 +31,6 @@ def unflatten_module(static_data: Any, parameters: Any, *, cls) -> 'Module':
 
     for k, v in zip(static_data, parameters):
         object.__setattr__(module, k, v)
-    # keys, values = static_data
-    # parameters_iter = iter(parameters)
-    # for key, value in zip(keys, values):
-    #     if isinstance(value, _AbstractParam):
-    #         value = next(parameters_iter)
-    #     else:
-    #         treedef, leaves = value
-    #         value = jax.tree_util.tree_unflatten(treedef, (
-    #             (leaf if not isinstance(leaf, _ParameterPlaceholder) else next(parameters_iter)) for leaf in leaves
-    #         ))
-    #     object.__setattr__(module, key, value if value is not None else next(parameters_iter))
 
     return module
 
