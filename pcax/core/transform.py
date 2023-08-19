@@ -86,23 +86,21 @@ class _AbstractTransformation(abc.ABC):
             t = self.fn
 
         self.params = params
-        self.kwargs = kwargs
 
-        if self.transform is None:
-            self.transform = self._make_transform(t)
+        self.transform = self._make_transform(t, kwargs)
 
         def fn(*args):
             return self._call(self.partition, *args)
 
         return Function(fn, self.params)
 
-    def _functional(self, t: Callable) -> Callable:
+    def _functional(self, t: Callable, kwargs: Dict[str, Any]) -> Callable:
         def wrapper(params_copy, *args):
             params_partition = tuple(move(c, p) for c, p in zip(params_copy, self.partition))
             if isinstance(t, Function):
                 output = t(*args)
             else:
-                output = t(*args, **self.kwargs)
+                output = t(*args, **kwargs)
 
             return output, params_partition
 
@@ -119,7 +117,7 @@ class _AbstractTransformation(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _make_transform(self, fn):
+    def _make_transform(self, fn, kwargs):
         raise NotImplementedError()
 
     def __repr__(self):
@@ -227,9 +225,9 @@ class Jit(_AbstractTransformation):
 
         return super()._build(params, kwargs)
 
-    def _make_transform(self, fn):
+    def _make_transform(self, fn, kwargs):
         return jax.jit(
-            lambda params, _, *args: self._functional(fn)(params, *args),
+            lambda params, _, *args: self._functional(fn, kwargs)(params, *args),
             static_argnums=(1,),
             donate_argnums=(0,) + tuple(x + 2 for x in self.donate_argnums),
             inline=self.inline,
@@ -290,12 +288,12 @@ class Vectorize(_AbstractTransformation):
 
         return output
 
-    def _make_transform(self, fn):
+    def _make_transform(self, fn, kwargs):
         def vmap(
-            *args,
-            **kwargs
+            *fn_args,
+            **fn_kwargs
         ):
-            outputs = fn(*args, **kwargs)
+            outputs = fn(*fn_args, **fn_kwargs)
             if not isinstance(outputs, tuple):
                 outputs = (outputs,)
 
@@ -306,7 +304,7 @@ class Vectorize(_AbstractTransformation):
             )
 
         return jax.vmap(
-            self._functional(vmap),
+            self._functional(vmap, kwargs),
             in_axes=((0, None),) + self.in_axis,
             out_axes=(jt.tree_map(
                 lambda o: 0 if isinstance(o, int) else None,
@@ -377,13 +375,13 @@ class _DerivativeBase(_AbstractTransformation):
         else:
             return g
 
-    def _make_transform(self, fn):
+    def _make_transform(self, fn, kwargs):
         def derivative(params_inputs, params_other, *args):
             inputs, params_target = params_inputs
             for i, arg in zip(self.input_argnums, inputs):
                 args[i] = arg
 
-            output, params_partition = self._functional(fn)((params_target, params_other), *args)
+            output, params_partition = self._functional(fn, kwargs)((params_target, params_other), *args)
 
             if not isinstance(output, tuple | list):
                 output = (output,)
