@@ -6,7 +6,7 @@ __all__ = [
 
 
 import jax
-from typing import Union, Callable, Tuple
+from typing import Union, Callable, Tuple, Optional, Any
 
 from ..core.transform import _AbstractTransformation
 from ..core.modules import ParamDict
@@ -30,10 +30,10 @@ class cond(_AbstractTransformation):
 
         return output
 
-    def _make_transform(self, fns):
+    def _make_transform(self, fns, kwargs):
         return lambda partition, cond, *args: jax.lax.cond(
             cond,
-            *tuple(self._functional(fn) for fn in fns),
+            *tuple(self._functional(fn, kwargs) for fn in fns),
             partition,
             *args,
         )
@@ -55,10 +55,10 @@ class switch(_AbstractTransformation):
 
         return output
 
-    def _make_transform(self, fns):
+    def _make_transform(self, fns, kwargs):
         return lambda partition, j, *args: jax.lax.switch(
             j,
-            tuple(self._functional(fn) for fn in fns),
+            tuple(self._functional(fn, kwargs) for fn in fns),
             partition,
             *args,
         )
@@ -68,47 +68,41 @@ class scan(_AbstractTransformation):
     def __init__(
         self,
         fn: Union[_AbstractTransformation, Callable],
-        filter: Union[f, Callable[[ParamDict], ParamDict]] = lambda *args: True,
+        js: Optional[Union[jax.Array, Any]] = None,
+        length: Optional[int] = None,
         map_outputs: Tuple[int, ...] = (),
+        filter: Union[f, Callable[[ParamDict], ParamDict]] = lambda *args: True,
     ):
+        assert sum((js is not None, length is not None)) == 1, \
+            "Exactly one between 'js' and 'length' must be specified"
+
         super().__init__(fn, filter)
+
+        self.js = js
+        self.length = length
         self.map_outputs = map_outputs
-        self.js = None
-        self.length = None
 
     def _call(self, params_partition, *args):
-        # Assert that exactly one between 'js' and 'length' is specified in self.kwargs
-        assert sum(map(lambda x: x in self.kwargs, ("js", "length"))) == 1, \
-            "Exactly one between 'js' and 'length' must be specified in kwargs"
-
-        if "js" in self.kwargs:
-            self.js = self.kwargs["js"]
-            del self.kwargs["js"]
-
-        if "length" in self.kwargs:
-            self.length = self.kwargs["length"]
-            del self.kwargs["length"]
-
         if self.js is not None:
             args = (None,) + args
 
-        output, params_partition = self.transform(
+        (params_partition, args), output = self.transform(
             params_partition,
             *args
         )
 
-        return output
+        return output, *args
 
-    def _make_transform(self, fn):
+    def _make_transform(self, fn, kwargs):
         def scan(
             carry, j
         ):
             partition, args_list = carry
 
             if self.js is not None:
-                r, partition = self._functional(fn)(partition, j, *args_list[1:])
+                r, partition = self._functional(fn, kwargs)(partition, j, *args_list[1:])
             else:
-                r, partition = self._functional(fn)(partition, *args_list)
+                r, partition = self._functional(fn, kwargs)(partition, *args_list)
 
             # Update args
             if isinstance(r, tuple):
@@ -131,3 +125,59 @@ class scan(_AbstractTransformation):
             return (partition, args_list), y
 
         return lambda partition, *args: jax.lax.scan(scan, (partition, args), self.js, self.length)
+
+
+class while_loop(_AbstractTransformation):
+
+    def __init__(
+        self,
+        fn: Union[_AbstractTransformation, Callable],
+        cond_fn: Callable,
+        map_outputs: Tuple[int, ...] = (),
+        filter: Union[f, Callable[[ParamDict], ParamDict]] = lambda *args: True,
+    ):
+        """while_loop constructor.
+
+            Args:
+            fn: function corresponding to `body_fun` for jax.lax.while_loop,
+            cond_fn: function corresponding to `cond_fun` for jax.lax.while_loop,
+            filter: selects which params to apply the transformation to [
+                it is used by vmap, grad, ... to select which params to be targeted by those transformations.
+                There is no apparent use of it for flow transformations, but maybe I'm missing it;
+                so there is still an option to specify it
+            ],
+        """
+        super().__init__(fn, filter)
+
+        self.cond_fn = cond_fn
+        self.map_outputs = map_outputs
+
+    def _call(self, params_partition, *args):
+        output, params_partition = self.transform(
+            params_partition,
+            *args
+        )
+
+        return output
+
+    def _make_transform(self, fn, kwargs):
+        def while_loop(
+            carry
+        ):
+            partition, args_list = carry
+            updated_args, partition = self._functional(fn, kwargs)(partition, *args_list)
+
+            # Update args
+            for updated_arg, map_output in zip(
+                updated_args,
+                self.map_outputs + tuple(range(len(updated_args) - len(self.map_outputs)))
+            ):
+                args_list[map_output] = updated_arg
+
+            return (partition, args_list)
+
+        return lambda partition, *args: jax.lax.while_loop(
+            self.cond_fn,
+            self._functional(while_loop, kwargs),
+            (partition, args)
+        )
