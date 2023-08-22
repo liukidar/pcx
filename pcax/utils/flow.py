@@ -160,8 +160,14 @@ class while_loop(_AbstractTransformation):
 
             return (partition, updated_args)
 
-        return lambda partition, *args: jax.lax.while_loop(
+        return lambda partition, *args: _debuggable_while_loop(
             lambda carry: self.cond_fn(*carry[1]),
             while_loop,
             (partition, args),
         )
+
+
+def _debuggable_while_loop(cond_fn, body_fn, carry):
+    while cond_fn(carry):
+        carry = body_fn(carry)
+    return carry

@@ -92,10 +92,6 @@ def _build_loop_body(
     update_x: bool = False,
     update_w: bool = False,
 ):
-    grad_and_values = pxu.grad_and_values(
-        px.f(px.NodeParam)(frozen=False) | px.f(px.LayerParam),  # type: ignore
-    )(loss)
-
     def loop_body(
         state: _LoopState,
         examples: jax.Array,
@@ -104,6 +100,10 @@ def _build_loop_body(
         optim_x: pxu.Optim,
         optim_w: pxu.Optim,
     ) -> _LoopState:
+        grad_and_values = pxu.grad_and_values(
+            px.f(px.NodeParam)(frozen=False) | px.f(px.LayerParam),  # type: ignore
+        )(loss)
+
         with pxu.step(model):
             gradients, (prev_energy,) = grad_and_values(examples, model=model)
 
@@ -112,34 +112,26 @@ def _build_loop_body(
             if update_w:
                 optim_w(gradients)
 
+        with pxu.step(model):
             # Re-compute energies after parameter updates
             (curr_energy,) = loss(examples, model=model)
-
-            # FIXME: The change in model parameters is not reflected in the compiled loss function.
-            # The model parameters are updated in-place, but that doesn't modify the traced XLA code of the loss function that still references old values.
-            # This means that the curr_energy will always be equal to prev_energy.
-            # This is a bug, since after optim_x(gradients) the X parameters are different and should produce lower loss values: curr_energy < prev_energy.
-            # assert jnp.allclose(prev_energy, curr_energy)  # is True but raises exception due to JAX tracing.
 
             nodes_energies = jnp.array([jnp.sum(x.energy()) for x in model.pc_nodes])
             all_energies = state.all_energies.at[state.iter_index].set(nodes_energies)
 
-            # grads = {}
-            # for param_name, param_value in model_parameters.items():
-            #     if id(param_value) in g:
-            #         grads[param_name] = g[id(param_value)]
-            # all_gradients = state.all_gradients.at[state.iter_index].set(grads)
+        # grads = {}
+        # for param_name, param_value in model_parameters.items():
+        #     if id(param_value) in g:
+        #         grads[param_name] = g[id(param_value)]
+        # all_gradients = state.all_gradients.at[state.iter_index].set(grads)
 
         return (
             _LoopState(
                 iter_index=state.iter_index + 1,
                 num_x_updates=state.num_x_updates + int(update_x),
                 num_w_updates=state.num_w_updates + int(update_w),
-                # Can't do that until we find a way to reflect parameter changes in loss computation
-                # prev_energy=jnp.sum(prev_energy),
-                # curr_energy=jnp.sum(curr_energy),
-                prev_energy=state.curr_energy,
-                curr_energy=curr_energy,
+                prev_energy=jnp.sum(prev_energy),
+                curr_energy=jnp.sum(curr_energy),
                 all_energies=all_energies,
             ),
             examples,
@@ -219,9 +211,7 @@ def train_on_batch(
         if params.pc_mode in ["pc", "efficient_ppc"]:
             model.clear_cache()
             w_loop_outputs = pxu.flow.while_loop(
-                _build_loop_body(
-                    loss, update_x=params.pc_mode == "efficient_ppc", update_w=True
-                ),
+                _build_loop_body(loss, update_x=False, update_w=True),
                 w_loop_should_continue,
             )(
                 final_state,
