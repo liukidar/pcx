@@ -1,5 +1,6 @@
-from typing import Callable, List, Dict, Optional, Any
 import inspect
+from typing import Any, Callable, Dict, List, Optional, Hashable
+
 import jax
 
 
@@ -13,7 +14,12 @@ def move(obj: Any, target: Optional[Any] = None):
 def hash_pytree(pytree: Any) -> int:
     leaves, treedef = jax.tree_util.tree_flatten(pytree)
 
-    hashable_leaves = tuple((x.shape, x.dtype) if isinstance(x, jax.Array) else x for x in leaves)
+    hashable_leaves = tuple(
+        (x.shape, x.dtype) if isinstance(x, jax.Array) else x
+        for x in leaves
+        # FIXME: Objects inside the pytree may not be hashable. This workaround drops all non-hashable objects from the hash. We shouldn't has pytrees.
+        if isinstance(x, Hashable)
+    )
 
     return hash((hashable_leaves, treedef))
 
@@ -21,20 +27,25 @@ def hash_pytree(pytree: Any) -> int:
 def repr_function(f: Callable) -> str:
     """Human readable function representation."""
     signature = inspect.signature(f)
-    args = [f'{k}={v.default}' for k, v in signature.parameters.items() if v.default is not inspect.Parameter.empty]
-    args = ', '.join(args)
-    while not hasattr(f, '__name__'):
-        if not hasattr(f, 'func'):
+    args = [
+        f"{k}={v.default}"
+        for k, v in signature.parameters.items()
+        if v.default is not inspect.Parameter.empty
+    ]
+    args = ", ".join(args)
+    while not hasattr(f, "__name__"):
+        if not hasattr(f, "func"):
             break
         f = f.func
-    if not hasattr(f, '__name__') and hasattr(f, '__class__'):
+    if not hasattr(f, "__name__") and hasattr(f, "__class__"):
         return f.__class__.__name__
     if args:
-        return f'{f.__name__}(*, {args})'
+        return f"{f.__name__}(*, {args})"
     return f.__name__
 
 
 # TODO: V is used only in flow.py, which is to be updated.
+
 
 def kwargs_indices(f: Callable, kwargs: Dict) -> List[int]:
     """Returns the indices of the keyword arguments of a function."""

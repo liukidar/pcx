@@ -52,7 +52,7 @@ class ModelParams(Hyperparams):
     )
     preserve_internal_state_between_batches: bool = HP(
         "Whether to preserve the x values of the first PCLayer in between batches during training",
-        default=True,
+        default=False,
     )
     preserve_all_pc_states_between_batches: bool = HP(
         "Whether to preserve the x values of all PCLayers in between batches during training",
@@ -124,7 +124,7 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     optimizer_x: str = HP(
         "Optimizer to use for PC node X values",
-        default="adamw",
+        default="sgd",
         choices=["adamw", "sgd"],
     )
     reset_optimizer_x_state: bool = HP(
@@ -133,7 +133,7 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     optimizer_w: str = HP(
         "Optimizer to use for model weights",
-        default="adamw",
+        default="sgd",
         choices=["adamw", "sgd"],
     )
 

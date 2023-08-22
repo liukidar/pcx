@@ -12,7 +12,8 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "env": {
-                "DEBUG": "1"
+                "DEBUG": "1",
+                "JAX_CHECK_TRACER_LEAKS": "1"
             },
             "args": [
                 "--experiment-name=debug",
@@ -83,5 +84,16 @@
                 "--no-hypertunning-use-early-stop-scheduler"
             ]
         },
+        {
+            "name": "JIT test",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/jit_test.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "JAX_CHECK_TRACER_LEAKS": "1"
+            }
+        }
     ]
 }
