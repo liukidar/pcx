@@ -84,6 +84,10 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
         search_space=tune.choice(list(range(8, 100, 3))),
         tunable=True,
     )
+    T_min_x_updates: int = HP(
+        "For EfficientPPC only. Minimum number of X updates before checking for X convergence.",
+        default=3,
+    )
     T_min_w_updates: int = HP(
         "For EfficientPPC only. Minimum number of W updates after X updates. The X will be updated till convergence if T budget allows, W will be updated for the rest of the T iterations.",
         default=1,
