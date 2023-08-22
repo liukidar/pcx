@@ -219,7 +219,9 @@ def train_on_batch(
         if params.pc_mode in ["pc", "efficient_ppc"]:
             model.clear_cache()
             w_loop_outputs = pxu.flow.while_loop(
-                _build_loop_body(loss, update_w=True),
+                _build_loop_body(
+                    loss, update_x=params.pc_mode == "efficient_ppc", update_w=True
+                ),
                 w_loop_should_continue,
             )(
                 final_state,

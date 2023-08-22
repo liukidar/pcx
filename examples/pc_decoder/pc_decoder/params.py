@@ -86,7 +86,7 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     T_min_x_updates: int = HP(
         "For EfficientPPC only. Minimum number of X updates before checking for X convergence.",
-        default=3,
+        default=1,
     )
     T_min_w_updates: int = HP(
         "For EfficientPPC only. Minimum number of W updates after X updates. The X will be updated till convergence if T budget allows, W will be updated for the rest of the T iterations.",
@@ -94,7 +94,7 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     energy_convergence_threshold: float = HP(
         "Threshold for the energy convergence. If the energy change is less than this threshold, the X updates will stop.",
-        default=1e-3,
+        default=1e-1,
     )
     optim_x_lr: float = HP(
         "Learning rate for PC node values",
