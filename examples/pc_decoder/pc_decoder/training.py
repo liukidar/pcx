@@ -140,7 +140,7 @@ def _build_loop_body(
     return loop_body
 
 
-# @pxu.jit()
+@pxu.jit()
 def train_on_batch(
     examples: jax.Array,
     *,
