@@ -68,9 +68,7 @@ class scan(_AbstractTransformation):
         map_outputs: Tuple[int, ...] = (),
         filter: Union[f, Callable[[ParamDict], ParamDict]] = lambda *args: True,
     ):
-        assert (
-            sum((js is not None, length is not None)) == 1
-        ), "Exactly one between 'js' and 'length' must be specified"
+        assert sum((js is not None, length is not None)) == 1, "Exactly one between 'js' and 'length' must be specified"
 
         super().__init__(fn, filter)
 
@@ -91,9 +89,7 @@ class scan(_AbstractTransformation):
             partition, args_list = carry
 
             if self.js is not None:
-                r, partition = self._functional(fn, kwargs)(
-                    partition, j, *args_list[1:]
-                )
+                r, partition = self._functional(fn, kwargs)(partition, j, *args_list[1:])
             else:
                 r, partition = self._functional(fn, kwargs)(partition, *args_list)
 
@@ -109,8 +105,7 @@ class scan(_AbstractTransformation):
                 updated_args = r[0]
                 for updated_arg, map_output in zip(
                     updated_args,
-                    self.map_outputs
-                    + tuple(range(len(updated_args) - len(self.map_outputs))),
+                    self.map_outputs + tuple(range(len(updated_args) - len(self.map_outputs))),
                 ):
                     args_list[map_output] = updated_arg
             else:
@@ -118,9 +113,7 @@ class scan(_AbstractTransformation):
 
             return (partition, args_list), y
 
-        return lambda partition, *args: jax.lax.scan(
-            scan, (partition, args), self.js, self.length
-        )
+        return lambda partition, *args: jax.lax.scan(scan, (partition, args), self.js, self.length)
 
 
 class while_loop(_AbstractTransformation):
@@ -153,21 +146,14 @@ class while_loop(_AbstractTransformation):
     def _make_transform(self, fn, kwargs):
         def while_loop(carry):
             partition, args_list = carry
-            updated_args, partition = self._functional(fn, kwargs)(
-                partition, *args_list
-            )
+            updated_args, new_partition = self._functional(fn, kwargs)(partition, *args_list)
             assert len(updated_args) == len(args_list)
+            self.update_partition(new_partition)
 
-            return (partition, updated_args)
+            return (self.partition, updated_args)
 
-        return lambda partition, *args: _debuggable_while_loop(
+        return lambda partition, *args: jax.lax.while_loop(
             lambda carry: self.cond_fn(*carry[1]),
             while_loop,
             (partition, args),
         )
-
-
-def _debuggable_while_loop(cond_fn, body_fn, carry):
-    while cond_fn(carry):
-        carry = body_fn(carry)
-    return carry

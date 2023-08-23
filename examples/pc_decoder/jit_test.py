@@ -66,8 +66,10 @@ def train_on_batch(
     build_train()(inputs, targets, model=model, optimizer=optimizer)
 
 
+model = DummyModel()
+
+
 def train():
-    model = DummyModel()
     batch_size = 10
     with pxu.train(model, jnp.zeros((batch_size, 2))):
         optimizer = pxu.Optim(

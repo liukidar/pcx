@@ -5,23 +5,21 @@ __all__ = [
     "GradAndValues",
 ]
 
-from typing import Optional, List, Union, Callable, Tuple, Any, Dict
-import inspect
-import functools
 import abc
 import copy
+import functools
+import inspect
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import jax
 import jax.tree_util as jt
 
 from pcax.core.filter import f
 
-from ..core.modules import Module, Function
-from ..core.random import RKG
-from ..core.util import repr_function, move, hash_pytree
+from ..core.modules import Function, Module
 from ..core.parameters import ParamDict
-from ..core.random import _RKGState
-
+from ..core.random import RKG, _RKGState
+from ..core.util import hash_pytree, move, repr_function
 
 ########################################################################################################################
 #
@@ -47,15 +45,16 @@ class _AbstractTransformation(abc.ABC):
     a dictionary of tensors to the jax transformation).
     """
 
-    def __init__(self,
-                 fn: Union['_AbstractTransformation', Callable],
-                 filter: Union[f, Callable[[ParamDict], ParamDict]]
-                 ):
+    def __init__(
+        self,
+        fn: Union["_AbstractTransformation", Callable],
+        filter: Union[f, Callable[[ParamDict], ParamDict]],
+    ):
         """_AbstractTransformation constructor.
 
-            Args:
-                f: the function (or pcax transformation) to be processed by the current transformation,
-                filter: the filter used to select which parameters should undergo the transformation.
+        Args:
+            f: the function (or pcax transformation) to be processed by the current transformation,
+            filter: the filter used to select which parameters should undergo the transformation.
         """
         if isinstance(fn, _AbstractTransformation):
             self.__wrapped__ = fn.__wrapped__
@@ -75,7 +74,7 @@ class _AbstractTransformation(abc.ABC):
                 (m.parameters().rename(k) for k, m in kwargs.items() if isinstance(m, Module)),
                 RKG.parameters(),
             ),
-            kwargs
+            kwargs,
         )
         return fn(*args)
 
@@ -102,9 +101,16 @@ class _AbstractTransformation(abc.ABC):
             else:
                 output = t(*args, **kwargs)
 
-            return output, params_partition
+            return output, tuple(move(p) for p in params_partition)
 
         return wrapper
+
+    def update_partition(self, new_partition):
+        old_target, old_params = self.partition
+        new_target, new_params = new_partition
+
+        move(new_target, old_target)
+        move(new_params, old_params)
 
     @property
     def partition(self) -> Tuple[ParamDict, ParamDict]:
@@ -185,12 +191,12 @@ class Jit(_AbstractTransformation):
     ):
         """Jit constructor.
 
-            Args:
-                fn: the function/transformation to jit,
-                filter: the filter used to select which parameters should be tracked by the jitter
-                    (by default is all of them),
-                donate_argnums: same as jax.jit (only affects args),
-                inline: same as jax.jit,
+        Args:
+            fn: the function/transformation to jit,
+            filter: the filter used to select which parameters should be tracked by the jitter
+                (by default is all of them),
+            donate_argnums: same as jax.jit (only affects args),
+            inline: same as jax.jit,
         """
 
         super().__init__(fn, filter)
@@ -210,13 +216,12 @@ class Jit(_AbstractTransformation):
                 (m.parameters().rename(k) for k, m in kwargs.items() if isinstance(m, Module)),
                 RKG.parameters(),
             ),
-            kwargs
+            kwargs,
         )
 
     def _call(self, params_partition, *args):
-        output, params_partition = self.transform(
-            params_partition, self.static_args_hash, *args
-        )
+        output, new_partition = self.transform(params_partition, self.static_args_hash, *args)
+        self.update_partition(new_partition)
 
         return output
 
@@ -239,7 +244,8 @@ class Vectorize(_AbstractTransformation):
 
     Compared to jax.vmap it does not yet support complex axis selection for vmapping. However, it offers
     automatic reduction of the output. Supported reduction modes are: 'mean', 'sum'; which can be selected by passing
-    such string to the corresponding `out_axis` element, instead of a number specifing the vmapped axis."""
+    such string to the corresponding `out_axis` element, instead of a number specifing the vmapped axis.
+    """
 
     def __init__(
         self,
@@ -251,12 +257,12 @@ class Vectorize(_AbstractTransformation):
     ):
         """Vectorize constructor.
 
-            Args:
-                fn: the function/transformation to vectorize,
-                filter: the filter used to select which parameters should be vectorized,
-                in_axis: same as jax.vmap (only affects args),
-                out_axis: same as jax.vmap, but can also contain reduction modes,
-                axis_name: same as jax.vmap.
+        Args:
+            fn: the function/transformation to vectorize,
+            filter: the filter used to select which parameters should be vectorized,
+            in_axis: same as jax.vmap (only affects args),
+            out_axis: same as jax.vmap, but can also contain reduction modes,
+            axis_name: same as jax.vmap.
         """
 
         super().__init__(fn, filter)
@@ -267,50 +273,46 @@ class Vectorize(_AbstractTransformation):
 
     def _call(self, params_partition, *args):
         if len(self.in_axis) > 0:
-            in_axis_argnums = [
-                (x, v) for x, v in enumerate(self.in_axis) if v is not None
-            ]
-            nsplits = args[in_axis_argnums[0][0]].shape[
-                in_axis_argnums[0][1]
-            ]
+            in_axis_argnums = [(x, v) for x, v in enumerate(self.in_axis) if v is not None]
+            nsplits = args[in_axis_argnums[0][0]].shape[in_axis_argnums[0][1]]
         else:
             nsplits = next(iter(params_partition[0].values())).shape[0]
 
         for rkg in params_partition[0].filter(f(_RKGState)):
             rkg.value = rkg.split(nsplits)
 
-        output, params_partition = self.transform(
-            params_partition,
-            *args
-        )
-        for p in params_partition[0]:
+        output, new_partition = self.transform(params_partition, *args)
+        for p in new_partition[0]:
             p.reduce()
+
+        self.update_partition(new_partition)
 
         return output
 
     def _make_transform(self, fn, kwargs):
-        def vmap(
-            *fn_args,
-            **fn_kwargs
-        ):
+        def vmap(*fn_args, **fn_kwargs):
             outputs = fn(*fn_args, **fn_kwargs)
             if not isinstance(outputs, tuple):
                 outputs = (outputs,)
 
             return jt.tree_map(
                 lambda r, o: self._reduce(r, o, self.axis_name) if isinstance(o, str) else r,
-                outputs, self.out_axis,
-                is_leaf=lambda x: x is None
+                outputs,
+                self.out_axis,
+                is_leaf=lambda x: x is None,
             )
 
         return jax.vmap(
             self._functional(vmap, kwargs),
             in_axes=((0, None),) + self.in_axis,
-            out_axes=(jt.tree_map(
-                lambda o: 0 if isinstance(o, int) else None,
-                self.out_axis,
-                is_leaf=lambda r: r is None
-            ), (0, None)),
+            out_axes=(
+                jt.tree_map(
+                    lambda o: 0 if isinstance(o, int) else None,
+                    self.out_axis,
+                    is_leaf=lambda r: r is None,
+                ),
+                (0, None),
+            ),
             axis_name=self.axis_name,
         )
 
@@ -358,13 +360,11 @@ class _DerivativeBase(_AbstractTransformation):
         params_copy = tuple(move(p) for p in params_partition)
         inputs = [args[i] for i in self.input_argnums]
 
-        g, (output, params_partition) = self.transform(
-            (inputs, params_copy[0]),
-            params_copy[1],
-            *args
-        )
+        g, (output, new_partition) = self.transform((inputs, params_copy[0]), params_copy[1], *args)
         # Map the gradients to the variables.
-        g = (g[0], {id(k): v.value for k, v in zip(params_partition[0], g[1])})
+        g = (g[0], {id(k): v.value for k, v in zip(new_partition[0], g[1])})
+
+        self.update_partition(new_partition)
 
         # Discard the input gradients if empty.
         if len(self.input_argnums) == 0:
@@ -399,7 +399,8 @@ class GradAndValues(_DerivativeBase):
     where:
     - g_wrt_inputs is a list containing the gradients wrt each input, ordered by `input_argnums`,
     - g_wrt_parameters is a dictionary where each element is pair (key_p, g_wrt_p), with p being any of the target
-    parameters, key_p = id(p), and g_wrt_p is the gradient wrt to p.value (`id` is a python predefined function)."""
+    parameters, key_p = id(p), and g_wrt_p is the gradient wrt to p.value (`id` is a python predefined function).
+    """
 
     def __init__(
         self,
@@ -418,9 +419,7 @@ class GradAndValues(_DerivativeBase):
         signature = inspect.signature(fn)
         self.__signature__ = signature.replace(
             return_annotation=Tuple[
-                Union[
-                    Tuple[List[jax.Array], Dict[int, jax.Array]], Dict[int, jax.Array]
-                ],
+                Union[Tuple[List[jax.Array], Dict[int, jax.Array]], Dict[int, jax.Array]],
                 signature.return_annotation,
             ]
         )
