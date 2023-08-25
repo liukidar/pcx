@@ -4,7 +4,7 @@ __all__ = [
 ]
 
 import abc
-from typing import Tuple, Callable, Any, Optional
+from typing import Tuple, Callable, Any, Optional, Iterator
 import functools
 
 import jax
@@ -98,7 +98,7 @@ class Module(metaclass=_ModuleMeta):
     def is_eval(self):
         return self._mode == "eval"
 
-    def get_submodules(self, *, cls: Optional[type] = None):
+    def get_submodules(self, *, cls: Optional[type] = None) -> Iterator['Module']:
         cls = cls or Module
 
         for v in self.__dict__.values():

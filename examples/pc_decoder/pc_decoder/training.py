@@ -3,9 +3,8 @@ import json
 import logging
 import os
 import shutil
-from functools import partial
 from pathlib import Path
-from typing import Any, Callable, NamedTuple
+from typing import Callable, NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -13,7 +12,7 @@ import numpy as np
 import optax
 import wandb
 from matplotlib import pyplot as plt
-from pc_decoder.data_loading import get_data_loaders
+from pc_decoder.data_loading import get_data_loaders, get_stratified_test_batch
 from pc_decoder.logging import (
     init_wandb,
     log_test_t_step_metrics,
@@ -21,7 +20,7 @@ from pc_decoder.logging import (
     log_train_t_step_metrics,
 )
 from pc_decoder.model import PCDecoder, feed_forward_predict, model_energy_loss
-from pc_decoder.params import ModelParams, Params
+from pc_decoder.params import Params
 from pc_decoder.visualization import create_all_visualizations, plot_training_exmaple
 from ray import tune
 from ray.air import session
@@ -60,7 +59,7 @@ if DEBUG:
 
 
 def internal_state_init(
-    params: ModelParams,
+    params: Params,
     prng_key: jax.random.KeyArray,
 ) -> tuple[jax.Array, jax.random.KeyArray]:
     # TODO: Play with different initialization strategies
@@ -68,76 +67,12 @@ def internal_state_init(
     return value, prng_key
 
 
-class TrainOnBatchResult(NamedTuple):
+class TrainTestOnBatchResult(NamedTuple):
     mse: jax.Array
     energies: jax.Array
     iterations_done: jax.Array
     num_x_updates: jax.Array
     num_w_updates: jax.Array
-
-
-class _LoopState(NamedTuple):
-    iter_index: jax.Array
-    num_x_updates: jax.Array
-    num_w_updates: jax.Array
-
-    prev_energy: jax.Array
-    curr_energy: jax.Array
-
-    all_energies: jax.Array
-
-
-def _build_loop_body(
-    loss: Callable,
-    update_x: bool = False,
-    update_w: bool = False,
-):
-    def loop_body(
-        state: _LoopState,
-        examples: jax.Array,
-        *,
-        model: PCDecoder,
-        optim_x: pxu.Optim,
-        optim_w: pxu.Optim,
-    ) -> _LoopState:
-        grad_and_values = pxu.grad_and_values(
-            px.f(px.NodeParam)(frozen=False) | px.f(px.LayerParam),  # type: ignore
-        )(loss)
-
-        with pxu.step(model):
-            gradients, (prev_energy,) = grad_and_values(examples, model=model)
-
-            if update_x:
-                optim_x(gradients)
-            if update_w:
-                optim_w(gradients)
-
-        with pxu.step(model):
-            # Re-compute energies after parameter updates
-            (curr_energy,) = loss(examples, model=model)
-
-            nodes_energies = jnp.array([jnp.sum(x.energy()) for x in model.pc_nodes])
-            all_energies = state.all_energies.at[state.iter_index].set(nodes_energies)
-
-        # grads = {}
-        # for param_name, param_value in model_parameters.items():
-        #     if id(param_value) in g:
-        #         grads[param_name] = g[id(param_value)]
-        # all_gradients = state.all_gradients.at[state.iter_index].set(grads)
-
-        return (
-            _LoopState(
-                iter_index=state.iter_index + 1,
-                num_x_updates=state.num_x_updates + int(update_x),
-                num_w_updates=state.num_w_updates + int(update_w),
-                prev_energy=jnp.sum(prev_energy),
-                curr_energy=jnp.sum(curr_energy),
-                all_energies=all_energies,
-            ),
-            examples,
-        )
-
-    return loop_body
 
 
 @pxu.jit()
@@ -147,100 +82,85 @@ def train_on_batch(
     model: PCDecoder,
     optim_x: pxu.Optim,
     optim_w: pxu.Optim,
-    loss: Callable,
-    params: Params,
-) -> TrainOnBatchResult:
-    t_iterations = params.T
-    if params.pc_mode == "efficient_ppc":
-        t_iterations -= params.T_min_w_updates
-    total_iterations = params.T
-    if params.pc_mode == "pc":
+    loss_fn: Callable,
+) -> tuple[jax.Array, pxu.EnergyMinimizationLoop.LoopState]:
+    t_iterations = model.p.T
+    if model.p.pc_mode == "efficient_ppc":
+        t_iterations -= model.p.T_min_w_updates
+    total_iterations = model.p.T
+    if model.p.pc_mode == "pc":
         total_iterations += 1
 
-    def t_loop_should_continue(state: _LoopState, *_) -> jax.Array:
-        cond = state.iter_index < t_iterations
-        if params.pc_mode == "efficient_ppc":
-            eppc_cond = jnp.logical_or(
-                jnp.abs(state.curr_energy - state.prev_energy)
-                > params.energy_convergence_threshold,
-                state.iter_index < params.T_min_x_updates,
-            )
-            cond = jnp.logical_and(
-                cond,
-                eppc_cond,
-            )
-        return cond
-
-    def w_loop_should_continue(state: _LoopState, *_) -> jax.Array:
-        return state.iter_index < total_iterations
-
     with pxu.pc_train_on_batch(model), pxu.train(model, examples):
-        if params.reset_optimizer_x_state:
+        if model.p.reset_optimizer_x_state:
             optim_x.init_state()
-        if params.preserve_all_pc_states_between_batches and model.saved_pc_states:
+        if model.p.preserve_all_pc_states_between_batches and model.saved_pc_states:
             for pc_node, state in zip(model.pc_nodes[1:], model.saved_pc_states):
                 pc_node["x"] = state
 
-        initial_state = _LoopState(
-            iter_index=jnp.array(0),
-            num_x_updates=jnp.array(0),
-            num_w_updates=jnp.array(0),
-            prev_energy=jnp.array(0.0),
-            curr_energy=jnp.array(0.0),
-            all_energies=jnp.zeros(
-                (total_iterations, len(model.pc_nodes)), dtype=jnp.float32
-            ),
-        )
-
-        # Make sure to remove "u" parameters from the model before passing it to the while_loop,
-        # because in the loop body we use the pxu.step() decorator that calls model.clear_cache() that drops "u" parameters.
-        # As the result, the list of parameters passed to the loop body and returned by the loop body differs, which is strictly forbidden by jax.lax.while_loop.
-        model.clear_cache()
-
-        t_loop_outputs = pxu.flow.while_loop(
-            _build_loop_body(loss, update_x=True, update_w=params.pc_mode == "ppc"),
-            t_loop_should_continue,
-        )(
-            initial_state,
-            examples,
+        t_loop = pxu.EnergyMinimizationLoop(
             model=model,
+            loss_fn=loss_fn,
+            max_iter_number=t_iterations,
+            min_iter_number=model.p.T_min_x_updates,
+            energy_convergence_threshold=(
+                model.p.energy_quick_approximate_convergence_threshold
+                if model.p.pc_mode == "efficient_ppc"
+                else None
+            ),
+            should_update_x=True,
+            should_update_w=model.p.pc_mode == "ppc",
             optim_x=optim_x,
-            optim_w=optim_w,
+            optim_w=optim_w if model.p.pc_mode == "ppc" else None,
         )
-        final_state = t_loop_outputs[0]
-        if params.pc_mode in ["pc", "efficient_ppc"]:
-            model.clear_cache()
-            w_loop_outputs = pxu.flow.while_loop(
-                _build_loop_body(loss, update_x=False, update_w=True),
-                w_loop_should_continue,
-            )(
-                final_state,
-                examples,
+        t_loop_state = t_loop.run(examples, recording_buffer_length=total_iterations)
+        final_state = t_loop_state
+
+        if model.p.pc_mode in ["pc", "efficient_ppc"]:
+            w_loop = pxu.EnergyMinimizationLoop(
                 model=model,
-                optim_x=optim_x,
+                loss_fn=loss_fn,
+                max_iter_number=total_iterations,
+                min_iter_number=model.p.T_min_w_updates + t_loop_state.iter_number,
+                energy_convergence_threshold=(
+                    model.p.energy_slow_accurate_convergence_threshold
+                    if model.p.pc_mode == "efficient_ppc"
+                    else None
+                ),
+                should_update_x=model.p.pc_mode == "efficient_ppc",
+                should_update_w=True,
+                optim_x=optim_x if model.p.pc_mode == "efficient_ppc" else None,
                 optim_w=optim_w,
             )
-            final_state = w_loop_outputs[0]
+            w_loop_state = w_loop.run(examples, initial_state=t_loop_state)
+            final_state = w_loop_state
 
     predictions = feed_forward_predict(model.internal_state, model=model)[0]
     mse = jnp.mean((predictions - examples) ** 2)
-    return TrainOnBatchResult(
-        mse=mse,
-        energies=final_state.all_energies,
-        iterations_done=final_state.iter_index,
-        num_x_updates=final_state.num_x_updates,
-        num_w_updates=final_state.num_w_updates,
-    )
+    return (mse, final_state)
 
 
-# @pxu.jit()
+@pxu.jit()
 def test_on_batch(
-    examples, *, model: PCDecoder, optim_x, loss, T
-) -> tuple[jax.Array, list[list[jax.Array]]]:
-    energies = model.converge_on_batch(examples, optim_x=optim_x, loss=loss, T=T)
+    examples: jax.Array,
+    *,
+    model: PCDecoder,
+    optim_x: pxu.Optim,
+    loss_fn: Callable,
+) -> tuple[jax.Array, pxu.EnergyMinimizationLoop.LoopState]:
+    final_state = model.converge_on_batch(examples, optim_x=optim_x, loss_fn=loss_fn)
     predictions = feed_forward_predict(model.internal_state, model=model)[0]
     mse = jnp.mean((predictions - examples) ** 2)
-    return mse, energies
+    return (mse, final_state)
+
+
+@pxu.jit()
+def get_internal_states_on_batch(
+    examples, *, model: PCDecoder, optim_x, loss_fn
+) -> jax.Array:
+    model.converge_on_batch(examples, optim_x=optim_x, loss_fn=loss_fn)
+    assert model.internal_state is not None
+    return model.internal_state
 
 
 def run_training_experiment(params: Params) -> None:
@@ -258,10 +178,7 @@ def run_training_experiment(params: Params) -> None:
             )
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    model = PCDecoder(
-        params=params,
-        internal_state_init_fn=internal_state_init,
-    )
+    model = build_model(params)
 
     if params.load_weights_from is not None:
         model.load_weights(params.load_weights_from)
@@ -273,6 +190,63 @@ def run_training_experiment(params: Params) -> None:
         train_model(model=model, params=params, results_dir=results_dir)
 
 
+def build_model(params: Params) -> PCDecoder:
+    return PCDecoder(
+        params=params,
+        internal_state_init_fn=internal_state_init,
+    )
+
+
+def build_optim_x(model: PCDecoder, params: Params) -> pxu.Optim:
+    if params.optimizer_x == "sgd":
+        optim_x = pxu.Optim(
+            optax.chain(
+                optax.add_decayed_weights(weight_decay=params.optim_x_l2),
+                optax.sgd(params.optim_x_lr / params.batch_size),
+            ),
+            model.x_parameters(),
+            allow_none_grads=True,
+        )
+    elif params.optimizer_x == "adamw":
+        optim_x = pxu.Optim(
+            optax.adamw(
+                params.optim_x_lr / params.batch_size,
+                weight_decay=params.optim_x_l2,
+            ),
+            model.x_parameters(),
+            allow_none_grads=True,
+        )
+    else:
+        raise ValueError(f"Unknown optimizer_x: {params.optimizer_x}")
+    return optim_x
+
+
+def build_optim_w(model: PCDecoder, params: Params) -> pxu.Optim:
+    if params.optimizer_w == "sgd":
+        optim_w = pxu.Optim(
+            optax.chain(
+                optax.add_decayed_weights(weight_decay=params.optim_w_l2),
+                optax.sgd(params.optim_w_lr / params.batch_size),
+            ),
+            model.w_parameters(),
+            allow_none_grads=True,
+        )
+    elif params.optimizer_w == "adamw":
+        optim_w = pxu.Optim(
+            optax.chain(
+                optax.adamw(
+                    params.optim_w_lr / params.batch_size,
+                    weight_decay=params.optim_w_l2,
+                ),
+            ),
+            model.w_parameters(),
+            allow_none_grads=True,
+        )
+    else:
+        raise ValueError(f"Unknown optimizer_w: {params.optimizer_w}")
+    return optim_w
+
+
 def train_model(
     model: PCDecoder,
     params: Params,
@@ -281,64 +255,20 @@ def train_model(
 ) -> None:
     best_epoch_dir = results_dir / "best"
     with pxu.train(model, jnp.zeros((params.batch_size, params.output_dim))):
-        if params.optimizer_x == "sgd":
-            optim_x = pxu.Optim(
-                optax.chain(
-                    optax.add_decayed_weights(weight_decay=params.optim_x_l2),
-                    optax.sgd(params.optim_x_lr / params.batch_size),
-                ),
-                model.x_parameters(),
-                allow_none_grads=True,
-            )
-        elif params.optimizer_x == "adamw":
-            optim_x = pxu.Optim(
-                optax.adamw(
-                    params.optim_x_lr / params.batch_size,
-                    weight_decay=params.optim_x_l2,
-                ),
-                model.x_parameters(),
-                allow_none_grads=True,
-            )
-        else:
-            raise ValueError(f"Unknown optimizer_x: {params.optimizer_x}")
-        if params.optimizer_w == "sgd":
-            optim_w = pxu.Optim(
-                optax.chain(
-                    optax.add_decayed_weights(weight_decay=params.optim_w_l2),
-                    optax.sgd(params.optim_w_lr / params.batch_size),
-                ),
-                model.w_parameters(),
-                allow_none_grads=True,
-            )
-        elif params.optimizer_w == "adamw":
-            optim_w = pxu.Optim(
-                optax.chain(
-                    optax.adamw(
-                        params.optim_w_lr / params.batch_size,
-                        weight_decay=params.optim_w_l2,
-                    ),
-                ),
-                model.w_parameters(),
-                allow_none_grads=True,
-            )
-        else:
-            raise ValueError(f"Unknown optimizer_w: {params.optimizer_w}")
+        optim_x = build_optim_x(model=model, params=params)
+        optim_w = build_optim_w(model=model, params=params)
 
-    train_batch_fn = partial(
-        train_on_batch,
+    train_batch_fn = train_on_batch.snapshot(
         model=model,
         optim_x=optim_x,
         optim_w=optim_w,
-        loss=model_energy_loss,  # type: ignore
-        params=params,
+        loss_fn=model_energy_loss,  # type: ignore
     )
 
-    test_batch_fn = partial(
-        test_on_batch,
+    test_batch_fn = test_on_batch.snapshot(
         model=model,
         optim_x=optim_x,
-        loss=model_energy_loss,  # type: ignore
-        T=params.T,  # type: ignore
+        loss_fn=model_energy_loss,  # type: ignore
     )
 
     train_loader, test_loader, train_data_mean, train_data_std = get_data_loaders(
@@ -364,13 +294,16 @@ def train_model(
             with tqdm(train_loader, unit="batch") as tbatch:
                 for examples, _ in tbatch:
                     tbatch.set_description(f"Train Batch {tbatch.n + 1}")
-                    batch_res: TrainOnBatchResult = train_batch_fn(examples)
-                    mse = batch_res.mse.item()
+                    mse, final_state = train_batch_fn(examples)
+                    mse = mse.item()
+                    all_energies = final_state.all_energies[
+                        : final_state.iter_number.item()
+                    ]
                     log_train_t_step_metrics(
                         run=run,
                         t_step=train_t_step,
                         # FIXME: report energies and gradients
-                        energies=batch_res.energies,
+                        energies=all_energies,
                         # gradients=[],
                         params=params,
                     )
@@ -379,15 +312,15 @@ def train_model(
                         epochs=epoch,
                         batches_per_epoch=len(train_loader),
                         batch=tbatch.n,
-                        num_x_updates=batch_res.num_x_updates.item(),
-                        num_w_updates=batch_res.num_w_updates.item(),
+                        num_x_updates=final_state.num_x_updates_done.item(),
+                        num_w_updates=final_state.num_w_updates_done.item(),
                     )
-                    train_t_step += batch_res.iterations_done.item()
+                    train_t_step += final_state.iter_number.item()
                     epoch_train_mses.append(mse)
                     tbatch.set_postfix(mse=mse)
 
                     # Force GC to free some RAM and GPU memory
-                    del batch_res
+                    del final_state
                     gc.collect()
 
             epoch_train_mse: float = float(
@@ -402,14 +335,17 @@ def train_model(
             with tqdm(test_loader, unit="batch") as tbatch:
                 for examples, _ in tbatch:
                     tbatch.set_description(f"Test Batch {tbatch.n + 1}")
-                    mse, energies = test_batch_fn(examples)
+                    mse, final_state = test_batch_fn(examples)
                     mse = mse.item()
+                    all_energies = final_state.all_energies[
+                        : final_state.iter_number.item()
+                    ]
                     log_test_t_step_metrics(
                         run=run,
                         t_step=test_t_step,
-                        energies=energies,
+                        energies=all_energies,
                     )
-                    test_t_step += len(energies)
+                    test_t_step += final_state.iter_number.item()
                     epoch_test_mses.append(mse)
                     tbatch.set_postfix(mse=mse)
             epoch_test_mse: float = float(np.mean(epoch_test_mses))
@@ -447,7 +383,9 @@ def train_model(
 
                 model.save_weights(str(epoch_results))  # type: ignore
                 with open(os.path.join(epoch_results, "report.json"), "w") as outfile:
-                    json.dump(epoch_report, outfile, indent=4)
+                    json.dump(
+                        dict(**epoch_report, params=params.dict()), outfile, indent=4
+                    )
 
             if run is not None:
                 run.log(epoch_report)
@@ -462,10 +400,7 @@ def train_model(
         internal_states_mean, internal_states_std = visualize_epoch(
             epoch_dir=best_epoch_dir,
             run=run,
-            model=model,
-            optim_x=optim_x,
             test_loader=test_loader,
-            params=params,
             train_data_mean=train_data_mean,
             train_data_std=train_data_std,
         )
@@ -492,32 +427,69 @@ def train_model(
     )
 
 
+class EpochResults(NamedTuple):
+    epochs: int
+    epoch_report: dict
+    epoch_dir: Path
+    params: Params
+    model: PCDecoder
+    optim_x: pxu.Optim
+    optim_w: pxu.Optim
+
+
+def load_epoch(
+    epoch_dir: Path,
+) -> EpochResults:
+    if not epoch_dir.exists():
+        raise ValueError(f"Epoch dir {epoch_dir} does not exist!")
+    logging.info(f"Loading epoch from {epoch_dir.resolve()}...")
+    with open(epoch_dir / "report.json") as infile:
+        epoch_report = json.load(infile)
+        epochs = epoch_report["epochs"]
+    params = Params(**epoch_report["params"])
+    model = build_model(params)
+    model.load_weights(str(epoch_dir))
+    with pxu.train(model, jnp.zeros((params.batch_size, params.output_dim))):
+        optim_x = build_optim_x(model=model, params=params)
+        optim_w = build_optim_w(model=model, params=params)
+    logging.info(f"Loaded epoch from {epoch_dir.resolve()}.")
+    return EpochResults(
+        epochs=epochs,
+        epoch_report=epoch_report,
+        epoch_dir=epoch_dir,
+        params=params,
+        model=model,
+        optim_x=optim_x,
+        optim_w=optim_w,
+    )
+
+
 def visualize_epoch(
     *,
     epoch_dir: Path,
     run: wandb.wandb_sdk.wandb_run.Run | None,
-    model: PCDecoder,
-    optim_x: pxu.Optim,
     test_loader,
-    params: Params,
     train_data_mean: float,
     train_data_std: float,
 ) -> tuple[float, float]:
-    if not epoch_dir.exists():
-        raise ValueError(f"Epoch dir {epoch_dir} does not exist!")
-    logging.info(f"Visualizing epoch from {epoch_dir.resolve()}...")
-    with open(epoch_dir / "report.json") as infile:
-        epoch_report = json.load(infile)
-        epochs = epoch_report["epochs"]
-    model.load_weights(str(epoch_dir))  # type: ignore
-    internal_states = create_all_visualizations(
+    epoch_results = load_epoch(epoch_dir=epoch_dir)
+    examples, labels = get_stratified_test_batch(test_loader)
+    internal_states = get_internal_states_on_batch(
+        examples=examples,
+        model=epoch_results.model,
+        optim_x=epoch_results.optim_x,
+        loss_fn=model_energy_loss,
+    )
+    predictions = feed_forward_predict(internal_states, model=epoch_results.model)[0]
+    create_all_visualizations(
         out_dir=epoch_dir,
         run=run,
-        epochs=epochs,
-        model=model,
-        optim_x=optim_x,
-        test_loader=test_loader,
-        params=params,
+        epochs=epoch_results.epochs,
+        examples=examples,
+        labels=labels,
+        internal_states=internal_states,
+        predictions=predictions,
+        params=epoch_results.params,
         train_data_mean=train_data_mean,
         train_data_std=train_data_std,
     )
@@ -526,7 +498,7 @@ def visualize_epoch(
     with open(epoch_dir / "report.json", "w") as outfile:
         json.dump(
             {
-                **epoch_report,
+                **epoch_results.epoch_report,
                 "internal_states_mean": internal_states_mean,
                 "internal_states_std": internal_states_std,
             },

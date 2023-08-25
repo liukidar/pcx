@@ -5,7 +5,7 @@ from hyperparameters.ray_tune_hyperparams import RayTuneHyperparamsMixin
 from ray import tune
 
 
-class ModelParams(Hyperparams):
+class Params(Hyperparams, RayTuneHyperparamsMixin):
     pc_mode: str = HP(
         "Predictive Coding mode: PC or PPC. "
         "PC updates only X each T iteration and then updates W once. "
@@ -46,10 +46,6 @@ class ModelParams(Hyperparams):
         default=False,
         tunable=True,
     )
-    T_convergence_multiplier: int = HP(
-        "Multiplier for the number of iterations to achieve approximate convergence.",
-        default=1,
-    )
     preserve_internal_state_between_batches: bool = HP(
         "Whether to preserve the x values of the first PCLayer in between batches during training",
         default=False,
@@ -59,8 +55,6 @@ class ModelParams(Hyperparams):
         default=False,
     )
 
-
-class Params(ModelParams, RayTuneHyperparamsMixin):
     experiment_name: str = HP(
         "Name of the experiment. An experiment contains many similar runs.",
         default="dev",
@@ -92,9 +86,13 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
         "For EfficientPPC only. Minimum number of W updates after X updates. The X will be updated till convergence if T budget allows, W will be updated for the rest of the T iterations.",
         default=1,
     )
-    energy_convergence_threshold: float = HP(
-        "Threshold for the energy convergence. If the energy change is less than this threshold, the X updates will stop.",
+    energy_quick_approximate_convergence_threshold: float = HP(
+        "Upper threshold for the energy convergence. Used when speed is more important than accuracy. If the energy change is less than this threshold, the updates will stop.",
         default=1e-1,
+    )
+    energy_slow_accurate_convergence_threshold: float = HP(
+        "Lower threshold for the energy convergence. Used when accuracy is more important than speed. If the energy change is less than this threshold, the updates will stop.",
+        default=1e-3,
     )
     optim_x_lr: float = HP(
         "Learning rate for PC node values",
@@ -124,7 +122,7 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     optimizer_x: str = HP(
         "Optimizer to use for PC node X values",
-        default="sgd",
+        default="adamw",
         choices=["adamw", "sgd"],
     )
     reset_optimizer_x_state: bool = HP(
@@ -133,7 +131,7 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
     )
     optimizer_w: str = HP(
         "Optimizer to use for model weights",
-        default="sgd",
+        default="adamw",
         choices=["adamw", "sgd"],
     )
 

@@ -12,13 +12,7 @@ import pandas as pd
 import seaborn as sns
 import wandb
 from numpy.typing import NDArray
-from pc_decoder.data_loading import get_stratified_test_batch
-from pc_decoder.model import (
-    PCDecoder,
-    feed_forward_predict,
-    get_internal_states_on_batch,
-    model_energy_loss,
-)
+from pc_decoder.model import PCDecoder
 from pc_decoder.params import Params
 from torch.utils.data import DataLoader
 from umap import UMAP
@@ -165,24 +159,15 @@ def create_all_visualizations(
     out_dir: Path,
     run: wandb.wandb_sdk.wandb_run.Run | None,
     epochs: int,
-    model: PCDecoder,
-    optim_x: pxu.Optim,
-    test_loader: DataLoader[Any],
+    examples: jax.Array,
+    labels: jax.Array,
+    internal_states: jax.Array,
+    predictions: jax.Array,
     params: Params,
     train_data_mean: float,
     train_data_std: float,
-) -> jax.Array:
+) -> None:
     logging.info(f"Creating visualizations for epoch {epochs}...")
-    examples, labels = get_stratified_test_batch(test_loader)
-
-    internal_states = get_internal_states_on_batch(
-        examples=examples,
-        model=model,
-        optim_x=optim_x,
-        loss=model_energy_loss,
-        T=params.T,
-    )
-    predictions = feed_forward_predict(internal_states, model=model)[0]
 
     generated_dir = out_dir / "generated"
     generated_dir.mkdir()
@@ -206,4 +191,3 @@ def create_all_visualizations(
         epochs=epochs,
     )
     logging.info(f"Created visualizations for epoch {epochs}.")
-    return internal_states
