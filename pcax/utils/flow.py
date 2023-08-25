@@ -153,7 +153,7 @@ class while_loop(_AbstractTransformation):
         self.map_outputs = map_outputs
 
     def _call(self, params_partition, *args):
-        output, params_partition = self.transform(
+        params_partition, output = self.transform(
             params_partition,
             *args
         )
@@ -167,17 +167,10 @@ class while_loop(_AbstractTransformation):
             partition, args_list = carry
             updated_args, partition = self._functional(fn, kwargs)(partition, *args_list)
 
-            # Update args
-            for updated_arg, map_output in zip(
-                updated_args,
-                self.map_outputs + tuple(range(len(updated_args) - len(self.map_outputs)))
-            ):
-                args_list[map_output] = updated_arg
-
-            return (partition, args_list)
+            return (partition, updated_args)
 
         return lambda partition, *args: jax.lax.while_loop(
-            self.cond_fn,
-            self._functional(while_loop, kwargs),
+            lambda carry: self.cond_fn(*carry[1]),
+            while_loop,
             (partition, args)
         )
