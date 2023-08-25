@@ -14,20 +14,14 @@ __all__ = [
 ]
 
 from .context import (
-    train,
     eval,
-    step,
-    pc_train_on_batch,
-    vectorize,
     grad_and_values,
     jit,
+    pc_train_on_batch,
+    step,
+    train,
+    vectorize,
 )
-
-from .data import (
-    save_params,
-    load_params,
-)
-
-from .flow import cond, switch, scan
-
+from .data import load_params, save_params
+from .flow import EnergyMinimizationLoop, cond, scan, switch
 from .optim import Optim

@@ -7,13 +7,13 @@ __all__ = [
 ]
 
 import abc
-import re
-from typing import Union, Tuple, Optional, Iterable, Dict, Iterator, Callable, Any
 import copy
+import re
+from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Tuple, Union
 
 import jax
 
-from .util import repr_function, move
+from .util import move, repr_function
 
 ########################################################################################################################
 #
@@ -57,16 +57,16 @@ def reduce_id(x: jax.Array) -> jax.Array:
 class _FlattenAbstractParam:
     """A class to flatten/unflatten a parameter."""
 
-    def __init__(self, param: '_AbstractParam'):
+    def __init__(self, param: "_AbstractParam"):
         self.param = param
 
     def __hash__(self) -> int:
         return self.param.__hash__()
 
-    def __eq__(self, __other: '_FlattenAbstractParam') -> bool:
+    def __eq__(self, __other: "_FlattenAbstractParam") -> bool:
         return self.param is __other.param
 
-    def __ne__(self, __other: '_FlattenAbstractParam') -> bool:
+    def __ne__(self, __other: "_FlattenAbstractParam") -> bool:
         return self.param is not __other.param
 
 
@@ -86,21 +86,27 @@ class _AbstractParamMeta(abc.ABCMeta):
             cls,
             flatten_func=_AbstractParamMeta.flatten_parameter,
             flatten_with_keys=_AbstractParamMeta.flatten_parameter_with_keys,
-            unflatten_func=_AbstractParamMeta.unflatten_parameter
+            unflatten_func=_AbstractParamMeta.unflatten_parameter,
         )
 
         return cls
 
     @staticmethod
-    def flatten_parameter(param: '_AbstractParam') -> Tuple[Any, '_FlattenAbstractParam']:
+    def flatten_parameter(
+        param: "_AbstractParam",
+    ) -> Tuple[Any, "_FlattenAbstractParam"]:
         return (param.value,), _FlattenAbstractParam(param)
 
     @staticmethod
-    def flatten_parameter_with_keys(param: '_AbstractParam') -> Tuple[Any, '_FlattenAbstractParam']:
+    def flatten_parameter_with_keys(
+        param: "_AbstractParam",
+    ) -> Tuple[Any, "_FlattenAbstractParam"]:
         return (("value", param.value),), _FlattenAbstractParam(param)
 
     @staticmethod
-    def unflatten_parameter(flatten_param: '_FlattenAbstractParam', data: Any) -> '_AbstractParam':
+    def unflatten_parameter(
+        flatten_param: "_FlattenAbstractParam", data: Any
+    ) -> "_AbstractParam":
         param = flatten_param.param
         param.value = data[0]
         return param
@@ -146,12 +152,12 @@ class _BaseParam(_AbstractParam):
     def __init__(
         self,
         value: Optional[jax.Array] = None,
-        reduce: Optional[Callable[[jax.Array], jax.Array]] = reduce_none
+        reduce: Optional[Callable[[jax.Array], jax.Array]] = reduce_none,
     ):
         self._value = value
         self._reduce = reduce
 
-    def __move__(self, __other: Optional['_BaseParam'] = None) -> '_BaseParam':
+    def __move__(self, __other: Optional["_BaseParam"] = None) -> "_BaseParam":
         if __other is None:
             __other = copy.copy(self)
         else:
@@ -173,7 +179,7 @@ class _BaseParam(_AbstractParam):
 
     def __repr__(self):
         rvalue = re.sub("[\n]+", "\n", repr(self.value))
-        t = f"{self.__class__.__name__}({rvalue})"
+        t = f"{self.__class__.__name__}[id={id(self)}]({rvalue})"
         if not self._reduce:
             return t
         return f"{t[:-1]}, reduce={repr_function(self._reduce)})"
@@ -379,7 +385,7 @@ class ParamRef(_AbstractParam):
         super().__init__()
         self.ref = param
 
-    def __move__(self, __target: Optional['ParamRef'] = None) -> 'ParamRef':
+    def __move__(self, __target: Optional["ParamRef"] = None) -> "ParamRef":
         if __target is None:
             new_var = copy.copy(self)
         else:
@@ -413,9 +419,7 @@ class ParamCache(_BaseParam, ParamRef):
     """A parameter dictionary used to store interemediate transformations of the referenced parameter. Those are
     normally only stored in the computation tree and are not accessible to the user."""
 
-    def __init__(
-        self, param: Param
-    ):
+    def __init__(self, param: Param):
         """ParamCache constructor.
 
         Args:
@@ -461,7 +465,9 @@ class ParamDict(Dict[str, _AbstractParam]):
         Simply initialise the dictionary with the given elements."""
         super().__init__(*args, **kwargs)
 
-    def __move__(self, __target: Optional['ParamDict' | Dict[str, _AbstractParam]] = None):
+    def __move__(
+        self, __target: Optional["ParamDict" | Dict[str, _AbstractParam]] = None
+    ):
         params = __target or ParamDict()
 
         seen = {}
@@ -517,9 +523,7 @@ class ParamDict(Dict[str, _AbstractParam]):
         for k, v in other:
             if k in self:
                 if self[k] is not v:
-                    raise ValueError(
-                        f"Name conflict when combining ParamsDict {k}"
-                    )
+                    raise ValueError(f"Name conflict when combining ParamsDict {k}")
             else:
                 self[k] = v
 
@@ -535,7 +539,9 @@ class ParamDict(Dict[str, _AbstractParam]):
         text.append(f'{f"+Total({count})":{longest_string}}')
         return "\n".join(text)
 
-    def filter(self, filter: Union['_', Callable[[_AbstractParam], bool]]):  # noqa F821 # type: ignore
+    def filter(
+        self, filter: Union["_", Callable[[_AbstractParam], bool]]
+    ):  # noqa F821 # type: ignore
         """Filter the parameters in the ParamsDict according to the provided filter."""
         params = ParamDict()
 
@@ -561,10 +567,7 @@ def flatten_paramsdict(params: ParamDict) -> Tuple[Any, Any]:
     for k, v in params.items():
         uid = id(v)
         if uid not in seen:
-            seen[uid] = [
-                v,
-                (k,)
-            ]
+            seen[uid] = [v, (k,)]
         else:
             seen[uid][1] += (k,)
 

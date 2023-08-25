@@ -71,7 +71,11 @@ class _AbstractTransformation(abc.ABC):
         fn = self._build(
             functools.reduce(
                 lambda x, y: x + y,
-                (m.parameters().rename(k) for k, m in kwargs.items() if isinstance(m, Module)),
+                (
+                    m.parameters().rename(k)
+                    for k, m in kwargs.items()
+                    if isinstance(m, Module)
+                ),
                 RKG.parameters(),
             ),
             kwargs,
@@ -95,7 +99,9 @@ class _AbstractTransformation(abc.ABC):
 
     def _functional(self, t: Callable, kwargs: Dict[str, Any]) -> Callable:
         def wrapper(params_copy, *args):
-            params_partition = tuple(move(c, p) for c, p in zip(params_copy, self.partition))
+            params_partition = tuple(
+                move(c, p) for c, p in zip(params_copy, self.partition)
+            )
             if isinstance(t, Function):
                 output = t(*args)
             else:
@@ -213,14 +219,20 @@ class Jit(_AbstractTransformation):
         return t._build(
             functools.reduce(
                 lambda x, y: x + y,
-                (m.parameters().rename(k) for k, m in kwargs.items() if isinstance(m, Module)),
+                (
+                    m.parameters().rename(k)
+                    for k, m in kwargs.items()
+                    if isinstance(m, Module)
+                ),
                 RKG.parameters(),
             ),
             kwargs,
         )
 
     def _call(self, params_partition, *args):
-        output, new_partition = self.transform(params_partition, self.static_args_hash, *args)
+        output, new_partition = self.transform(
+            params_partition, self.static_args_hash, *args
+        )
         self.update_partition(new_partition)
 
         return output
@@ -273,7 +285,9 @@ class Vectorize(_AbstractTransformation):
 
     def _call(self, params_partition, *args):
         if len(self.in_axis) > 0:
-            in_axis_argnums = [(x, v) for x, v in enumerate(self.in_axis) if v is not None]
+            in_axis_argnums = [
+                (x, v) for x, v in enumerate(self.in_axis) if v is not None
+            ]
             nsplits = args[in_axis_argnums[0][0]].shape[in_axis_argnums[0][1]]
         else:
             nsplits = next(iter(params_partition[0].values())).shape[0]
@@ -296,7 +310,9 @@ class Vectorize(_AbstractTransformation):
                 outputs = (outputs,)
 
             return jt.tree_map(
-                lambda r, o: self._reduce(r, o, self.axis_name) if isinstance(o, str) else r,
+                lambda r, o: self._reduce(r, o, self.axis_name)
+                if isinstance(o, str)
+                else r,
                 outputs,
                 self.out_axis,
                 is_leaf=lambda x: x is None,
@@ -360,11 +376,14 @@ class _DerivativeBase(_AbstractTransformation):
         params_copy = tuple(move(p) for p in params_partition)
         inputs = [args[i] for i in self.input_argnums]
 
-        g, (output, new_partition) = self.transform((inputs, params_copy[0]), params_copy[1], *args)
-        # Map the gradients to the variables.
-        g = (g[0], {id(k): v.value for k, v in zip(new_partition[0], g[1])})
-
+        g, (output, new_partition) = self.transform(
+            (inputs, params_copy[0]), params_copy[1], *args
+        )
+        # Move new_partition into self.params before mapping the gradients to the variables.
         self.update_partition(new_partition)
+
+        # Map the gradients to the variables.
+        g = (g[0], {id(k): v.value for k, v in zip(params_partition[0], g[1])})
 
         # Discard the input gradients if empty.
         if len(self.input_argnums) == 0:
@@ -381,7 +400,9 @@ class _DerivativeBase(_AbstractTransformation):
             for i, arg in zip(self.input_argnums, inputs):
                 args[i] = arg
 
-            output, params_partition = self._functional(fn, kwargs)((params_target, params_other), *args)
+            output, params_partition = self._functional(fn, kwargs)(
+                (params_target, params_other), *args
+            )
 
             if not isinstance(output, tuple | list):
                 output = (output,)
@@ -419,7 +440,9 @@ class GradAndValues(_DerivativeBase):
         signature = inspect.signature(fn)
         self.__signature__ = signature.replace(
             return_annotation=Tuple[
-                Union[Tuple[List[jax.Array], Dict[int, jax.Array]], Dict[int, jax.Array]],
+                Union[
+                    Tuple[List[jax.Array], Dict[int, jax.Array]], Dict[int, jax.Array]
+                ],
                 signature.return_annotation,
             ]
         )

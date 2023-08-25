@@ -1,5 +1,7 @@
 __all__ = ["Module", "EnergyModule"]
 
+from typing import Iterator
+
 import jax
 import jax.tree_util as jt
 
@@ -29,17 +31,22 @@ class EnergyModule(Module):
             if isinstance(p, NodeParam):
                 p.value = None
 
+    def energy_submodules(self) -> Iterator["EnergyModule"]:
+        for module in self.get_submodules(cls=EnergyModule):
+            assert isinstance(module, EnergyModule)
+            yield module
+
     def energy(self):
         return jt.tree_reduce(
             lambda x, y: x + y,
-            tuple(m.energy() for m in self.get_submodules(cls=EnergyModule)),
+            tuple(m.energy() for m in self.energy_submodules()),
         )
 
     def set_status(self, **status):
         if "init" in status:
             self._init = status["init"]
 
-        for m in self.get_submodules(cls=EnergyModule):
+        for m in self.energy_submodules():
             m.set_status(**status)
 
     @property

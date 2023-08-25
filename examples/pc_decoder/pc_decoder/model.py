@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from numpy.typing import NDArray
-from pc_decoder.params import ModelParams
+from pc_decoder.params import Params
 
 import pcax as px  # type: ignore
 import pcax.core as pxc  # type: ignore
@@ -27,9 +27,9 @@ class PCDecoder(px.EnergyModule):
     def __init__(
         self,
         *,
-        params: ModelParams,
+        params: Params,
         internal_state_init_fn: Callable[
-            [ModelParams, jax.random.KeyArray], tuple[jax.Array, jax.random.KeyArray]
+            [Params, jax.random.KeyArray], tuple[jax.Array, jax.random.KeyArray]
         ],
     ) -> None:
         super().__init__()
@@ -131,27 +131,25 @@ class PCDecoder(px.EnergyModule):
         self,
         examples: jax.Array,
         *,
-        optim_x,
-        loss,
-        T,
-    ) -> list[list[jax.Array]]:
-        grad_and_values = pxu.grad_and_values(
-            px.f(px.NodeParam)(frozen=False),
-        )(loss)
-
-        energies: list[list[jax.Array]] = []
-
+        optim_x: pxu.Optim,
+        loss_fn: Callable,
+    ) -> pxu.EnergyMinimizationLoop.LoopState:
         with pxu.eval(self, examples):
-            # Run to convergence. Since while loops are hard in JAX, we run for a fixed number of steps.
-            # FIXME: XLA compilation takes minutes because unrolling the loop for too many steps is expensive. It takes 6 mins for 625 steps.
-            for i in range(T * self.p.T_convergence_multiplier):
-                with pxu.step(self):
-                    g, _ = grad_and_values(examples, model=self)
+            if self.p.reset_optimizer_x_state:
+                optim_x.init_state()
 
-                    energies.append([jnp.sum(x.energy()) for x in self.pc_nodes])
+            loop = pxu.EnergyMinimizationLoop(
+                model=self,
+                loss_fn=loss_fn,
+                max_iter_number=self.p.T,
+                min_iter_number=self.p.T_min_x_updates,
+                energy_convergence_threshold=self.p.energy_slow_accurate_convergence_threshold,
+                should_update_x=True,
+                optim_x=optim_x,
+            )
+            final_state = loop.run(examples)
 
-                    optim_x(g)
-        return energies
+        return final_state
 
     @property
     def num_layers(self) -> int:
@@ -243,12 +241,3 @@ def feed_forward_predict(internal_state: jax.Array, *, model: PCDecoder) -> jax.
     res = model.feed_forward_predict(internal_state)
     assert isinstance(res, jax.Array)
     return res
-
-
-# @pxu.jit()
-def get_internal_states_on_batch(
-    examples, *, model: PCDecoder, optim_x, loss, T
-) -> jax.Array:
-    model.converge_on_batch(examples, optim_x=optim_x, loss=loss, T=T)
-    assert model.internal_state is not None
-    return model.internal_state

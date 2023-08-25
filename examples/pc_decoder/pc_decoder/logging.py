@@ -147,11 +147,11 @@ def log_test_t_step_metrics(
     *,
     run: wandb.wandb_sdk.wandb_run.Run | None,
     t_step: int,
-    energies: list[list[jax.Array]],
+    energies: jax.Array,
 ) -> None:
     if run is None:
         return
-    total_energy = jnp.asarray(energies).sum(axis=1).tolist()
+    total_energy = energies.sum(axis=1).tolist()
     for t, t_energies in enumerate(energies):
         t_metrics = {
             "test_t_step": t_step + t,
