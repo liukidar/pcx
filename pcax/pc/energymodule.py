@@ -11,7 +11,6 @@ from .parameters import NodeParam
 class EnergyModule(Module):
     def __init__(self) -> None:
         super().__init__()
-        self._status = None
         self._init = None
 
     def clear_cache(self):
