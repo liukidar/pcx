@@ -21,7 +21,7 @@ from pc_decoder.logging import (
 )
 from pc_decoder.model import PCDecoder, feed_forward_predict, model_energy_loss
 from pc_decoder.params import Params
-from pc_decoder.visualization import create_all_visualizations, plot_training_exmaple
+from pc_decoder.visualization import create_all_visualizations
 from ray import tune
 from ray.air import session
 from tqdm import tqdm
@@ -32,7 +32,7 @@ import pcax.utils as pxu  # type: ignore
 from pcax.pc import node  # type: ignore
 
 DEBUG = os.environ.get("DEBUG", "0") == "1"
-DEBUG_BATCH_NUMBER = 1
+DEBUG_BATCH_NUMBER = 10
 
 logging.basicConfig(
     format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
@@ -117,11 +117,14 @@ def train_on_batch(
         final_state = t_loop_state
 
         if model.p.pc_mode in ["pc", "efficient_ppc"]:
+            min_iter_number = (
+                model.p.T_min_w_updates if model.p.pc_mode == "efficient_ppc" else 1
+            )
             w_loop = pxu.EnergyMinimizationLoop(
                 model=model,
                 loss_fn=loss_fn,
                 max_iter_number=total_iterations,
-                min_iter_number=model.p.T_min_w_updates + t_loop_state.iter_number,
+                min_iter_number=min_iter_number + t_loop_state.iter_number,
                 energy_convergence_threshold=(
                     model.p.energy_slow_accurate_convergence_threshold
                     if model.p.pc_mode == "efficient_ppc"
@@ -401,14 +404,6 @@ def train_model(
             epoch_dir=best_epoch_dir,
             run=run,
             test_loader=test_loader,
-            train_data_mean=train_data_mean,
-            train_data_std=train_data_std,
-        )
-        plot_training_exmaple(
-            example=next(iter(train_loader))[0],
-            prediction=feed_forward_predict(model.internal_state, model=model)[0],
-            out_dir=best_epoch_dir,
-            run=run,
             train_data_mean=train_data_mean,
             train_data_std=train_data_std,
         )

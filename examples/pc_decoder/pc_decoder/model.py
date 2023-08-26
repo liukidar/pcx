@@ -36,10 +36,9 @@ class PCDecoder(px.EnergyModule):
 
         self.p = params.copy()
         self.act_fn_hidden = activation_functions[params.activation_hidden]
-        if params.activation_output is not None:
-            self.act_fn_output = activation_functions[params.activation_output]
-        else:
-            self.act_fn_output = lambda x: x
+        self.act_fn_output = activation_functions.get(
+            params.activation_output, lambda x: x
+        )
         self.internal_state_init_fn = internal_state_init_fn
         self.init_prng_key = jax.random.PRNGKey(100)
         self.saved_internal_state: jax.Array | None = None
@@ -75,7 +74,6 @@ class PCDecoder(px.EnergyModule):
         x = self.pc_nodes[0](network_input)["x"]
 
         for i in range(self.num_layers):
-            # No activation function at the last layer
             act_fn = (
                 self.act_fn_hidden if i < self.num_layers - 1 else self.act_fn_output
             )

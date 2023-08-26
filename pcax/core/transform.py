@@ -243,12 +243,24 @@ class Jit(_AbstractTransformation):
         return super()._build(params, kwargs)
 
     def _make_transform(self, fn, kwargs):
-        return jax.jit(
-            lambda params, _, *args: self._functional(fn, kwargs)(params, *args),
+        def func(params, _, *args):
+            print("Before jitted function")
+            output = self._functional(fn, kwargs)(params, *args)
+            print("After jitted function")
+            return output
+
+        jitted = jax.jit(
+            func,
             static_argnums=(1,),
             donate_argnums=(0,) + tuple(x + 2 for x in self.donate_argnums),
             inline=self.inline,
         )
+
+        def wrapper(*args):
+            res = jitted(*args)
+            return res
+
+        return wrapper
 
 
 class Vectorize(_AbstractTransformation):

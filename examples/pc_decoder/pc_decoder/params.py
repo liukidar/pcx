@@ -43,7 +43,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     use_prior_layer: bool = HP(
         "Whether to use a prior layer that generates a set of priors for the topmost PCLayer.",
-        default=False,
+        default=True,
         tunable=True,
     )
     preserve_internal_state_between_batches: bool = HP(
@@ -63,18 +63,18 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         "Path to the directory containing saved W weights. Note that X values are not loaded (and not saved).",
         default=None,
     )
-    epochs: int = HP("Number of epochs to train for.", default=10)
+    epochs: int = HP("Number of epochs to train for.", default=100)
     batch_size: int = HP(
         "Number of examples in a batch. Note the last batch will be discarded. Make sure all batches are of the same size!",
-        default=1,
+        default=250,
     )
     use_last_n_batches_to_compute_metrics: int = HP(
         "Number of last train batches in the epoch used to compute average metrics on the train dataset",
-        default=1,
+        default=10,
     )
     T: int = HP(
         "Number of Predictive Coding iterations.",
-        default=100,
+        default=50,
         search_space=tune.choice(list(range(8, 100, 3))),
         tunable=True,
     )
@@ -96,8 +96,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     optim_x_lr: float = HP(
         "Learning rate for PC node values",
-        # default=0.357,
-        default=0.2,
+        default=0.5,
         search_space=tune.loguniform(1e-2, 1e2),
         tunable=True,
     )
@@ -109,7 +108,6 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     optim_w_lr: float = HP(
         "Learning rate for model weights",
-        # default=5.185e-4,
         default=5e-4,
         search_space=tune.loguniform(1e-5, 1e-3),
         tunable=True,
@@ -124,15 +122,18 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         "Optimizer to use for PC node X values",
         default="adamw",
         choices=["adamw", "sgd"],
+        tunable=True,
     )
     reset_optimizer_x_state: bool = HP(
         "Since we updated the values of x directly, we need to reset the momentums in the x optimizer. Recommended for Adam and AdamW optimizers for X.",
-        default=True,
+        default=False,
+        tunable=True,
     )
     optimizer_w: str = HP(
         "Optimizer to use for model weights",
         default="adamw",
         choices=["adamw", "sgd"],
+        tunable=True,
     )
 
     data_dir: str = HP(
@@ -140,7 +141,8 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     results_dir: str = HP("Directory to save results to.", default="results")
     overwrite_results_dir: bool = HP(
-        "Whether to overwrite the results directory", default=True
+        "Whether to overwrite the results directory",
+        default=False,
     )
     save_best_results: bool = HP(
         "Whether to save the best model",
@@ -152,7 +154,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     save_results_every_n_epochs: int = HP(
         "Save the intermediate results after every N epochs",
-        default=1,
+        default=10,
     )
     visualize_n_images_per_label: int = HP(
         "When visualizing generated images, up to this number of examples per label will be generated.",

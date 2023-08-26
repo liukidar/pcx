@@ -16,7 +16,15 @@
             },
             "args": [
                 "--experiment-name=debug",
-                "--no-wandb-logging"
+                "--no-wandb-logging",
+                "--overwrite-results-dir",
+                "--epochs=2",
+                "--batch-size=10",
+                "--use-last-n-batches-to-compute-metrics=5",
+                "--T=8",
+                "--save-best-results",
+                "--save-intermediate-results",
+                "--save-results-every-n-epochs=1"
             ]
         },
         {
