@@ -41,8 +41,6 @@ class PCDecoder(px.EnergyModule):
         )
         self.internal_state_init_fn = internal_state_init_fn
         self.init_prng_key = jax.random.PRNGKey(100)
-        self.saved_internal_state: jax.Array | None = None
-        self.saved_pc_states: list[jax.Array] = []
         self.prior_layer: nn.Linear | None = None
         if self.p.use_prior_layer:
             # Weights are sampled from the uniform distribution
@@ -67,7 +65,9 @@ class PCDecoder(px.EnergyModule):
                 network_input = self.prior_layer(jnp.ones((1,)))
             else:
                 if self.pc_nodes[0].is_init:
-                    network_input, self.init_prng_key = self._init_internal_state()
+                    network_input, self.init_prng_key = self.internal_state_init_fn(
+                        self.p, self.init_prng_key
+                    )
                 else:
                     network_input = self.internal_state
         assert network_input is not None
@@ -85,32 +85,6 @@ class PCDecoder(px.EnergyModule):
             self.pc_nodes[-1]["x"] = example
 
         return self.prediction
-
-    def _init_internal_state(self):
-        internal_state = self.pc_nodes[0]["x"]
-        if (
-            self.p.preserve_internal_state_between_batches
-            and self._mode is not None
-            and self._mode == "train"
-            and internal_state is not None
-        ):
-            # Note: this doesn't work with the prior layer, and maybe it shouldn't.
-            return internal_state, self.init_prng_key
-        return self.internal_state_init_fn(self.p, self.init_prng_key)
-
-    def train_batch_start(self):
-        if (
-            self.p.preserve_internal_state_between_batches
-            and self.saved_internal_state is not None
-        ):
-            self.pc_nodes[0]["x"] = self.saved_internal_state
-            self.saved_internal_state = None
-
-    def train_batch_end(self):
-        if self.p.preserve_internal_state_between_batches:
-            self.saved_internal_state = self.pc_nodes[0]["x"]
-            if self.p.preserve_all_pc_states_between_batches:
-                self.saved_pc_states = [node["x"] for node in self.pc_nodes[1:]]
 
     def feed_forward_predict(self, x: jax.Array | None = None) -> jax.Array:
         if x is None:

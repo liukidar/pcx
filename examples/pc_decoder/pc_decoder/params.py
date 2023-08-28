@@ -46,14 +46,6 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         default=True,
         tunable=True,
     )
-    preserve_internal_state_between_batches: bool = HP(
-        "Whether to preserve the x values of the first PCLayer in between batches during training",
-        default=False,
-    )
-    preserve_all_pc_states_between_batches: bool = HP(
-        "Whether to preserve the x values of all PCLayers in between batches during training",
-        default=False,
-    )
 
     experiment_name: str = HP(
         "Name of the experiment. An experiment contains many similar runs.",

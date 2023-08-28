@@ -52,9 +52,3 @@ class EnergyModule(Module):
     @property
     def is_init(self):
         return self._init is True
-
-    def train_batch_start(self):
-        pass
-
-    def train_batch_end(self):
-        pass

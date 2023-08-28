@@ -91,12 +91,9 @@ def train_on_batch(
     if model.p.pc_mode == "pc":
         total_iterations += 1
 
-    with pxu.pc_train_on_batch(model), pxu.train(model, examples):
+    with pxu.train(model, examples):
         if model.p.reset_optimizer_x_state:
             optim_x.init_state()
-        if model.p.preserve_all_pc_states_between_batches and model.saved_pc_states:
-            for pc_node, state in zip(model.pc_nodes[1:], model.saved_pc_states):
-                pc_node["x"] = state
 
         t_loop = pxu.EnergyMinimizationLoop(
             model=model,

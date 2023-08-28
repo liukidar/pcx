@@ -13,15 +13,7 @@ __all__ = [
     "Optim",
 ]
 
-from .context import (
-    eval,
-    grad_and_values,
-    jit,
-    pc_train_on_batch,
-    step,
-    train,
-    vectorize,
-)
+from .context import eval, grad_and_values, jit, step, train, vectorize
 from .data import load_params, save_params
 from .flow import EnergyMinimizationLoop, cond, scan, switch
 from .optim import Optim

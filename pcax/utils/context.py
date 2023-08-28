@@ -1,12 +1,12 @@
 __all__ = ["train", "eval", "step", "vectorize", "grad_and_values", "jit"]
 
-from ..core import f, Vectorize, GradAndValues, Jit, Module
-from ..pc.parameters import NodeParam
+import contextlib
+from typing import Callable, Optional, Tuple, Union
+
+from ..core import GradAndValues, Jit, Module, Vectorize, f
 from ..core.parameters import ParamDict
 from ..pc.energymodule import EnergyModule
-
-import contextlib
-from typing import Callable, Tuple, Optional, Union
+from ..pc.parameters import NodeParam
 
 
 @contextlib.contextmanager
@@ -55,13 +55,6 @@ def eval(
 
     if isinstance(model, EnergyModule):
         model.clear_cache()
-
-
-@contextlib.contextmanager
-def pc_train_on_batch(model: EnergyModule):
-    model.train_batch_start()
-    yield
-    model.train_batch_end()
 
 
 def init_module(
