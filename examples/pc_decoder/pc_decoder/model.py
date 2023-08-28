@@ -104,9 +104,6 @@ class PCDecoder(px.EnergyModule):
         loss_fn: Callable,
     ) -> pxu.EnergyMinimizationLoop.LoopState:
         with pxu.eval(self, examples):
-            if self.p.reset_optimizer_x_state:
-                optim_x.init_state()
-
             loop = pxu.EnergyMinimizationLoop(
                 model=self,
                 loss_fn=loss_fn,

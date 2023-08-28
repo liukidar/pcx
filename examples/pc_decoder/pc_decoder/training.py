@@ -81,9 +81,6 @@ def train_on_batch(
         total_iterations += 1
 
     with pxu.train(model, examples):
-        if model.p.reset_optimizer_x_state:
-            optim_x.init_state()
-
         t_loop = pxu.EnergyMinimizationLoop(
             model=model,
             loss_fn=loss_fn,
@@ -285,6 +282,8 @@ def train_model(
             with tqdm(train_loader, unit="batch") as tbatch:
                 for examples, _ in tbatch:
                     tbatch.set_description(f"Train Batch {tbatch.n + 1}")
+                    if params.reset_optimizer_x_state:
+                        optim_x.init_state()
                     mse, final_state = train_batch_fn(examples)
                     mse = mse.item()
                     all_energies = final_state.all_energies[
@@ -323,6 +322,8 @@ def train_model(
             with tqdm(test_loader, unit="batch") as tbatch:
                 for examples, _ in tbatch:
                     tbatch.set_description(f"Test Batch {tbatch.n + 1}")
+                    if params.reset_optimizer_x_state:
+                        optim_x.init_state()
                     mse, final_state = test_batch_fn(examples)
                     mse = mse.item()
                     all_energies = final_state.all_energies[
@@ -450,11 +451,18 @@ def visualize_epoch(
     train_data_std: float,
 ) -> None:
     epoch_results = load_epoch(epoch_dir=epoch_dir)
+    params = epoch_results.params
+    model = epoch_results.model
+    optim_x = epoch_results.optim_x
+    if params.reset_optimizer_x_state:
+        # It's not needed right now, because the optimizer state is not saved and thus not loaded.
+        # However, let's keep it here in case we decide to save the optimizer state in the future.
+        optim_x.init_state()
     examples, labels = get_stratified_test_batch(test_loader)
     internal_states = get_internal_states_on_batch(
         examples=examples,
-        model=epoch_results.model,
-        optim_x=epoch_results.optim_x,
+        model=model,
+        optim_x=optim_x,
         loss_fn=model_energy_loss,
     )
     predictions = feed_forward_predict(internal_states, model=epoch_results.model)[0]

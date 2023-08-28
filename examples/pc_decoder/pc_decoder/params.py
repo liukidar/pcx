@@ -122,8 +122,8 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     reset_optimizer_x_state: bool = HP(
         "Since we updated the values of x directly, we need to reset the momentums in the x optimizer. Recommended for Adam and AdamW optimizers for X.",
-        default=False,
-        tunable=True,
+        default=True,
+        tunable=False,
     )
     optimizer_w: str = HP(
         "Optimizer to use for model weights",
