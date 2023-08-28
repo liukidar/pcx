@@ -1,7 +1,6 @@
 __all__ = ["_RKGState", "RKG", "RandomKeyGenerator"]
 
-from typing import Optional, List
-import time
+from typing import List, Optional
 
 import jax
 
@@ -73,4 +72,4 @@ class RandomKeyGenerator(Module):
 
 
 """Default random key generator. """
-RKG = RandomKeyGenerator(time.time_ns())
+RKG = RandomKeyGenerator(2023)
