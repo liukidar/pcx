@@ -7,7 +7,6 @@ from uuid import uuid4
 import jax
 import jax.numpy as jnp
 import numpy as np
-from numpy.typing import NDArray
 from pc_decoder.params import Params
 
 import pcax as px  # type: ignore
@@ -15,7 +14,8 @@ import pcax.core as pxc  # type: ignore
 import pcax.nn as nn  # type: ignore
 import pcax.utils as pxu  # type: ignore
 
-activation_functions: dict[str, Callable[[jax.Array], jax.Array]] = {
+activation_functions: dict[str | None, Callable[[jax.Array], jax.Array]] = {
+    None: lambda x: x,
     "gelu": jax.nn.gelu,
     "relu": jax.nn.relu,
     "tanh": jax.nn.tanh,
@@ -36,9 +36,7 @@ class PCDecoder(px.EnergyModule):
 
         self.p = params.copy()
         self.act_fn_hidden = activation_functions[params.activation_hidden]
-        self.act_fn_output = activation_functions.get(
-            params.activation_output, lambda x: x
-        )
+        self.act_fn_output = activation_functions[params.activation_output]
         self.internal_state_init_fn = internal_state_init_fn
         self.init_prng_key = jax.random.PRNGKey(100)
         self.prior_layer: nn.Linear | None = None
@@ -92,7 +90,6 @@ class PCDecoder(px.EnergyModule):
         if x is None:
             raise RuntimeError("Internal state is none.")
         for i in range(self.num_layers):
-            # No activation function at the last layer
             act_fn = (
                 self.act_fn_hidden if i < self.num_layers - 1 else self.act_fn_output
             )

@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import torch
 from pc_decoder.params import Params
 from torch.utils.data import DataLoader  # type: ignore
-from torchvision import datasets, transforms
+from torchvision import datasets, transforms  # type: ignore
 
 
 def download_datasets(params: Params):
@@ -40,8 +40,8 @@ def get_data_loaders(
     ), "All batches must have the same size!"
 
     def collate_into_jax_arrays(
-        examples: list[tuple[torch.Tensor, Any]]
-    ) -> tuple[jax.Array, list[Any]]:
+        examples: list[tuple[torch.Tensor, int]]
+    ) -> tuple[jax.Array, list[int]]:
         data = jnp.array([x[0].numpy() for x in examples]).reshape(len(examples), -1)
         targets = [x[1] for x in examples]
         return data, targets

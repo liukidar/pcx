@@ -1,34 +1,17 @@
-import re
 from datetime import datetime
 from pathlib import Path
 
 import jax
-import jax.numpy as jnp
-import numpy as np
 import wandb
 from pc_decoder.params import Params
 from ray import tune
-
-simple_param_name_pattern = re.compile(
-    r"\(PCDecoder\)\.(?P<param>[^\.]+)\.\(\"nn\.\(GetAttrKey\(name='(?P<p_type>[^\.]+)'\),\)\",\)"
-)
-deep_param_name_pattern = re.compile(
-    r"\(PCDecoder\)\.(?P<group>[^\.]+)\.\(SequenceKey\(idx=(?P<level>\d+)\), "
-    r"(?:\"nn\.\(GetAttrKey\(name='(?P<w_type>[^']+)'\),\)\"\)|'(?P<x_type>[^']+)')"
-)
-
-param_type_shortcuts = {
-    "weight": "w",
-    "bias": "b",
-    "x": "x",
-}
 
 
 def init_wandb(
     *,
     params: Params,
     results_dir: Path,
-) -> wandb.wandb_sdk.wandb_run.Run | None:
+) -> wandb.wandb_sdk.wandb_run.Run:
     run_name = (
         f"{params.experiment_name}--{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
     )
@@ -53,13 +36,13 @@ def init_wandb(
     )
     wandb.define_metric("train_energy/*", step_metric="train_t_step")
     wandb.define_metric("test_energy/*", step_metric="test_t_step")
-    # wandb.define_metric("grad/*", step_metric="t_step")
     wandb.define_metric("train_mse", step_metric="epochs")
     wandb.define_metric("test_mse", step_metric="epochs")
     wandb.define_metric("internal_states_mean", step_metric="epochs")
     wandb.define_metric("internal_states_std", step_metric="epochs")
     wandb.define_metric("num_x_updates", step_metric="batch")
     wandb.define_metric("num_w_updates", step_metric="batch")
+    assert isinstance(run, wandb.wandb_sdk.wandb_run.Run)
     return run
 
 
@@ -68,57 +51,19 @@ def log_train_t_step_metrics(
     run: wandb.wandb_sdk.wandb_run.Run | None,
     t_step: int,
     energies: jax.Array,
-    # gradients: list[dict[str, jax.Array]],
-    params: Params,
 ) -> None:
     if run is None:
         return
-    # assert len(energies) == len(gradients) == params.T
     total_energies = energies.sum(axis=1).tolist()
-    # for t, (t_energies, t_gradients) in enumerate(zip(energies, gradients)):
     for t, t_energies in enumerate(energies):
         t_metrics = {
             "train_t_step": t_step + t,
-            "train_energy/00_total": total_energies[t],
-            # "grad/00_total.sum": np.sum(
-            #     [jnp.abs(x).sum().item() for x in t_gradients.values()]
-            # ),
-            # "grad/01_total.mean": np.mean(
-            #     [jnp.abs(x).mean().item() for x in t_gradients.values()]
-            # ),
+            "train_energy/0_total": total_energies[t],
         }
         for node_index, energy in enumerate(t_energies):
-            t_metrics[f"train_energy/10_node_{node_index}"] = energy.item()
-        # for long_param_name, param_grad in t_gradients.items():
-        #     m = deep_param_name_pattern.match(long_param_name)
-        #     if m is not None:
-        #         group = m.group("group")
-        #         level = m.group("level")
-        #         w_type = m.group("w_type")
-        #         x_type = m.group("x_type")
-        #         param_type = param_type_shortcuts[w_type or x_type]
-        #         param_name = f"{group}[{level}].{param_type}"
-        #     else:
-        #         m = simple_param_name_pattern.match(long_param_name)
-        #         if m is None:
-        #             raise RuntimeError(f"Could not parse param name {long_param_name}")
-        #         p_name = m.group("param")
-        #         p_type = m.group("p_type")
-        #         param_type = param_type_shortcuts[p_type]
-        #         param_name = f"{p_name}.{param_type}"
-        #     if param_type == "b":
-        #         continue
-
-        #     if "pc_nodes" in param_name:
-        #         param_name = "10_" + param_name
-        #     elif "fc_layers" in param_name:
-        #         param_name = "20_" + param_name
-        #     else:
-        #         param_name = "30_" + param_name
-
-        #     t_metrics[f"grad/{param_name}.sum"] = jnp.sum(jnp.abs(param_grad))
-        #     # t_metrics[f"grad/{param_name}.mean"] = jnp.mean(jnp.abs(param_grad))
-        #     # t_metrics[f"grad/{param_name}.std"] = jnp.std(param_grad)
+            t_metrics[
+                f"train_energy/{len(t_energies) - node_index}_node_{node_index}"
+            ] = energy.item()
 
         run.log(t_metrics)
 
@@ -155,9 +100,11 @@ def log_test_t_step_metrics(
     for t, t_energies in enumerate(energies):
         t_metrics = {
             "test_t_step": t_step + t,
-            "test_energy/20_total": total_energy[t],
+            "test_energy/0_total": total_energy[t],
         }
         for node_index, energy in enumerate(t_energies):
-            t_metrics[f"test_energy/21_node_{node_index}"] = energy.item()
+            t_metrics[
+                f"test_energy/{len(t_energies) - node_index}_node_{node_index}"
+            ] = energy.item()
 
         run.log(t_metrics)

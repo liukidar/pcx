@@ -1,23 +1,20 @@
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Iterable
 
 import jax
 import jax.numpy as jnp
-import matplotlib
-import matplotlib.pyplot as plt
+import matplotlib  # type: ignore
+import matplotlib.pyplot as plt  # type: ignore
 import numpy as np
-import pandas as pd
-import seaborn as sns
+import pandas as pd  # type: ignore
+import seaborn as sns  # type: ignore
 import wandb
+from matplotlib import axes, figure  # type: ignore
 from numpy.typing import NDArray
-from pc_decoder.model import PCDecoder
 from pc_decoder.params import Params
-from torch.utils.data import DataLoader
-from umap import UMAP
-
-import pcax.utils as pxu  # type: ignore
+from umap import UMAP  # type: ignore
 
 # Use Agg backend for matplotlib so it doesn't open windows
 matplotlib.use("agg")
@@ -57,7 +54,7 @@ def visualize_predictions(
     )
     plt.clf()
     fig, axes = plt.subplots(1, 2)
-    visualized_labels = defaultdict(int)
+    visualized_labels: dict[int, int] = defaultdict(int)
     for i, (example, prediction, label) in enumerate(
         zip(examples, predictions, labels)
     ):
@@ -65,40 +62,42 @@ def visualize_predictions(
         if visualized_labels[label] >= params.visualize_n_images_per_label:
             continue
         visualized_labels[label] += 1
-        mse = jnp.mean((prediction - example) ** 2).item()
-
-        axes[0].imshow(  # type: ignore
-            restore_image(example, train_data_mean, train_data_std),
-            cmap="gray",
+        plot_exmaple_and_prediction(
+            fig=fig,
+            axes=axes,
+            example=example,
+            prediction=prediction,
+            label=label,
+            example_index=i,
+            out_dir=out_dir,
+            run=run,
+            epochs=epochs,
+            train_data_mean=train_data_mean,
+            train_data_std=train_data_std,
         )
-        axes[0].set_title("Original")  # type: ignore
-        axes[1].imshow(  # type: ignore
-            restore_image(prediction, train_data_mean, train_data_std),
-            cmap="gray",
-        )
-        axes[1].set_title("Prediction")  # type: ignore
-        # Set figure title
-        fig.suptitle(f"Epochs {epochs} Label {label} Example {i} MSE {mse}")
-        filename = f"label_{label}_example_{i}.png"
-        image_path = str(out_dir / filename)
-        fig.savefig(image_path)  # type: ignore
-        if run is not None:
-            run.log({filename: wandb.Image(image_path), "epochs": epochs})
         plt.cla()
+
     plt.clf()
     logging.info(f"Visualized {sum(visualized_labels.values())} examples.")
 
 
-def plot_training_exmaple(
+def plot_exmaple_and_prediction(
     *,
+    fig: figure.Figure,
+    axes: Iterable[axes.Axes],
     example: jax.Array,
     prediction: jax.Array,
+    label: int,
+    example_index: int,
     out_dir: Path,
     run,
+    epochs: int,
     train_data_mean: float,
     train_data_std: float,
+    filename: str | None = None,
 ) -> None:
-    fig, axes = plt.subplots(1, 2)
+    mse = jnp.mean((prediction - example) ** 2).item()
+
     axes[0].imshow(  # type: ignore
         restore_image(example, train_data_mean, train_data_std),
         cmap="gray",
@@ -109,11 +108,14 @@ def plot_training_exmaple(
         cmap="gray",
     )
     axes[1].set_title("Prediction")  # type: ignore
-    filename = "training_example.png"
+    # Set figure title
+    fig.suptitle(f"Epochs {epochs} Label {label} Example {example_index} MSE {mse}")
+    if filename is None:
+        filename = f"label_{label}_example_{example_index}.png"
     image_path = str(out_dir / filename)
     fig.savefig(image_path)  # type: ignore
     if run is not None:
-        run.log({filename: wandb.Image(image_path)})
+        run.log({filename: wandb.Image(image_path), "epochs": epochs})
 
 
 def visualize_internal_states_clustering(

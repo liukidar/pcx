@@ -9,9 +9,8 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 import numpy as np
-import optax
+import optax  # type: ignore
 import wandb
-from matplotlib import pyplot as plt
 from pc_decoder.data_loading import get_data_loaders, get_stratified_test_batch
 from pc_decoder.logging import (
     init_wandb,
@@ -24,12 +23,9 @@ from pc_decoder.params import Params
 from pc_decoder.visualization import create_all_visualizations
 from ray import tune
 from ray.air import session
-from tqdm import tqdm
+from tqdm import tqdm  # type: ignore
 
-import pcax as px  # type: ignore
-import pcax.core as pxc
 import pcax.utils as pxu  # type: ignore
-from pcax.pc import node  # type: ignore
 
 DEBUG = os.environ.get("DEBUG", "0") == "1"
 DEBUG_BATCH_NUMBER = 10
@@ -67,14 +63,6 @@ def internal_state_init(
     return value, prng_key
 
 
-class TrainTestOnBatchResult(NamedTuple):
-    mse: jax.Array
-    energies: jax.Array
-    iterations_done: jax.Array
-    num_x_updates: jax.Array
-    num_w_updates: jax.Array
-
-
 @pxu.jit()
 def train_on_batch(
     examples: jax.Array,
@@ -84,6 +72,7 @@ def train_on_batch(
     optim_w: pxu.Optim,
     loss_fn: Callable,
 ) -> tuple[jax.Array, pxu.EnergyMinimizationLoop.LoopState]:
+    logging.info(f"Jitting train_on_batch for model {id(model)}")
     t_iterations = model.p.T
     if model.p.pc_mode == "efficient_ppc":
         t_iterations -= model.p.T_min_w_updates
@@ -148,6 +137,7 @@ def test_on_batch(
     optim_x: pxu.Optim,
     loss_fn: Callable,
 ) -> tuple[jax.Array, pxu.EnergyMinimizationLoop.LoopState]:
+    logging.info(f"Jitting test_on_batch for model {id(model)}")
     final_state = model.converge_on_batch(examples, optim_x=optim_x, loss_fn=loss_fn)
     predictions = feed_forward_predict(model.internal_state, model=model)[0]
     mse = jnp.mean((predictions - examples) ** 2)
@@ -158,6 +148,7 @@ def test_on_batch(
 def get_internal_states_on_batch(
     examples, *, model: PCDecoder, optim_x, loss_fn
 ) -> jax.Array:
+    logging.info(f"Jitting get_internal_states_on_batch for model {id(model)}")
     model.converge_on_batch(examples, optim_x=optim_x, loss_fn=loss_fn)
     assert model.internal_state is not None
     return model.internal_state
@@ -302,10 +293,7 @@ def train_model(
                     log_train_t_step_metrics(
                         run=run,
                         t_step=train_t_step,
-                        # FIXME: report energies and gradients
                         energies=all_energies,
-                        # gradients=[],
-                        params=params,
                     )
                     log_train_batch_metrics(
                         run=run,
@@ -397,16 +385,13 @@ def train_model(
 
     # Generate images for the best epoch only
     if best_epoch_dir.exists():
-        internal_states_mean, internal_states_std = visualize_epoch(
+        visualize_epoch(
             epoch_dir=best_epoch_dir,
             run=run,
             test_loader=test_loader,
             train_data_mean=train_data_mean,
             train_data_std=train_data_std,
         )
-        if run is not None:
-            run.summary["internal_states_mean"] = internal_states_mean
-            run.summary["internal_states_std"] = internal_states_std
     else:
         logging.error(f"No best epoch exists for this run")
 
@@ -463,7 +448,7 @@ def visualize_epoch(
     test_loader,
     train_data_mean: float,
     train_data_std: float,
-) -> tuple[float, float]:
+) -> None:
     epoch_results = load_epoch(epoch_dir=epoch_dir)
     examples, labels = get_stratified_test_batch(test_loader)
     internal_states = get_internal_states_on_batch(
@@ -497,8 +482,10 @@ def visualize_epoch(
             outfile,
             indent=4,
         )
+    if run is not None:
+        run.summary["internal_states_mean"] = internal_states_mean
+        run.summary["internal_states_std"] = internal_states_std
     logging.info(f"Finished visualizing epoch from {epoch_dir}...")
-    return internal_states_mean, internal_states_std
 
 
 class Trainable:

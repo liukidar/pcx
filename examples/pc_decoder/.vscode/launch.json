@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug Single run",
+            "name": "Debug",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
@@ -28,17 +28,31 @@
             ]
         },
         {
-            "name": "Single run",
+            "name": "Short run",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--experiment-name=new-dev",
+                "--experiment-name=short-run",
                 "--overwrite-results-dir",
                 "--epochs=10",
-                "--pc-mode=pc"
+                "--save-best-results",
+                "--save-intermediate-results",
+                "--save-results-every-n-epochs=1"
+            ]
+        },
+        {
+            "name": "Best Params",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--experiment-name=best-params",
+                "--no-overwrite-results-dir",
             ]
         },
         {
@@ -53,54 +67,31 @@
             },
             "args": [
                 "--experiment-name=debug-hypertunning",
-                "--do-hypertunning",
                 "--overwrite-results-dir",
-                "--epochs=2",
+                "--do-hypertunning",
+                "--epochs=5",
                 "--batch-size=10",
-                "--hypertunning-num-trials=2",
-                "--hypertunning-use-early-stop-scheduler",
-                "--T-convergence-multiplier=1",
                 "--use-last-n-batches-to-compute-metrics=5",
+                "--hypertunning-num-trials=5",
+                "--hypertunning-use-early-stop-scheduler",
                 "--save-best-results",
                 "--save-intermediate-results",
                 "--save-results-every-n-epochs=1"
             ]
         },
         {
-            "name": "Long Run",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-        },
-        {
-            "name": "Long Hypertunning",
+            "name": "Hypertunning",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--experiment-name=long-hypertunning",
+                "--experiment-name=hypertunning",
+                "--no-overwrite-results-dir",
                 "--do-hypertunning",
-                "--hypertunning-num-trials=1000",
-                "--epochs=100",
-                "--batch-size=2000",
-                "--no-save-intermediate-results",
                 "--no-hypertunning-use-early-stop-scheduler"
             ]
-        },
-        {
-            "name": "JIT test",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/jit_test.py",
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "env": {
-                "JAX_CHECK_TRACER_LEAKS": "1"
-            }
         }
     ]
 }

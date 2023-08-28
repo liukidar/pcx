@@ -1,7 +1,7 @@
 from typing import Optional
 
-from hyperparameters import HP, Hyperparams
-from hyperparameters.ray_tune_hyperparams import RayTuneHyperparamsMixin
+from hyperparameters import HP, Hyperparams  # type: ignore
+from hyperparameters.ray_tune_hyperparams import RayTuneHyperparamsMixin  # type: ignore
 from ray import tune
 
 
@@ -26,7 +26,8 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         tunable=False,
     )
     output_dim: int = HP(
-        "Dimension of the data. Must be output_dim >> internal_dim.", default=784
+        "Dimension of the data. Must be output_dim >> internal_dim.",
+        default=784,
     )
     num_hidden_layers: int = HP(
         "Number of the hidden layers in the generator, excluding input and output layers.",
@@ -55,10 +56,13 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         "Path to the directory containing saved W weights. Note that X values are not loaded (and not saved).",
         default=None,
     )
-    epochs: int = HP("Number of epochs to train for.", default=100)
+    epochs: int = HP(
+        "Number of epochs to train for.",
+        default=200,
+    )
     batch_size: int = HP(
         "Number of examples in a batch. Note the last batch will be discarded. Make sure all batches are of the same size!",
-        default=250,
+        default=1000,
     )
     use_last_n_batches_to_compute_metrics: int = HP(
         "Number of last train batches in the epoch used to compute average metrics on the train dataset",
@@ -88,8 +92,8 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     optim_x_lr: float = HP(
         "Learning rate for PC node values",
-        default=0.5,
-        search_space=tune.loguniform(1e-2, 1e2),
+        default=0.1,
+        search_space=tune.loguniform(1e-2, 1),
         tunable=True,
     )
     optim_x_l2: float = HP(
@@ -106,8 +110,8 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     optim_w_l2: float = HP(
         "Weight decay for model weights.",
-        default=0.001,
-        search_space=tune.loguniform(1e-2, 5e-1),
+        default=1e-3,
+        search_space=tune.loguniform(1e-4, 5e-1),
         tunable=False,
     )
     optimizer_x: str = HP(
@@ -125,13 +129,18 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         "Optimizer to use for model weights",
         default="adamw",
         choices=["adamw", "sgd"],
-        tunable=True,
+        tunable=False,
     )
 
     data_dir: str = HP(
-        "Directory to save data to.", default="data", adjust_relative_path=True
+        "Directory to save data to.",
+        default="data",
+        adjust_relative_path=True,
     )
-    results_dir: str = HP("Directory to save results to.", default="results")
+    results_dir: str = HP(
+        "Directory to save results to.",
+        default="results",
+    )
     overwrite_results_dir: bool = HP(
         "Whether to overwrite the results directory",
         default=False,
@@ -172,7 +181,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     hypertunning_num_trials: int = HP(
         "Number of hypertunning run trials",
-        default=100,
+        default=500,
     )
     hypertunning_max_concurrency: Optional[int] = HP(
         "Maximum number of concurrent hypertunning trials. "
@@ -190,7 +199,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     hypertunning_gpu_memory_fraction_per_trial: float = HP(
         "Logical fraction of GPU memory required for a single trial. Must be in [0, 1]. "
         "However, keep in mind that GPUs have only around 85%-90% memory free when sitting idle",
-        default=1 / 10,
+        default=0.2,
     )
     hypertunning_use_early_stop_scheduler: bool = HP(
         "Whether to enable ray.tune scheduler that performs early stopping of trials.",

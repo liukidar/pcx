@@ -235,24 +235,12 @@ class Jit(_AbstractTransformation):
         return super()._build(params, kwargs)
 
     def _make_transform(self, fn, kwargs):
-        def func(params, _, *args):
-            print("Before jitted function")
-            output = self._functional(fn, kwargs)(params, *args)
-            print("After jitted function")
-            return output
-
-        jitted = jax.jit(
-            func,
+        return jax.jit(
+            lambda params, _, *args: self._functional(fn, kwargs)(params, *args),
             static_argnums=(1,),
             donate_argnums=(0,) + tuple(x + 2 for x in self.donate_argnums),
             inline=self.inline,
         )
-
-        def wrapper(*args):
-            res = jitted(*args)
-            return res
-
-        return wrapper
 
 
 class Vectorize(_AbstractTransformation):
@@ -381,7 +369,6 @@ class _DerivativeBase(_AbstractTransformation):
         g, (output, params_partition) = self.transform(
             (inputs, params_copy[0]), params_copy[1], *args
         )
-
         # Map the gradients to the variables.
         g = (g[0], {id(k): v.value for k, v in zip(params_partition[0], g[1])})
 
