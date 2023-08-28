@@ -107,16 +107,9 @@ class _AbstractTransformation(abc.ABC):
             else:
                 output = t(*args, **kwargs)
 
-            return output, tuple(move(p) for p in params_partition)
+            return output, params_partition
 
         return wrapper
-
-    def update_partition(self, new_partition):
-        old_target, old_params = self.partition
-        new_target, new_params = new_partition
-
-        move(new_target, old_target)
-        move(new_params, old_params)
 
     @property
     def partition(self) -> Tuple[ParamDict, ParamDict]:
@@ -230,10 +223,9 @@ class Jit(_AbstractTransformation):
         )
 
     def _call(self, params_partition, *args):
-        output, new_partition = self.transform(
+        output, params_partition = self.transform(
             params_partition, self.static_args_hash, *args
         )
-        self.update_partition(new_partition)
 
         return output
 
@@ -307,11 +299,9 @@ class Vectorize(_AbstractTransformation):
         for rkg in params_partition[0].filter(f(_RKGState)):
             rkg.value = rkg.split(nsplits)
 
-        output, new_partition = self.transform(params_partition, *args)
-        for p in new_partition[0]:
+        output, params_partition = self.transform(params_partition, *args)
+        for p in params_partition[0]:
             p.reduce()
-
-        self.update_partition(new_partition)
 
         return output
 
@@ -388,11 +378,9 @@ class _DerivativeBase(_AbstractTransformation):
         params_copy = tuple(move(p) for p in params_partition)
         inputs = [args[i] for i in self.input_argnums]
 
-        g, (output, new_partition) = self.transform(
+        g, (output, params_partition) = self.transform(
             (inputs, params_copy[0]), params_copy[1], *args
         )
-        # Move new_partition into self.params before mapping the gradients to the variables.
-        self.update_partition(new_partition)
 
         # Map the gradients to the variables.
         g = (g[0], {id(k): v.value for k, v in zip(params_partition[0], g[1])})

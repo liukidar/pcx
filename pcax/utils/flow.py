@@ -158,11 +158,10 @@ class while_loop(_AbstractTransformation):
     def _make_transform(self, fn, kwargs):
         def while_loop(carry):
             partition, args_list = carry
-            updated_args, new_partition = self._functional(fn, kwargs)(
+            updated_args, partition = self._functional(fn, kwargs)(
                 partition, *args_list
             )
             assert len(updated_args) == len(args_list)
-            self.update_partition(new_partition)
 
             return (self.partition, updated_args)
 
