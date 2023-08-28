@@ -28,8 +28,10 @@ from tqdm import tqdm  # type: ignore
 import pcax.utils as pxu  # type: ignore
 
 DEBUG = os.environ.get("DEBUG", "0") == "1"
-DEBUG_TRAIN_SUBSET_INDICES = [1]
-DEBUG_TEST_SUBSET_INDICES = [3]
+# DEBUG_TRAIN_SUBSET_INDICES = [1]
+# DEBUG_TEST_SUBSET_INDICES = [3]
+DEBUG_TRAIN_SUBSET_INDICES = list(range(10))
+DEBUG_TEST_SUBSET_INDICES = DEBUG_TRAIN_SUBSET_INDICES
 assert len(DEBUG_TRAIN_SUBSET_INDICES) == len(DEBUG_TEST_SUBSET_INDICES)
 
 

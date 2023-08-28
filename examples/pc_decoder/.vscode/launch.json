@@ -73,7 +73,7 @@
                 "--batch-size=10",
                 "--use-last-n-batches-to-compute-metrics=5",
                 "--hypertunning-num-trials=5",
-                "--hypertunning-use-early-stop-scheduler",
+                // "--hypertunning-use-early-stop-scheduler",
                 "--save-best-results",
                 "--save-intermediate-results",
                 "--save-results-every-n-epochs=1"

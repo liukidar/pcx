@@ -11,8 +11,11 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         "PC updates only X each T iteration and then updates W once. "
         "PPC updates both X and W every T iteration. "
         "EfficientPPC first updates X till convergence and then updates W for the rest of the T iterations.",
-        default="pc",
-        choices=["pc", "ppc", "efficient_ppc"],
+        default="ppc",
+        choices=[
+            "ppc",
+            "efficient_ppc",
+        ],  # Node: "pc" is also possible but removed so hypertunning doesn't try it.
         tunable=True,
     )
     internal_dim: int = HP(
@@ -58,7 +61,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     epochs: int = HP(
         "Number of epochs to train for.",
-        default=200,
+        default=100,
     )
     batch_size: int = HP(
         "Number of examples in a batch. Note the last batch will be discarded. Make sure all batches are of the same size!",
@@ -66,12 +69,12 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     use_last_n_batches_to_compute_metrics: int = HP(
         "Number of last train batches in the epoch used to compute average metrics on the train dataset",
-        default=10,
+        default=20,
     )
     T: int = HP(
         "Number of Predictive Coding iterations.",
         default=50,
-        search_space=tune.choice(list(range(8, 100, 3))),
+        search_space=tune.choice(list(range(8, 100, 7))),
         tunable=True,
     )
     T_min_x_updates: int = HP(
@@ -85,6 +88,8 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     energy_quick_approximate_convergence_threshold: float = HP(
         "Upper threshold for the energy convergence. Used when speed is more important than accuracy. If the energy change is less than this threshold, the updates will stop.",
         default=1e-1,
+        search_space=tune.loguniform(1e-2, 1e1),
+        tunable=True,
     )
     energy_slow_accurate_convergence_threshold: float = HP(
         "Lower threshold for the energy convergence. Used when accuracy is more important than speed. If the energy change is less than this threshold, the updates will stop.",
@@ -93,7 +98,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     optim_x_lr: float = HP(
         "Learning rate for PC node values",
         default=0.05,
-        search_space=tune.loguniform(1e-2, 1),
+        search_space=tune.loguniform(5e-3, 1),
         tunable=True,
     )
     optim_x_l2: float = HP(
@@ -190,16 +195,16 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     hypertunning_cpu_per_trial: float = HP(
         "Logical number of CPUs required for a single trial",
-        default=2.0,
+        default=1.0,
     )
     hypertunning_ram_gb_per_trial: float = HP(
         "GB of RAM required for a single trial.",
-        default=4.0,
+        default=1.5,
     )
     hypertunning_gpu_memory_fraction_per_trial: float = HP(
         "Logical fraction of GPU memory required for a single trial. Must be in [0, 1]. "
         "However, keep in mind that GPUs have only around 85%-90% memory free when sitting idle",
-        default=0.2,
+        default=0.05,
     )
     hypertunning_use_early_stop_scheduler: bool = HP(
         "Whether to enable ray.tune scheduler that performs early stopping of trials.",
