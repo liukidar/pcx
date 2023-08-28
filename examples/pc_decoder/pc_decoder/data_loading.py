@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import torch
 from pc_decoder.params import Params
-from torch.utils.data import DataLoader  # type: ignore
+from torch.utils.data import DataLoader, Subset  # type: ignore
 from torchvision import datasets, transforms  # type: ignore
 
 
@@ -16,6 +16,8 @@ def download_datasets(params: Params):
 
 def get_data_loaders(
     params: Params,
+    train_subset_indices: list[int] | None = None,
+    test_subset_indices: list[int] | None = None,
 ) -> tuple[DataLoader[Any], DataLoader[Any], float, float]:
     train_dataset = datasets.MNIST(root=params.data_dir, train=True)
 
@@ -32,6 +34,11 @@ def get_data_loaders(
 
     train_dataset = datasets.MNIST(root=params.data_dir, train=True, transform=transform)  # type: ignore
     test_dataset = datasets.MNIST(root=params.data_dir, train=False, transform=transform)  # type: ignore
+
+    if train_subset_indices is not None:
+        train_dataset = Subset(train_dataset, train_subset_indices)
+    if test_subset_indices is not None:
+        test_dataset = Subset(test_dataset, test_subset_indices)
 
     assert (
         len(train_dataset) % params.batch_size
@@ -83,8 +90,7 @@ def get_stratified_test_batch(
         selected_indexes[label] = selected_indexes[label][
             : num_per_label + additional_examples
         ]
-        if len(selected_indexes[label]) > num_per_label:
-            additional_examples = 0
+        additional_examples -= max(0, len(selected_indexes[label]) - num_per_label)
     for label, indexes in selected_indexes.items():
         if not indexes:
             logging.warning(f"No visualization examples for label {label}!")

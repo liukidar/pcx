@@ -28,30 +28,16 @@ from tqdm import tqdm  # type: ignore
 import pcax.utils as pxu  # type: ignore
 
 DEBUG = os.environ.get("DEBUG", "0") == "1"
-DEBUG_BATCH_NUMBER = 10
+DEBUG_TRAIN_SUBSET_INDICES = [1]
+DEBUG_TEST_SUBSET_INDICES = [3]
+assert len(DEBUG_TRAIN_SUBSET_INDICES) == len(DEBUG_TEST_SUBSET_INDICES)
+
 
 logging.basicConfig(
     format="%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     level=logging.INFO,
 )
-
-if DEBUG:
-    from itertools import islice
-
-    class ReentryIsliceIterator:
-        def __init__(self, iterable, limit):
-            self.iterable = iterable
-            self.limit = limit
-
-        def __iter__(self):
-            return iter(islice(self.iterable, self.limit))
-
-        def __len__(self):
-            return min(self.limit, len(self.iterable))
-
-        def __getattr__(self, attr):
-            return getattr(self.iterable, attr)
 
 
 def internal_state_init(
@@ -241,6 +227,9 @@ def train_model(
     results_dir: Path,
     run: wandb.wandb_sdk.wandb_run.Run | None = None,
 ) -> None:
+    if DEBUG:
+        params.batch_size = min(params.batch_size, len(DEBUG_TRAIN_SUBSET_INDICES))
+
     best_epoch_dir = results_dir / "best"
     with pxu.train(model, jnp.zeros((params.batch_size, params.output_dim))):
         optim_x = build_optim_x(model=model, params=params)
@@ -260,11 +249,10 @@ def train_model(
     )
 
     train_loader, test_loader, train_data_mean, train_data_std = get_data_loaders(
-        params
+        params,
+        train_subset_indices=DEBUG_TRAIN_SUBSET_INDICES if DEBUG else None,
+        test_subset_indices=DEBUG_TEST_SUBSET_INDICES if DEBUG else None,
     )
-    if DEBUG:
-        train_loader = ReentryIsliceIterator(train_loader, DEBUG_BATCH_NUMBER)  # type: ignore
-        test_loader = ReentryIsliceIterator(test_loader, DEBUG_BATCH_NUMBER)  # type: ignore
 
     train_mses = []
     test_mses = []

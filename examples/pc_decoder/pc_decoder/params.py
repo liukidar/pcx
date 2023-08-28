@@ -11,7 +11,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         "PC updates only X each T iteration and then updates W once. "
         "PPC updates both X and W every T iteration. "
         "EfficientPPC first updates X till convergence and then updates W for the rest of the T iterations.",
-        default="efficient_ppc",
+        default="pc",
         choices=["pc", "ppc", "efficient_ppc"],
         tunable=True,
     )
@@ -92,7 +92,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     optim_x_lr: float = HP(
         "Learning rate for PC node values",
-        default=0.1,
+        default=0.05,
         search_space=tune.loguniform(1e-2, 1),
         tunable=True,
     )
