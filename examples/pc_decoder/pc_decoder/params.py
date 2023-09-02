@@ -13,10 +13,11 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         "EfficientPPC first updates X till convergence and then updates W for the rest of the T iterations.",
         default="ppc",
         choices=[
+            "pc",
             "ppc",
             "efficient_ppc",
-        ],  # Node: "pc" is also possible but removed so hypertunning doesn't try it.
-        tunable=True,
+        ],
+        tunable=False,
     )
     internal_dim: int = HP(
         "Dimension of the internal representation. Must be internal_dim << output_dim.",
@@ -25,8 +26,8 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     hidden_dim: int = HP(
         "Dimension of the hidden layers.",
         default=256,
-        search_space=tune.choice([32, 64, 128, 256, 512, 1024]),
-        tunable=False,
+        search_space=tune.choice([128, 256, 512]),
+        tunable=True,
     )
     output_dim: int = HP(
         "Dimension of the data. Must be output_dim >> internal_dim.",
@@ -35,8 +36,8 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     num_hidden_layers: int = HP(
         "Number of the hidden layers in the generator, excluding input and output layers.",
         default=1,
-        search_space=tune.choice([1, 2, 3, 4]),
-        tunable=False,
+        search_space=tune.choice([1, 2, 3]),
+        tunable=True,
     )
     activation_hidden: str = HP(
         "Activation function to use in the generator.",
@@ -47,8 +48,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     use_prior_layer: bool = HP(
         "Whether to use a prior layer that generates a set of priors for the topmost PCLayer.",
-        default=True,
-        tunable=True,
+        default=False,
     )
 
     experiment_name: str = HP(
@@ -61,20 +61,20 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     epochs: int = HP(
         "Number of epochs to train for.",
-        default=100,
+        default=500,
     )
     batch_size: int = HP(
         "Number of examples in a batch. Note the last batch will be discarded. Make sure all batches are of the same size!",
-        default=1000,
+        default=2000,
     )
     use_last_n_batches_to_compute_metrics: int = HP(
         "Number of last train batches in the epoch used to compute average metrics on the train dataset",
-        default=20,
+        default=5,
     )
     T: int = HP(
         "Number of Predictive Coding iterations.",
-        default=50,
-        search_space=tune.choice(list(range(8, 100, 7))),
+        default=22,
+        search_space=tune.choice(list(range(8, 51, 7))),
         tunable=True,
     )
     T_min_x_updates: int = HP(
@@ -87,9 +87,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     energy_quick_approximate_convergence_threshold: float = HP(
         "Upper threshold for the energy convergence. Used when speed is more important than accuracy. If the energy change is less than this threshold, the updates will stop.",
-        default=1e-1,
-        search_space=tune.loguniform(1e-2, 1e1),
-        tunable=True,
+        default=1.0,
     )
     energy_slow_accurate_convergence_threshold: float = HP(
         "Lower threshold for the energy convergence. Used when accuracy is more important than speed. If the energy change is less than this threshold, the updates will stop.",
@@ -97,8 +95,8 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     optim_x_lr: float = HP(
         "Learning rate for PC node values",
-        default=0.05,
-        search_space=tune.loguniform(5e-3, 1),
+        default=0.997,
+        search_space=tune.loguniform(5e-1, 1e1),
         tunable=True,
     )
     optim_x_l2: float = HP(
@@ -109,32 +107,55 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     optim_w_lr: float = HP(
         "Learning rate for model weights",
-        default=5e-4,
-        search_space=tune.loguniform(1e-5, 1e-3),
+        default=9.95e-4,
+        search_space=tune.loguniform(3e-4, 1.0),
         tunable=True,
     )
     optim_w_l2: float = HP(
         "Weight decay for model weights.",
         default=1e-3,
         search_space=tune.loguniform(1e-4, 5e-1),
-        tunable=False,
+        tunable=True,
     )
     optimizer_x: str = HP(
         "Optimizer to use for PC node X values",
         default="adamw",
         choices=["adamw", "sgd"],
+        tunable=False,
+    )
+    optimizer_x_adamw_beta1: float = HP(
+        "Beta1 parameter for AdamW optimizer for X",
+        default=0.9,
+        search_space=tune.loguniform(0.5, 0.9999),
+        tunable=True,
+    )
+    optimizer_x_adamw_beta2: float = HP(
+        "Beta2 parameter for AdamW optimizer for X",
+        default=0.999,
+        search_space=tune.loguniform(0.5, 0.9999),
         tunable=True,
     )
     reset_optimizer_x_state: bool = HP(
         "Since we updated the values of x directly, we need to reset the momentums in the x optimizer. Recommended for Adam and AdamW optimizers for X.",
         default=True,
-        tunable=False,
     )
     optimizer_w: str = HP(
         "Optimizer to use for model weights",
         default="adamw",
         choices=["adamw", "sgd"],
         tunable=False,
+    )
+    optimizer_w_adamw_beta1: float = HP(
+        "Beta1 parameter for AdamW optimizer for W",
+        default=0.9,
+        search_space=tune.loguniform(0.5, 0.9999),
+        tunable=True,
+    )
+    optimizer_w_adamw_beta2: float = HP(
+        "Beta2 parameter for AdamW optimizer for W",
+        default=0.999,
+        search_space=tune.loguniform(0.5, 0.9999),
+        tunable=True,
     )
 
     data_dir: str = HP(
@@ -186,7 +207,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     hypertunning_num_trials: int = HP(
         "Number of hypertunning run trials",
-        default=500,
+        default=1500,
     )
     hypertunning_max_concurrency: Optional[int] = HP(
         "Maximum number of concurrent hypertunning trials. "
@@ -199,14 +220,14 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     hypertunning_ram_gb_per_trial: float = HP(
         "GB of RAM required for a single trial.",
-        default=1.5,
+        default=2.0,
     )
     hypertunning_gpu_memory_fraction_per_trial: float = HP(
         "Logical fraction of GPU memory required for a single trial. Must be in [0, 1]. "
         "However, keep in mind that GPUs have only around 85%-90% memory free when sitting idle",
-        default=0.05,
+        default=0.075,
     )
     hypertunning_use_early_stop_scheduler: bool = HP(
         "Whether to enable ray.tune scheduler that performs early stopping of trials.",
-        default=False,
+        default=True,
     )

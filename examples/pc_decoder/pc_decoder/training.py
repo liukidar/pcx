@@ -188,6 +188,8 @@ def build_optim_x(model: PCDecoder, params: Params) -> pxu.Optim:
             optax.adamw(
                 params.optim_x_lr / params.batch_size,
                 weight_decay=params.optim_x_l2,
+                b1=params.optimizer_x_adamw_beta1,
+                b2=params.optimizer_x_adamw_beta2,
             ),
             model.x_parameters(),
             allow_none_grads=True,
@@ -213,6 +215,8 @@ def build_optim_w(model: PCDecoder, params: Params) -> pxu.Optim:
                 optax.adamw(
                     params.optim_w_lr / params.batch_size,
                     weight_decay=params.optim_w_l2,
+                    b1=params.optimizer_w_adamw_beta1,
+                    b2=params.optimizer_w_adamw_beta2,
                 ),
             ),
             model.w_parameters(),
