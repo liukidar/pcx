@@ -83,9 +83,11 @@ class BatchAlignedSampler(torch.utils.data.Sampler):
         self.batch_size = batch_size
         self.shuffle = shuffle
 
-        # Create data buckets
+        # Create data buckets and iterate exclusively through targets
         buckets = {}
-        for i, (x, y) in enumerate(dataset):
+        for i, y in enumerate(dataset.targets):
+            if dataset.target_transform is not None:
+                y = dataset.target_transform(y)
             buckets.setdefault(y, []).append(i)
 
         self.indices_by_class = tuple(
