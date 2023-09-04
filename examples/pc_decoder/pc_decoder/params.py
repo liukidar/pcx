@@ -77,6 +77,12 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         search_space=tune.choice(list(range(8, 51, 7))),
         tunable=True,
     )
+    T_max_convergence: int = HP(
+        "Maximum number of T iterations that can be performed when optimizing for energy convergence during evaluation. "
+        "This parameter is needed to fairly compare models with different T values: even models with very small T values should get a chance to converge during evaluation. "
+        "This is different from T, which is used during training.",
+        default=100,
+    )
     T_min_x_updates: int = HP(
         "For EfficientPPC only. Minimum number of X updates before checking for X convergence.",
         default=1,
@@ -95,6 +101,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     optim_x_lr: float = HP(
         "Learning rate for PC node values",
+        # [5e-2, 1e-1]
         default=0.997,
         search_space=tune.loguniform(5e-1, 1e1),
         tunable=True,

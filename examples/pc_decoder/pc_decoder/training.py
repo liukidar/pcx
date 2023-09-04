@@ -173,12 +173,18 @@ def build_model(params: Params) -> PCDecoder:
     )
 
 
+# We can try gradient clipping in optimizers.
+
+
 def build_optim_x(model: PCDecoder, params: Params) -> pxu.Optim:
     if params.optimizer_x == "sgd":
         optim_x = pxu.Optim(
             optax.chain(
                 optax.add_decayed_weights(weight_decay=params.optim_x_l2),
-                optax.sgd(params.optim_x_lr / params.batch_size),
+                # Do not divide X learning rate by batch size, as we have a dedicated set of X parameters for each example in a batch.
+                # Each X parameter actually has a batch dimension, even though vmap makes it look otherwise inside the model code.
+                # Thus, X's gradients also have batch dimensions, and gradients from different examples are never summed together.
+                optax.sgd(params.optim_x_lr),
             ),
             model.x_parameters(),
             allow_none_grads=True,
@@ -213,6 +219,9 @@ def build_optim_w(model: PCDecoder, params: Params) -> pxu.Optim:
         optim_w = pxu.Optim(
             optax.chain(
                 optax.adamw(
+                    # Divide W learning rate by batch size, as we have a single set of W parameters for all examples in a batch.
+                    # The resuting energy is summed across all examples in the batch,
+                    # so the magnitude of gradient for each W param is proprtional to the batch size.
                     params.optim_w_lr / params.batch_size,
                     weight_decay=params.optim_w_l2,
                     b1=params.optimizer_w_adamw_beta1,

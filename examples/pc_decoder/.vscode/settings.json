@@ -9,10 +9,18 @@
         "wandb": true,
         ".mypy_cache": true
     },
+    "files.watcherExclude": {
+        "**/__pycache__": true,
+        "data": true,
+        "wandb": true,
+        "results": true,
+        ".mypy_cache": true
+    },
     "search.exclude": {
         "**/__pycache__": true,
         "data": true,
         "wandb": true,
+        "results": true,
         ".mypy_cache": true
     }
 }

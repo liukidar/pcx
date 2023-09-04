@@ -107,7 +107,7 @@ class PCDecoder(px.EnergyModule):
             loop = pxu.EnergyMinimizationLoop(
                 model=self,
                 loss_fn=loss_fn,
-                max_iter_number=self.p.T,
+                max_iter_number=self.p.T_max_convergence,
                 min_iter_number=self.p.T_min_x_updates,
                 energy_convergence_threshold=self.p.energy_slow_accurate_convergence_threshold,
                 should_update_x=True,
