@@ -1,5 +1,6 @@
 __all__ = ['save_params', 'load_params', 'TorchDataloader']
 
+from typing import Optional
 
 import numpy as np
 import torch.utils
@@ -79,16 +80,24 @@ class TorchDataloader(torch.utils.data.DataLoader):
 # BATCH ALIGNED SAMPLER
 
 class BatchAlignedSampler(torch.utils.data.Sampler):
-    def __init__(self, dataset, batch_size: int, shuffle: bool = True):
+    def __init__(self,
+                 dataset,
+                 batch_size: int,
+                 shuffle: bool = True,
+                 subset: Optional[torch.utils.data.Subset] = None):
         self.batch_size = batch_size
         self.shuffle = shuffle
 
         # Create data buckets and iterate exclusively through targets
         buckets = {}
-        for i, y in enumerate(dataset.targets):
+        indices = range(dataset.targets) if subset is None else subset.indices
+        for i in indices:
+            y = dataset.targets[i]
+
             if dataset.target_transform is not None:
                 y = dataset.target_transform(y)
-            buckets.setdefault(y, []).append(i)
+
+            buckets.setdefault(y.item(), []).append(i)
 
         self.indices_by_class = tuple(
             np.array(bucket) for bucket in buckets.values()
