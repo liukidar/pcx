@@ -65,11 +65,11 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     batch_size: int = HP(
         "Number of examples in a batch. Note the last batch will be discarded. Make sure all batches are of the same size!",
-        default=2000,
+        default=500,
     )
     use_last_n_batches_to_compute_metrics: int = HP(
         "Number of last train batches in the epoch used to compute average metrics on the train dataset",
-        default=1,
+        default=5,
     )
     T: int = HP(
         "Number of Predictive Coding iterations.",
@@ -104,20 +104,18 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         "Optimizer to use for PC node X values",
         default="adamw",
         choices=["adamw", "sgd"],
-        tunable=False,
-    )
-    optimizer_x_lr: float = HP(
-        "Learning rate for PC node values",
-        # [5e-2, 1e-1]
-        default=0.0997,
-        search_space=tune.loguniform(1e-3, 1e-1),
         tunable=True,
     )
-    optimizer_x_l2: float = HP(
+    optimizer_x_learning_rate: float = HP(
+        "Learning rate for PC node values",
+        # [5e-2, 1e-1]
+        default=5e-2,
+        search_space=tune.loguniform(1e-4, 1e-1),
+        tunable=True,
+    )
+    optimizer_x_weight_decay: float = HP(
         "Weight decay for PC node values",
         default=0.0,
-        search_space=tune.loguniform(1e-2, 5e-1),
-        tunable=False,
     )
     optimizer_x_sgd_momentum: float = HP(
         "Nesterov momentum for SGD optimizer for X",
@@ -146,15 +144,15 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         "Optimizer to use for model weights",
         default="adamw",
         choices=["adamw", "sgd"],
-        tunable=False,
+        tunable=True,
     )
-    optimizer_w_lr: float = HP(
+    optimizer_w_learning_rate: float = HP(
         "Learning rate for model weights",
         default=9.95e-4,
         search_space=tune.loguniform(1e-4, 1e-1),
         tunable=True,
     )
-    optimizer_w_l2: float = HP(
+    optimizer_w_weight_decay: float = HP(
         "Weight decay for model weights.",
         default=1e-3,
         search_space=tune.loguniform(1e-4, 5e-1),
@@ -198,7 +196,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     save_intermediate_results: bool = HP(
         "Whether to save the intermediate models, graphs, and reports after every N epochs",
-        default=True,
+        default=False,
     )
     save_results_every_n_epochs: int = HP(
         "Save the intermediate results after every N epochs",
@@ -254,5 +252,5 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     hypertunning_early_stop_grace_period_epochs: int = HP(
         "Number of epochs to wait before stopping a trial that is underperforming.",
-        default=20,
+        default=25,
     )

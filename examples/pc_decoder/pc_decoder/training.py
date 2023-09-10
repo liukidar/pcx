@@ -58,11 +58,11 @@ def build_optim_x(model: PCDecoder, params: Params) -> pxu.Optim:
     # Do not divide X learning rate by batch size, as we have a dedicated set of X parameters for each example in a batch.
     # Each X parameter actually has a batch dimension, even though vmap makes it look otherwise inside the model code.
     # Thus, X's gradients also have batch dimensions, and gradients from different examples are never summed together.
-    learning_rate = params.optimizer_x_lr
+    learning_rate = params.optimizer_x_learning_rate
     if params.optimizer_x == "sgd":
         optim_x = pxu.Optim(
             optax.chain(
-                optax.add_decayed_weights(weight_decay=params.optimizer_x_l2),
+                optax.add_decayed_weights(weight_decay=params.optimizer_x_weight_decay),
                 optax.sgd(
                     learning_rate=learning_rate,
                     momentum=params.optimizer_x_sgd_momentum,
@@ -78,7 +78,7 @@ def build_optim_x(model: PCDecoder, params: Params) -> pxu.Optim:
                 learning_rate=learning_rate,
                 b1=params.optimizer_x_adamw_beta1,
                 b2=params.optimizer_x_adamw_beta2,
-                weight_decay=params.optimizer_x_l2,
+                weight_decay=params.optimizer_x_weight_decay,
             ),
             model.x_parameters(),
             allow_none_grads=True,
@@ -93,11 +93,11 @@ def build_optim_w(model: PCDecoder, params: Params) -> pxu.Optim:
     # The resuting energy is summed across all examples in the batch, see the @pxu.vectorize decorator on model_energy_loss.
     # Thus, the magnitude of gradient for each W param is proprtional to the batch size,
     # and we need to divide the learning rate by the batch size to get the average gradient per batch.
-    learning_rate = params.optimizer_w_lr / params.batch_size
+    learning_rate = params.optimizer_w_learning_rate / params.batch_size
     if params.optimizer_w == "sgd":
         optim_w = pxu.Optim(
             optax.chain(
-                optax.add_decayed_weights(weight_decay=params.optimizer_w_l2),
+                optax.add_decayed_weights(weight_decay=params.optimizer_w_weight_decay),
                 optax.sgd(
                     learning_rate=learning_rate,
                     momentum=params.optimizer_w_sgd_momentum,
@@ -114,7 +114,7 @@ def build_optim_w(model: PCDecoder, params: Params) -> pxu.Optim:
                     learning_rate=learning_rate,
                     b1=params.optimizer_w_adamw_beta1,
                     b2=params.optimizer_w_adamw_beta2,
-                    weight_decay=params.optimizer_w_l2,
+                    weight_decay=params.optimizer_w_weight_decay,
                 ),
             ),
             model.w_parameters(),
