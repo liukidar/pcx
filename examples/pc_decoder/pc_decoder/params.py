@@ -69,7 +69,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     use_last_n_batches_to_compute_metrics: int = HP(
         "Number of last train batches in the epoch used to compute average metrics on the train dataset",
-        default=5,
+        default=1,
     )
     T: int = HP(
         "Number of Predictive Coding iterations.",
@@ -99,45 +99,40 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         "Lower threshold for the energy convergence. Used when accuracy is more important than speed. If the energy change is less than this threshold, the updates will stop.",
         default=1e-3,
     )
-    optim_x_lr: float = HP(
-        "Learning rate for PC node values",
-        # [5e-2, 1e-1]
-        default=0.997,
-        search_space=tune.loguniform(5e-1, 1e1),
-        tunable=True,
-    )
-    optim_x_l2: float = HP(
-        "Weight decay for PC node values",
-        default=0.0,
-        search_space=tune.loguniform(1e-2, 5e-1),
-        tunable=False,
-    )
-    optim_w_lr: float = HP(
-        "Learning rate for model weights",
-        default=9.95e-4,
-        search_space=tune.loguniform(3e-4, 1.0),
-        tunable=True,
-    )
-    optim_w_l2: float = HP(
-        "Weight decay for model weights.",
-        default=1e-3,
-        search_space=tune.loguniform(1e-4, 5e-1),
-        tunable=True,
-    )
+
     optimizer_x: str = HP(
         "Optimizer to use for PC node X values",
         default="adamw",
         choices=["adamw", "sgd"],
         tunable=False,
     )
+    optimizer_x_lr: float = HP(
+        "Learning rate for PC node values",
+        # [5e-2, 1e-1]
+        default=0.0997,
+        search_space=tune.loguniform(1e-3, 1e-1),
+        tunable=True,
+    )
+    optimizer_x_l2: float = HP(
+        "Weight decay for PC node values",
+        default=0.0,
+        search_space=tune.loguniform(1e-2, 5e-1),
+        tunable=False,
+    )
+    optimizer_x_sgd_momentum: float = HP(
+        "Nesterov momentum for SGD optimizer for X",
+        default=0.9,
+        search_space=tune.loguniform(0.5, 0.9999),
+        tunable=True,
+    )
     optimizer_x_adamw_beta1: float = HP(
-        "Beta1 parameter for AdamW optimizer for X",
+        "First momentum parameter for AdamW optimizer for X",
         default=0.9,
         search_space=tune.loguniform(0.5, 0.9999),
         tunable=True,
     )
     optimizer_x_adamw_beta2: float = HP(
-        "Beta2 parameter for AdamW optimizer for X",
+        "Second momentum parameter for AdamW optimizer for X",
         default=0.999,
         search_space=tune.loguniform(0.5, 0.9999),
         tunable=True,
@@ -146,20 +141,39 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         "Since we updated the values of x directly, we need to reset the momentums in the x optimizer. Recommended for Adam and AdamW optimizers for X.",
         default=True,
     )
+
     optimizer_w: str = HP(
         "Optimizer to use for model weights",
         default="adamw",
         choices=["adamw", "sgd"],
         tunable=False,
     )
+    optimizer_w_lr: float = HP(
+        "Learning rate for model weights",
+        default=9.95e-4,
+        search_space=tune.loguniform(1e-4, 1e-1),
+        tunable=True,
+    )
+    optimizer_w_l2: float = HP(
+        "Weight decay for model weights.",
+        default=1e-3,
+        search_space=tune.loguniform(1e-4, 5e-1),
+        tunable=True,
+    )
+    optimizer_w_sgd_momentum: float = HP(
+        "Nesterov momentum for SGD optimizer for W",
+        default=0.9,
+        search_space=tune.loguniform(0.5, 0.9999),
+        tunable=True,
+    )
     optimizer_w_adamw_beta1: float = HP(
-        "Beta1 parameter for AdamW optimizer for W",
+        "First momentum parameter for AdamW optimizer for W",
         default=0.9,
         search_space=tune.loguniform(0.5, 0.9999),
         tunable=True,
     )
     optimizer_w_adamw_beta2: float = HP(
-        "Beta2 parameter for AdamW optimizer for W",
+        "Second momentum parameter for AdamW optimizer for W",
         default=0.999,
         search_space=tune.loguniform(0.5, 0.9999),
         tunable=True,
@@ -237,4 +251,8 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     hypertunning_use_early_stop_scheduler: bool = HP(
         "Whether to enable ray.tune scheduler that performs early stopping of trials.",
         default=True,
+    )
+    hypertunning_early_stop_grace_period_epochs: int = HP(
+        "Number of epochs to wait before stopping a trial that is underperforming.",
+        default=20,
     )

@@ -18,10 +18,10 @@
                 "--experiment-name=debug",
                 "--no-wandb-logging",
                 "--overwrite-results-dir",
-                "--epochs=2",
+                "--epochs=10",
                 "--batch-size=10",
                 "--use-last-n-batches-to-compute-metrics=5",
-                "--T=8",
+                "--T=100",
                 "--save-best-results",
                 "--save-intermediate-results",
                 "--save-results-every-n-epochs=1"
@@ -68,12 +68,16 @@
             "args": [
                 "--experiment-name=debug-hypertunning",
                 "--overwrite-results-dir",
+                "--no-wandb-logging",
                 "--do-hypertunning",
-                "--epochs=5",
+                "--epochs=20",
                 "--batch-size=10",
+                "--T=50",
                 "--use-last-n-batches-to-compute-metrics=5",
-                "--hypertunning-num-trials=5",
-                // "--hypertunning-use-early-stop-scheduler",
+                "--hypertunning-num-trials=20",
+                "--hypertunning-use-early-stop-scheduler",
+                "--hypertunning-early-stop-grace-period-epochs=5",
+                "--hypertunning-max-concurrency=2",
                 "--save-best-results",
                 "--save-intermediate-results",
                 "--save-results-every-n-epochs=1"
@@ -90,7 +94,7 @@
                 "--experiment-name=hypertunning",
                 "--no-overwrite-results-dir",
                 "--do-hypertunning",
-                "--no-hypertunning-use-early-stop-scheduler"
+                "--hypertunning-use-early-stop-scheduler"
             ]
         }
     ]

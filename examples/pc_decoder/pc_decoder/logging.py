@@ -4,26 +4,14 @@ from pathlib import Path
 import jax
 import wandb
 from pc_decoder.params import Params
-from ray import tune
 
 
 def init_wandb(
     *,
+    run_name: str,
     params: Params,
     results_dir: Path,
 ) -> wandb.wandb_sdk.wandb_run.Run:
-    run_name = (
-        f"{params.experiment_name}--{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
-    )
-    if params.do_hypertunning:
-        run_name += f"--{tune.get_trial_id()}"  # type: ignore
-    params_update = {
-        "results_dir": str(results_dir.absolute()),  # type: ignore
-    }
-    if params.do_hypertunning:
-        params_update["trial_id"] = tune.get_trial_id()  # type: ignore
-        params_update["trial_name"] = tune.get_trial_name()  # type: ignore
-        params_update["trial_dir"] = tune.get_trial_dir()  # type: ignore
     run = wandb.init(
         project="pc-decoder",
         group=params.experiment_name,
@@ -31,7 +19,7 @@ def init_wandb(
         tags=["predictive-coding", "autoencoder", "decoder"],
         config={
             **params.dict(),
-            **params_update,
+            "results_dir": str(results_dir.absolute()),  # type: ignore
         },
     )
     wandb.define_metric("train_energy/*", step_metric="train_t_step")
@@ -71,7 +59,7 @@ def log_train_t_step_metrics(
 def log_train_batch_metrics(
     *,
     run: wandb.wandb_sdk.wandb_run.Run | None,
-    epochs: int,
+    epochs_done: int,
     batches_per_epoch: int,
     batch: int,
     num_x_updates: int,
@@ -81,7 +69,7 @@ def log_train_batch_metrics(
         return
     run.log(
         {
-            "batch": epochs * batches_per_epoch + batch,
+            "batch": epochs_done * batches_per_epoch + batch,
             "num_x_updates": num_x_updates,
             "num_w_updates": num_w_updates,
         }
