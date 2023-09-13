@@ -13,12 +13,7 @@ import numpy as np
 import optax  # type: ignore
 import wandb
 from pc_decoder.data_loading import get_data_loaders, get_stratified_test_batch
-from pc_decoder.logging import (
-    init_wandb,
-    log_test_t_step_metrics,
-    log_train_batch_metrics,
-    log_train_t_step_metrics,
-)
+from pc_decoder.logging import init_wandb, log_batch_metrics, log_t_step_metrics
 from pc_decoder.model import PCDecoder, feed_forward_predict, model_energy_loss
 from pc_decoder.params import Params
 from pc_decoder.visualization import create_all_visualizations
@@ -216,7 +211,7 @@ def get_internal_states_on_batch(
 class EpochResults(NamedTuple):
     epoch_dir: Path
     params: Params
-    epochs: int
+    epoch: int
     train_mse: float
     test_mse: float
     model: PCDecoder
@@ -226,20 +221,24 @@ class EpochResults(NamedTuple):
     @property
     def report(self) -> dict[str, Any]:
         return {
-            "epochs": self.epochs,
+            "epoch": self.epoch,
             "train_mse": self.train_mse,
             "test_mse": self.test_mse,
         }
 
+    @property
+    def has_nans(self) -> bool:
+        return np.isnan(self.train_mse) or np.isnan(self.test_mse)
+
     def save(self) -> None:
-        logging.info(f"Saving epoch {self.epochs} to {self.epoch_dir.resolve()} ...")
+        logging.info(f"Saving epoch {self.epoch} to {self.epoch_dir.resolve()} ...")
         self.epoch_dir.mkdir(parents=True, exist_ok=False)
         with open(self.epoch_dir / "params.json", "w") as outfile:
             json.dump(self.params.dict(), outfile, indent=4)
         with open(self.epoch_dir / "report.json", "w") as outfile:
             json.dump(self.report, outfile, indent=4)
         self.model.save_weights(str(self.epoch_dir))  # type: ignore
-        logging.info(f"Saved epoch {self.epochs} to {self.epoch_dir.resolve()} .")
+        logging.info(f"Saved epoch {self.epoch} to {self.epoch_dir.resolve()} .")
 
     @classmethod
     def load(cls, epoch_dir: Path) -> "EpochResults":
@@ -259,26 +258,28 @@ class EpochResults(NamedTuple):
         epoch_result = EpochResults(
             epoch_dir=epoch_dir,
             params=params,
-            epochs=report["epochs"],
+            epoch=report["epoch"],
             train_mse=report["train_mse"],
             test_mse=report["test_mse"],
             model=model,
             optim_x=optim_x,
             optim_w=optim_w,
         )
-        logging.info(f"Loaded epoch {epoch_result.epochs} from {epoch_dir.resolve()}.")
+        logging.info(f"Loaded epoch {epoch_result.epoch} from {epoch_dir.resolve()}.")
         return epoch_result
 
 
 def visualize_epoch(
     *,
-    epoch_dir: Path,
+    epoch_results: EpochResults,
     run: wandb.wandb_sdk.wandb_run.Run | None,
     test_loader: DataLoader[Any],
     train_data_mean: float,
     train_data_std: float,
 ) -> None:
-    epoch_results = EpochResults.load(epoch_dir)
+    if epoch_results.has_nans:
+        logging.error(f"Epoch {epoch_results.epoch} has NaNs, skipping visualization")
+        return
     params = epoch_results.params
     model = epoch_results.model
     optim_x = epoch_results.optim_x
@@ -295,9 +296,9 @@ def visualize_epoch(
     )
     predictions = feed_forward_predict(internal_states, model=epoch_results.model)[0]
     create_all_visualizations(
-        out_dir=epoch_dir,
+        out_dir=epoch_results.epoch_dir,
         run=run,
-        epochs=epoch_results.epochs,
+        epoch=epoch_results.epoch,
         examples=examples,
         labels=labels,
         internal_states=internal_states,
@@ -308,7 +309,7 @@ def visualize_epoch(
     )
     internal_states_mean = jnp.mean(internal_states).item()
     internal_states_std = jnp.std(internal_states).item()
-    with open(epoch_dir / "internal_states.json", "w") as outfile:
+    with open(epoch_results.epoch_dir / "internal_states.json", "w") as outfile:
         json.dump(
             {
                 "internal_states_mean": internal_states_mean,
@@ -323,7 +324,7 @@ def visualize_epoch(
         run.summary["internal_states_mean"] = internal_states_mean
         run.summary["internal_states_std"] = internal_states_std
     logging.info(
-        f"Finished visualizing epoch {epoch_results.epochs} from {epoch_dir} ..."
+        f"Finished visualizing epoch {epoch_results.epoch} from {epoch_results.epoch_dir} ..."
     )
 
 
@@ -445,78 +446,80 @@ class TrainingRun:
         self.train_mses = []
         self.test_mses = []
 
-    def train_for_epoch(self) -> EpochResults:
-        logging.info(f"Starting epoch {self.epochs_done + 1}")
+    def _process_all_batches(self, *, mode: str) -> list[float]:
+        assert mode in ["train", "test"]
+        data_loader = self.train_loader if mode == "train" else self.test_loader
+        process_batch_fn = (
+            self.train_batch_fn if mode == "train" else self.test_batch_fn
+        )
+        t_step_attr = "train_t_step" if mode == "train" else "test_t_step"
 
-        epoch_train_mses = []
-        with tqdm(self.train_loader, unit="batch") as tbatch:
+        epoch_mses = []
+        with tqdm(data_loader, unit="batch") as tbatch:
             for examples, _ in tbatch:
-                tbatch.set_description(f"Train Batch {tbatch.n + 1}")
+                batch = tbatch.n + 1
+                tbatch.set_description(f"{mode.capitalize()} Batch {batch}")
                 if self.params.reset_optimizer_x_state:
                     self.optim_x.init_state()
-                mse, final_state = self.train_batch_fn(examples)
+                mse, final_state = process_batch_fn(examples)
                 mse = mse.item()
                 all_energies = final_state.all_energies[
                     : final_state.iter_number.item()
                 ]
-                log_train_t_step_metrics(
-                    run=self.run,
-                    t_step=self.train_t_step,
-                    energies=all_energies,
-                )
-                log_train_batch_metrics(
+                if self.params.log_t_metrics:
+                    log_t_step_metrics(
+                        mode=mode,
+                        run=self.run,
+                        t_step=getattr(self, t_step_attr),
+                        energies=all_energies,
+                    )
+                log_batch_metrics(
+                    mode=mode,
                     run=self.run,
                     epochs_done=self.epochs_done,
-                    batches_per_epoch=len(self.train_loader),
-                    batch=tbatch.n + 1,
+                    batches_per_epoch=len(data_loader),
+                    batch=batch,
+                    final_energies=all_energies[-1],
                     num_x_updates=final_state.num_x_updates_done.item(),
                     num_w_updates=final_state.num_w_updates_done.item(),
                 )
-                self.train_t_step += final_state.iter_number.item()
-                epoch_train_mses.append(mse)
-                tbatch.set_postfix(batch_train_mse=mse)
+                setattr(
+                    self,
+                    t_step_attr,
+                    getattr(self, t_step_attr) + final_state.iter_number.item(),
+                )
+                epoch_mses.append(mse)
+                tbatch.set_postfix(**{f"batch_{mode}_mse": f"{mse:.4f}"})
 
                 # Force GC to free some RAM and GPU memory
                 del final_state
                 gc.collect()
+        return epoch_mses
 
-        self.epochs_done += 1
+    def train_for_epoch(self) -> EpochResults:
+        logging.info(f"Starting epoch {self.epochs_done + 1}")
 
+        epoch_train_mses = self._process_all_batches(mode="train")
         epoch_train_mse: float = float(
             np.mean(
                 epoch_train_mses[-self.params.use_last_n_batches_to_compute_metrics :]
             )
         )
         self.train_mses.append(epoch_train_mse)
-        logging.info(f"Finished training epoch {self.epochs_done}")
+        logging.info(f"Finished training epoch {self.epochs_done + 1}")
 
-        epoch_test_mses = []
-        with tqdm(self.test_loader, unit="batch") as tbatch:
-            for examples, _ in tbatch:
-                tbatch.set_description(f"Test Batch {tbatch.n + 1}")
-                if self.params.reset_optimizer_x_state:
-                    self.optim_x.init_state()
-                mse, final_state = self.test_batch_fn(examples)
-                mse = mse.item()
-                all_energies = final_state.all_energies[
-                    : final_state.iter_number.item()
-                ]
-                log_test_t_step_metrics(
-                    run=self.run,
-                    t_step=self.test_t_step,
-                    energies=all_energies,
-                )
-                self.test_t_step += final_state.iter_number.item()
-                epoch_test_mses.append(mse)
-                tbatch.set_postfix(batch_test_mse=mse)
+        epoch_test_mses = self._process_all_batches(mode="test")
         epoch_test_mse: float = float(np.mean(epoch_test_mses))
         self.test_mses.append(epoch_test_mse)
-        logging.info(f"Finished testing epoch {self.epochs_done}")
+        logging.info(f"Finished testing epoch {self.epochs_done + 1}")
+
+        # self._process_all_batches relies on self.epochs_done to not include the current epoch.
+        self.epochs_done += 1
 
         epoch_results = EpochResults(
             epoch_dir=self.results_dir / f"epochs_{self.epochs_done}",
             params=self.params,
-            epochs=self.epochs_done,
+            epoch=self.epochs_done,
             train_mse=epoch_train_mse,
             test_mse=epoch_test_mse,
             model=self.model,
@@ -553,16 +556,18 @@ class TrainingRun:
 
         return epoch_results
 
-    def finish(self) -> None:
+    def finish(self, status: str | None = None) -> None:
         if self.epochs_done == 0:
             logging.warning(
                 f"Attempted to finish run {self.name} that completed no epochs."
             )
 
+        best_epoch_results: EpochResults | None = None
         # Generate images for the best epoch only
         if self.best_epoch_dir.exists():
+            best_epoch_results = EpochResults.load(self.best_epoch_dir)
             visualize_epoch(
-                epoch_dir=self.best_epoch_dir,
+                epoch_results=best_epoch_results,
                 run=self.run,
                 test_loader=self.test_loader,
                 train_data_mean=self.train_data_mean,
@@ -573,12 +578,22 @@ class TrainingRun:
                 f"No best epoch exists for run {self.name}. The path {self.best_epoch_dir.resolve()} was not found."
             )
 
+        if status is None:
+            if self.epochs_done < self.params.epochs:
+                status = "interrupted"
+            elif self.epochs_done == self.params.epochs:
+                status = "completed"
+
         if self.run is not None:
+            self.run.summary["status"] = status
+            self.run.summary["epoch"] = self.epochs_done
+            if best_epoch_results is not None:
+                self.run.summary["best_epoch"] = best_epoch_results.epoch
             self.run.summary["train_mse"] = self.best_train_mse
             self.run.summary["test_mse"] = self.best_test_mse
 
         logging.warning(
-            f"<<<<<<<<<<---------- Run {self.name} finished training for {self.epochs_done} epochs, test_mse={self.best_test_mse} ---------->>>>>>>>>>"
+            f"<<<<<<<<<<---------- Run {self.name} finished training with status '{status}' after {self.epochs_done} epochs, test_mse={self.best_test_mse} ---------->>>>>>>>>>"
         )
 
         if self.run is not None:
@@ -625,8 +640,32 @@ class ExperimentStopper(Protocol):
     def should_stop(self, metrics: dict) -> bool:
         ...
 
+    def stop_reason(self, metrics: dict) -> str:
+        ...
+
     def set_experiment_name(self, name: str) -> None:
         ...
+
+
+class ExperimentStopperComposite:
+    def __init__(self, stoppers: list[ExperimentStopper]) -> None:
+        self.stoppers = stoppers
+        self._stop_reason: str = ""
+
+    def should_stop(self, metrics: dict) -> bool:
+        self._stop_reason = ""
+        for stopper in self.stoppers:
+            if stopper.should_stop(metrics):
+                self._stop_reason = stopper.stop_reason(metrics)
+                return True
+        return False
+
+    def stop_reason(self, metrics: dict) -> str:
+        return self._stop_reason
+
+    def set_experiment_name(self, name: str) -> None:
+        for stopper in self.stoppers:
+            stopper.set_experiment_name(name)
 
 
 def run_training_experiment(
@@ -638,17 +677,24 @@ def run_training_experiment(
     if stopper is not None:
         stopper.set_experiment_name(training_run.name)
 
-    with tqdm(range(params.epochs), unit="epoch") as tepoch:
-        for epoch in tepoch:
-            tepoch.set_description(f"Train Epoch {epoch + 1}")
+    finish_status = None
+    try:
+        with tqdm(range(params.epochs), unit="epoch") as tepoch:
+            for epoch_index in tepoch:
+                epoch = epoch_index + 1
+                tepoch.set_description(f"Train Epoch {epoch}")
 
-            result = training_run.train_for_epoch()
+                result = training_run.train_for_epoch()
 
-            tepoch.set_postfix(train_mse=result.train_mse, test_mse=result.test_mse)
-            if stopper is not None and stopper.should_stop(result.report):
-                logging.warning(
-                    f"Experiment stopper decided to stop the experiment {training_run.name} after {epoch + 1} epochs"
-                )
-                break
-
-    training_run.finish()
+                tepoch.set_postfix(train_mse=result.train_mse, test_mse=result.test_mse)
+                if stopper is not None and stopper.should_stop(result.report):
+                    finish_status = stopper.stop_reason(result.report)
+                    logging.warning(
+                        f"Experiment stopper decided to stop the experiment {training_run.name} after {epoch} epochs"
+                    )
+                    break
+    except Exception as exc:
+        finish_status = "failed"
+        raise
+    finally:
+        training_run.finish(status=finish_status)

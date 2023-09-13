@@ -45,7 +45,7 @@ def visualize_predictions(
     predictions: jax.Array,
     labels: jax.Array,
     params: Params,
-    epochs: int,
+    epoch: int,
     train_data_mean: float,
     train_data_std: float,
 ) -> None:
@@ -71,7 +71,7 @@ def visualize_predictions(
             example_index=i,
             out_dir=out_dir,
             run=run,
-            epochs=epochs,
+            epoch=epoch,
             train_data_mean=train_data_mean,
             train_data_std=train_data_std,
         )
@@ -91,7 +91,7 @@ def plot_exmaple_and_prediction(
     example_index: int,
     out_dir: Path,
     run,
-    epochs: int,
+    epoch: int,
     train_data_mean: float,
     train_data_std: float,
     filename: str | None = None,
@@ -109,13 +109,13 @@ def plot_exmaple_and_prediction(
     )
     axes[1].set_title("Prediction")  # type: ignore
     # Set figure title
-    fig.suptitle(f"Epochs {epochs} Label {label} Example {example_index} MSE {mse}")
+    fig.suptitle(f"Epoch {epoch} Label {label} Example {example_index} MSE {mse}")
     if filename is None:
         filename = f"label_{label}_example_{example_index}.png"
     image_path = str(out_dir / filename)
     fig.savefig(image_path)  # type: ignore
     if run is not None:
-        run.log({filename: wandb.Image(image_path), "epochs": epochs})
+        run.log({filename: wandb.Image(image_path)})
 
 
 def visualize_internal_states_clustering(
@@ -124,7 +124,7 @@ def visualize_internal_states_clustering(
     run: wandb.wandb_sdk.wandb_run.Run | None,
     internal_states: jax.Array,
     labels: jax.Array,
-    epochs: int,
+    epoch: int,
 ) -> None:
     logging.info("Visualizing internal states clustering...")
     # TODO: configure UMAP
@@ -144,14 +144,14 @@ def visualize_internal_states_clustering(
     sns.scatterplot(data=internal_states_df, x="x", y="y", hue="label")
     plt.xlabel("x")
     plt.ylabel("y")
-    plt.title(f"Internal representations of classes. Epoch {epochs}")
+    plt.title(f"Internal representations of classes. Epoch {epoch}")
     # Only 7/10 labels are present in the legend, but the data is plotted correctly
     plt.legend()
     filename = "pc_decoder_mnist_internal_states.png"
     image_path = str(out_dir / filename)
     plt.savefig(image_path)
     if run is not None:
-        run.log({filename: wandb.Image(image_path), "epochs": epochs})
+        run.log({filename: wandb.Image(image_path)})
     plt.clf()
     logging.info("Visualized internal states clustering.")
 
@@ -160,7 +160,7 @@ def create_all_visualizations(
     *,
     out_dir: Path,
     run: wandb.wandb_sdk.wandb_run.Run | None,
-    epochs: int,
+    epoch: int,
     examples: jax.Array,
     labels: jax.Array,
     internal_states: jax.Array,
@@ -169,7 +169,7 @@ def create_all_visualizations(
     train_data_mean: float,
     train_data_std: float,
 ) -> None:
-    logging.info(f"Creating visualizations for epoch {epochs}...")
+    logging.info(f"Creating visualizations for epoch {epoch}...")
 
     generated_dir = out_dir / "generated"
     generated_dir.mkdir()
@@ -181,7 +181,7 @@ def create_all_visualizations(
         predictions=predictions,
         labels=labels,
         params=params,
-        epochs=epochs,
+        epoch=epoch,
         train_data_mean=train_data_mean,
         train_data_std=train_data_std,
     )
@@ -190,6 +190,6 @@ def create_all_visualizations(
         run=run,
         internal_states=internal_states,
         labels=labels,
-        epochs=epochs,
+        epoch=epoch,
     )
-    logging.info(f"Created visualizations for epoch {epochs}.")
+    logging.info(f"Created visualizations for epoch {epoch}.")

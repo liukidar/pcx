@@ -1,4 +1,3 @@
-import gc
 import logging
 import os
 import signal
@@ -6,9 +5,15 @@ from argparse import ArgumentParser
 from datetime import datetime
 from typing import Dict, Optional
 
+import numpy as np
 from pc_decoder.data_loading import download_datasets
 from pc_decoder.params import Params
-from pc_decoder.training import TrainingRun, run_training_experiment
+from pc_decoder.training import (
+    ExperimentStopper,
+    ExperimentStopperComposite,
+    TrainingRun,
+    run_training_experiment,
+)
 from ray import air, tune
 from ray.tune.result import DONE
 from ray.tune.schedulers import ASHAScheduler
@@ -63,6 +68,9 @@ class SignalExperimentStopper:
             )
         return self._should_stop
 
+    def stop_reason(self, metrics: dict) -> str:
+        return "signal_interrupted"
+
     def set_experiment_name(self, name: str) -> None:
         self.experiment_name = name
 
@@ -71,6 +79,31 @@ class SignalExperimentStopper:
         logging.warning(
             f"Stopper {id(self)} will stop experiment {self.experiment_name} after the current iteration."
         )
+
+
+class NanExperimentStopper:
+    def __init__(self) -> None:
+        self.experiment_name = ""
+
+    def should_stop(self, metrics: dict) -> bool:
+        has_nans = np.isnan(metrics["train_mse"]) or np.isnan(metrics["test_mse"])
+        if has_nans:
+            logging.error(
+                f"Experiment {self.experiment_name} has NaNs in train_mse or test_mse. Stopping it."
+            )
+        return has_nans
+
+    def stop_reason(self, metrics: dict) -> str:
+        return "has_nans_aborted"
+
+    def set_experiment_name(self, name: str) -> None:
+        self.experiment_name = name
+
+
+def build_experiment_stopper() -> ExperimentStopper:
+    return ExperimentStopperComposite(
+        [SignalExperimentStopper(), NanExperimentStopper()]
+    )
 
 
 def build_trainable(params: Params) -> type[tune.Trainable]:
@@ -105,22 +138,28 @@ def build_trainable(params: Params) -> type[tune.Trainable]:
             run_time = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
             run_name = f"{self.params.experiment_name}--{self.trial_id}--{run_time}"
             self.training_run = TrainingRun(params=self.params, name=run_name)
-            self.stopper = SignalExperimentStopper()
+            self.train_finished = False
+            self.stopper = build_experiment_stopper()
             self.stopper.set_experiment_name(self.training_run.name)
 
         def step(self) -> dict:
             assert self.training_run is not None
             assert self.stopper is not None
-            if self.training_run.epochs_done >= self.params.epochs:
-                raise RuntimeError("Number of maximum epochs exceeded!")
 
             epoch_results = self.training_run.train_for_epoch()
             metrics = epoch_results.report
+            stop_reason = None
             if self.stopper.should_stop(metrics):
+                stop_reason = self.stopper.stop_reason(metrics)
                 logging.warning(
                     f"Experiment stopper decided to stop the experiment after {self.training_run.epochs_done} epochs"
                 )
                 metrics[DONE] = True
+
+            if self.training_run.epochs_done >= self.params.epochs or metrics.get(DONE):
+                # Workaround: save metrics here because Ray will interrupt W&B data uploading with SIGTERM during cleanup() when the last trial in the hypertunning finishes.
+                self.training_run.finish(stop_reason)
+                self.train_finished = True
 
             return metrics
 
@@ -136,6 +175,7 @@ def build_trainable(params: Params) -> type[tune.Trainable]:
                     f"Training run {self.training_run.name} already exists and will be overwritten when loading a checkpoint!"
                 )
             self.training_run = TrainingRun.load(checkpoint)
+            self.train_finished = False
             self.params = self.training_run.params.copy()
             self.stopper = SignalExperimentStopper()
             self.stopper.set_experiment_name(self.training_run.name)
@@ -145,10 +185,11 @@ def build_trainable(params: Params) -> type[tune.Trainable]:
             # Make sure reuse_actors=False is set in the TuneConfig so that the worker is killed at the end of each trial
             # and thus this method is called at the end of each trial.
             logging.info(f"Cleaning up trial {self.trial_id}")
-            if self.training_run is not None:
+            if self.training_run is not None and not self.train_finished:
                 self.training_run.finish()
-                self.training_run = None
-                self.stopper = None
+            self.training_run = None
+            self.train_finished = False
+            self.stopper = None
 
     return Trainable
 
@@ -246,7 +287,7 @@ def main():
             index=False,
         )
     else:
-        run_training_experiment(params=params, stopper=SignalExperimentStopper())
+        run_training_experiment(params=params, stopper=build_experiment_stopper())
 
 
 if __name__ == "__main__":

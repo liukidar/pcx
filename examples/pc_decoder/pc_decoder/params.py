@@ -216,6 +216,10 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
         "Whether to log results to wandb.ai",
         default=True,
     )
+    log_t_metrics: bool = HP(
+        "Whether to report metrics for each T iteration",
+        default=False,
+    )
     do_hypertunning: bool = HP(
         "Whether to do hypertunning.",
         default=False,
