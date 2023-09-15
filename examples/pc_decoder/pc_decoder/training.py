@@ -46,9 +46,6 @@ def build_model(params: Params) -> PCDecoder:
     )
 
 
-# We can try gradient clipping in optimizers.
-
-
 def build_optim_x(model: PCDecoder, params: Params) -> pxu.Optim:
     # Do not divide X learning rate by batch size, as we have a dedicated set of X parameters for each example in a batch.
     # Each X parameter actually has a batch dimension, even though vmap makes it look otherwise inside the model code.
@@ -57,6 +54,7 @@ def build_optim_x(model: PCDecoder, params: Params) -> pxu.Optim:
     if params.optimizer_x == "sgd":
         optim_x = pxu.Optim(
             optax.chain(
+                optax.clip(1.0),
                 optax.add_decayed_weights(weight_decay=params.optimizer_x_weight_decay),
                 optax.sgd(
                     learning_rate=learning_rate,
@@ -69,11 +67,14 @@ def build_optim_x(model: PCDecoder, params: Params) -> pxu.Optim:
         )
     elif params.optimizer_x == "adamw":
         optim_x = pxu.Optim(
-            optax.adamw(
-                learning_rate=learning_rate,
-                b1=params.optimizer_x_adamw_beta1,
-                b2=params.optimizer_x_adamw_beta2,
-                weight_decay=params.optimizer_x_weight_decay,
+            optax.chain(
+                optax.clip(1.0),
+                optax.adamw(
+                    learning_rate=learning_rate,
+                    b1=params.optimizer_x_adamw_beta1,
+                    b2=params.optimizer_x_adamw_beta2,
+                    weight_decay=params.optimizer_x_weight_decay,
+                ),
             ),
             model.x_parameters(),
             allow_none_grads=True,
@@ -92,6 +93,7 @@ def build_optim_w(model: PCDecoder, params: Params) -> pxu.Optim:
     if params.optimizer_w == "sgd":
         optim_w = pxu.Optim(
             optax.chain(
+                optax.clip(1.0),
                 optax.add_decayed_weights(weight_decay=params.optimizer_w_weight_decay),
                 optax.sgd(
                     learning_rate=learning_rate,
@@ -105,6 +107,7 @@ def build_optim_w(model: PCDecoder, params: Params) -> pxu.Optim:
     elif params.optimizer_w == "adamw":
         optim_w = pxu.Optim(
             optax.chain(
+                optax.clip(1.0),
                 optax.adamw(
                     learning_rate=learning_rate,
                     b1=params.optimizer_w_adamw_beta1,
