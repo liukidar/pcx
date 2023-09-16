@@ -25,7 +25,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     hidden_dim: int = HP(
         "Dimension of the hidden layers.",
-        default=500,
+        default=750,
         search_space=tune.choice([500, 750, 1000]),
         tunable=True,
     )
@@ -67,12 +67,12 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     use_last_n_batches_to_compute_metrics: int = HP(
         "Number of last train batches in the epoch used to compute average metrics on the train dataset",
-        default=5,
+        default=2,
     )
     T: int = HP(
         "Number of Predictive Coding iterations.",
         default=8,
-        search_space=tune.choice([4, 8, 12, 20]),
+        search_space=tune.choice([4, 6, 8, 12, 20, 33]),
         tunable=True,
     )
     T_max_convergence: int = HP(
@@ -107,7 +107,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     optimizer_x_learning_rate: float = HP(
         "Learning rate for PC node values",
         # [5e-2, 1e-1]
-        default=5e-2,
+        default=0.25,
         search_space=tune.loguniform(4e-2, 1),
         tunable=True,
     )
@@ -117,21 +117,21 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     optimizer_x_sgd_momentum: float = HP(
         "Nesterov momentum for SGD optimizer for X",
-        default=0.6,
-        search_space=tune.loguniform(0.3, 0.7),
+        default=0.33,
+        search_space=tune.loguniform(0.1, 0.9999),
         tunable=True,
     )
     optimizer_x_adamw_beta1: float = HP(
         "First momentum parameter for AdamW optimizer for X",
         default=0.9,
         search_space=tune.loguniform(0.5, 0.9999),
-        tunable=True,
+        tunable=False,
     )
     optimizer_x_adamw_beta2: float = HP(
         "Second momentum parameter for AdamW optimizer for X",
         default=0.999,
         search_space=tune.loguniform(0.5, 0.9999),
-        tunable=True,
+        tunable=False,
     )
     reset_optimizer_x_state: bool = HP(
         "Since we updated the values of x directly, we need to reset the momentums in the x optimizer. Recommended for Adam and AdamW optimizers for X.",
@@ -146,33 +146,33 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     optimizer_w_learning_rate: float = HP(
         "Learning rate for model weights",
-        default=9.95e-4,
+        default=3e-3,
         search_space=tune.loguniform(9e-4, 2e-2),
         tunable=True,
     )
     optimizer_w_weight_decay: float = HP(
         "Weight decay for model weights.",
-        default=1e-4,
-        search_space=tune.loguniform(1e-5, 1e-3),
+        default=5e-5,
+        search_space=tune.loguniform(1e-6, 1e-3),
         tunable=True,
     )
     optimizer_w_sgd_momentum: float = HP(
         "Nesterov momentum for SGD optimizer for W",
-        default=0.9,
-        search_space=tune.loguniform(0.7, 0.9999),
+        default=0.7,
+        search_space=tune.loguniform(0.1, 0.9999),
         tunable=True,
     )
     optimizer_w_adamw_beta1: float = HP(
         "First momentum parameter for AdamW optimizer for W",
         default=0.9,
         search_space=tune.loguniform(0.5, 0.9999),
-        tunable=True,
+        tunable=False,
     )
     optimizer_w_adamw_beta2: float = HP(
         "Second momentum parameter for AdamW optimizer for W",
         default=0.999,
         search_space=tune.loguniform(0.5, 0.9999),
-        tunable=True,
+        tunable=False,
     )
 
     data_dir: str = HP(
@@ -228,7 +228,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     hypertunning_num_trials: int = HP(
         "Number of hypertunning run trials",
-        default=300,
+        default=500,
     )
     hypertunning_max_concurrency: Optional[int] = HP(
         "Maximum number of concurrent hypertunning trials. "
@@ -246,7 +246,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     hypertunning_gpu_memory_fraction_per_trial: float = HP(
         "Logical fraction of GPU memory required for a single trial. Must be in [0, 1]. "
         "However, keep in mind that GPUs have only around 85%-90% memory free when sitting idle",
-        default=0.025,
+        default=0.018,
     )
     hypertunning_use_early_stop_scheduler: bool = HP(
         "Whether to enable ray.tune scheduler that performs early stopping of trials.",

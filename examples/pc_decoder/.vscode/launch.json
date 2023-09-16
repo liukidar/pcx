@@ -78,10 +78,11 @@
                 "--hypertunning-num-trials=10",
                 "--hypertunning-use-early-stop-scheduler",
                 "--hypertunning-early-stop-grace-period-epochs=5",
-                "--hypertunning-max-concurrency=2",
+                "--hypertunning-max-concurrency=4",
                 "--save-best-results",
                 "--save-intermediate-results",
-                "--save-results-every-n-epochs=1"
+                "--save-results-every-n-epochs=1",
+                "--use-gpus=2,3"
             ]
         },
         {
