@@ -545,6 +545,8 @@ class TrainingRun:
             )
             epoch_results.save()
 
+            if not self.params.save_intermediate_results:
+                shutil.rmtree(self.best_epoch_dir.resolve(), ignore_errors=True)
             if should_save_best_results:
                 self.best_epoch_dir.unlink(missing_ok=True)
                 self.best_epoch_dir.symlink_to(
