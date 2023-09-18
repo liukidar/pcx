@@ -25,7 +25,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     hidden_dim: int = HP(
         "Dimension of the hidden layers.",
-        default=750,
+        default=500,
         search_space=tune.choice([500, 750, 1000]),
         tunable=True,
     )
@@ -47,6 +47,10 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     use_prior_layer: bool = HP(
         "Whether to use a prior layer that generates a set of priors for the topmost PCLayer.",
         default=False,
+    )
+    use_batch_warmup: bool = HP(
+        "Whether to run one full backpropagation pass for X parameters at the beginning of each batch so that Xs start with a reasonable values.",
+        default=True,
     )
 
     experiment_name: str = HP(
@@ -71,7 +75,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     T: int = HP(
         "Number of Predictive Coding iterations.",
-        default=8,
+        default=33,
         search_space=tune.choice([4, 6, 8, 12, 20, 33]),
         tunable=True,
     )
@@ -107,7 +111,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     optimizer_x_learning_rate: float = HP(
         "Learning rate for PC node values",
         # [5e-2, 1e-1]
-        default=0.25,
+        default=0.218,
         search_space=tune.loguniform(4e-2, 1),
         tunable=True,
     )
@@ -117,7 +121,7 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     optimizer_x_sgd_momentum: float = HP(
         "Nesterov momentum for SGD optimizer for X",
-        default=0.33,
+        default=0.45964,
         search_space=tune.loguniform(0.1, 0.9999),
         tunable=True,
     )
@@ -146,19 +150,19 @@ class Params(Hyperparams, RayTuneHyperparamsMixin):
     )
     optimizer_w_learning_rate: float = HP(
         "Learning rate for model weights",
-        default=3e-3,
+        default=0.002959585,
         search_space=tune.loguniform(9e-4, 2e-2),
         tunable=True,
     )
     optimizer_w_weight_decay: float = HP(
         "Weight decay for model weights.",
-        default=5e-5,
+        default=0.000207794,
         search_space=tune.loguniform(1e-6, 1e-3),
         tunable=True,
     )
     optimizer_w_sgd_momentum: float = HP(
         "Nesterov momentum for SGD optimizer for W",
-        default=0.7,
+        default=0.5564,
         search_space=tune.loguniform(0.1, 0.9999),
         tunable=True,
     )

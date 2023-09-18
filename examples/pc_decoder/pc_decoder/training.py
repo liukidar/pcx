@@ -140,7 +140,12 @@ def train_on_batch(
     if model.p.pc_mode == "pc":
         total_iterations += 1
 
-    with pxu.train(model, examples):
+    if model.p.use_batch_warmup:
+        batch_init_fn = lambda: pxu.warmup_for_train(model, optim_x, loss_fn, examples)
+    else:
+        batch_init_fn = lambda: pxu.train(model, examples)
+
+    with batch_init_fn():
         t_loop = pxu.EnergyMinimizationLoop(
             model=model,
             loss_fn=loss_fn,

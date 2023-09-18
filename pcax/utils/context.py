@@ -6,7 +6,8 @@ from typing import Callable, Optional, Tuple, Union
 from ..core import GradAndValues, Jit, Module, Vectorize, f
 from ..core.parameters import ParamDict
 from ..pc.energymodule import EnergyModule
-from ..pc.parameters import NodeParam
+from ..pc.parameters import NodeParam, LayerParam
+from .optim import Optim
 
 
 @contextlib.contextmanager
@@ -30,6 +31,31 @@ def train(
         yield
 
     if isinstance(model, EnergyModule):
+        model.clear_cache()
+
+
+@contextlib.contextmanager
+def warmup_for_train(
+    model: EnergyModule,
+    optim_x: Optim,
+    loss_fn: Callable,
+    *loss_args,
+    loss_param_filter: Union[f, Callable[[ParamDict], ParamDict]] = (
+        f(NodeParam)(frozen=False) | f(LayerParam)
+    ),
+):
+    _grad_and_values = grad_and_values(loss_param_filter)(loss_fn)
+
+    model.train()
+    model.clear_cache()
+    model.set_status(init=True)
+    try:
+        gradients, (energy,) = _grad_and_values(*loss_args, model=model)
+        model.set_status(init=False)
+        optim_x(gradients)
+        yield energy
+    finally:
+        model.set_status(init=False)
         model.clear_cache()
 
 
