@@ -4,7 +4,7 @@ import jax
 import jax.tree_util as jt
 
 from ..core import Module, ParamCache
-from ..core.parameters import _BaseParam
+from ..core.parameters import Param
 from .parameters import NodeParam
 
 
@@ -14,13 +14,13 @@ class EnergyModule(Module):
         self._init = None
 
     def clear_cache(self):
-        parameters = jax.tree_util.tree_leaves(self, is_leaf=lambda x: isinstance(x, _BaseParam))
+        parameters = jax.tree_util.tree_leaves(self, is_leaf=lambda x: isinstance(x, Param))
         for p in parameters:
             if isinstance(p, ParamCache):
                 p.clear()
 
     def clear_nodes(self):
-        parameters = jax.tree_util.tree_leaves(self, is_leaf=lambda x: isinstance(x, _BaseParam))
+        parameters = jax.tree_util.tree_leaves(self, is_leaf=lambda x: isinstance(x, Param))
         for p in parameters:
             if isinstance(p, NodeParam):
                 p.value = None

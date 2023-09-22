@@ -1,5 +1,7 @@
 __all__ = [
-    "_BaseParam",
+    "get_param",
+    "set_param",
+    "Param",
     "Param",
     "ParamRef",
     "ParamDict",
@@ -28,12 +30,21 @@ from .util import repr_function, move
 # Utils ################################################################################################################
 
 
-def get_jax_value(x: Union[jax.Array, "_BaseParam"]):
+def get_param(x: Union[jax.Array, "Param"]):
     """Returns JAX value encapsulated in the input argument."""
-    if isinstance(x, _BaseParam):
+    if isinstance(x, Param):
         return x.value
     else:
         return x
+
+
+def set_param(obj: Any, x: Union[jax.Array, "Param"]):
+    if isinstance(obj, Param):
+        obj.value = get_param(x)
+    else:
+        obj = get_param(x)
+
+    return obj
 
 
 def reduce_none(x: Optional[jax.Array]) -> jax.Array:
@@ -140,7 +151,10 @@ class _AbstractParam(metaclass=_AbstractParamMeta):
         raise NotImplementedError("Pure method")
 
 
-class _BaseParam(_AbstractParam):
+# Parameters ##########################################################################################################
+
+
+class Param(_AbstractParam):
     """The abstract base class to represent and store a jax.Array."""
 
     def __init__(
@@ -151,7 +165,7 @@ class _BaseParam(_AbstractParam):
         self._value = value
         self._reduce = reduce
 
-    def __move__(self, __other: Optional['_BaseParam'] = None) -> '_BaseParam':
+    def __move__(self, __other: Optional['Param'] = None) -> 'Param':
         if __other is None:
             __other = copy.copy(self)
         else:
@@ -194,121 +208,118 @@ class _BaseParam(_AbstractParam):
         return self.value.__invert__()  # noqa: E704
 
     def __eq__(self, __other):
-        return self.value.__eq__(get_jax_value(__other))  # noqa: E704
+        return self.value.__eq__(get_param(__other))  # noqa: E704
 
     def __ne__(self, __other):
-        return self.value.__ne__(get_jax_value(__other))  # noqa: E704
+        return self.value.__ne__(get_param(__other))  # noqa: E704
 
     def __lt__(self, __other):
-        return self.value.__lt__(get_jax_value(__other))  # noqa: E704
+        return self.value.__lt__(get_param(__other))  # noqa: E704
 
     def __le__(self, __other):
-        return self.value.__le__(get_jax_value(__other))  # noqa: E704
+        return self.value.__le__(get_param(__other))  # noqa: E704
 
     def __gt__(self, __other):
-        return self.value.__gt__(get_jax_value(__other))  # noqa: E704
+        return self.value.__gt__(get_param(__other))  # noqa: E704
 
     def __ge__(self, __other):
-        return self.value.__ge__(get_jax_value(__other))  # noqa: E704
+        return self.value.__ge__(get_param(__other))  # noqa: E704
 
     def __add__(self, __other):
-        return self.value.__add__(get_jax_value(__other))  # noqa: E704
+        return self.value.__add__(get_param(__other))  # noqa: E704
 
     def __radd__(self, __other):
-        return self.value.__radd__(get_jax_value(__other))  # noqa: E704
+        return self.value.__radd__(get_param(__other))  # noqa: E704
 
     def __sub__(self, __other):
-        return self.value.__sub__(get_jax_value(__other))  # noqa: E704
+        return self.value.__sub__(get_param(__other))  # noqa: E704
 
     def __rsub__(self, __other):
-        return self.value.__rsub__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rsub__(get_param(__other))  # noqa: E704
 
     def __mul__(self, __other):
-        return self.value.__mul__(get_jax_value(__other))  # noqa: E704
+        return self.value.__mul__(get_param(__other))  # noqa: E704
 
     def __rmul__(self, __other):
-        return self.value.__rmul__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rmul__(get_param(__other))  # noqa: E704
 
     def __div__(self, __other):
-        return self.value.__div__(get_jax_value(__other))  # noqa: E704
+        return self.value.__div__(get_param(__other))  # noqa: E704
 
     def __rdiv__(self, __other):
-        return self.value.__rdiv__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rdiv__(get_param(__other))  # noqa: E704
 
     def __truediv__(self, __other):
-        return self.value.__truediv__(get_jax_value(__other))  # noqa: E704
+        return self.value.__truediv__(get_param(__other))  # noqa: E704
 
     def __rtruediv__(self, __other):
-        return self.value.__rtruediv__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rtruediv__(get_param(__other))  # noqa: E704
 
     def __floordiv__(self, __other):
-        return self.value.__floordiv__(get_jax_value(__other))  # noqa: E704
+        return self.value.__floordiv__(get_param(__other))  # noqa: E704
 
     def __rfloordiv__(self, __other):
-        return self.value.__rfloordiv__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rfloordiv__(get_param(__other))  # noqa: E704
 
     def __divmod__(self, __other):
-        return self.value.__divmod__(get_jax_value(__other))  # noqa: E704
+        return self.value.__divmod__(get_param(__other))  # noqa: E704
 
     def __rdivmod__(self, __other):
-        return self.value.__rdivmod__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rdivmod__(get_param(__other))  # noqa: E704
 
     def __mod__(self, __other):
-        return self.value.__mod__(get_jax_value(__other))  # noqa: E704
+        return self.value.__mod__(get_param(__other))  # noqa: E704
 
     def __rmod__(self, __other):
-        return self.value.__rmod__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rmod__(get_param(__other))  # noqa: E704
 
     def __pow__(self, __other):
-        return self.value.__pow__(get_jax_value(__other))  # noqa: E704
+        return self.value.__pow__(get_param(__other))  # noqa: E704
 
     def __rpow__(self, __other):
-        return self.value.__rpow__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rpow__(get_param(__other))  # noqa: E704
 
     def __matmul__(self, __other):
-        return self.value.__matmul__(get_jax_value(__other))  # noqa: E704
+        return self.value.__matmul__(get_param(__other))  # noqa: E704
 
     def __rmatmul__(self, __other):
-        return self.value.__rmatmul__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rmatmul__(get_param(__other))  # noqa: E704
 
     def __and__(self, __other):
-        return self.value.__and__(get_jax_value(__other))  # noqa: E704
+        return self.value.__and__(get_param(__other))  # noqa: E704
 
     def __rand__(self, __other):
-        return self.value.__rand__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rand__(get_param(__other))  # noqa: E704
 
     def __or__(self, __other):
-        return self.value.__or__(get_jax_value(__other))  # noqa: E704
+        return self.value.__or__(get_param(__other))  # noqa: E704
 
     def __ror__(self, __other):
-        return self.value.__ror__(get_jax_value(__other))  # noqa: E704
+        return self.value.__ror__(get_param(__other))  # noqa: E704
 
     def __xor__(self, __other):
-        return self.value.__xor__(get_jax_value(__other))  # noqa: E704
+        return self.value.__xor__(get_param(__other))  # noqa: E704
 
     def __rxor__(self, __other):
-        return self.value.__rxor__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rxor__(get_param(__other))  # noqa: E704
 
     def __lshift__(self, __other):
-        return self.value.__lshift__(get_jax_value(__other))  # noqa: E704
+        return self.value.__lshift__(get_param(__other))  # noqa: E704
 
     def __rlshift__(self, __other):
-        return self.value.__rlshift__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rlshift__(get_param(__other))  # noqa: E704
 
     def __rshift__(self, __other):
-        return self.value.__rshift__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rshift__(get_param(__other))  # noqa: E704
 
     def __rrshift__(self, __other):
-        return self.value.__rrshift__(get_jax_value(__other))  # noqa: E704
+        return self.value.__rrshift__(get_param(__other))  # noqa: E704
 
     def __round__(self, ndigits=None):
         return self.value.__round__(ndigits)  # noqa: E704
 
     def __getitem__(self, __idx):
         return self.value.__getitem__(__idx)
-
-    def __jax_array__(self):
-        return self.value
 
     def __array__(self, dtype=None):
         return self.value.__array__(dtype)
@@ -339,29 +350,6 @@ class _BaseParam(_AbstractParam):
     def ndim(self):
         """Number of dimentions."""
         return self.value.ndim
-
-
-# Parameters ##########################################################################################################
-
-
-class Param(_BaseParam):
-    """A trainable parameter. The class is only used to differentiate parameters from other state parameters."""
-
-    def __init__(
-        self,
-        value: Optional[jax.Array] = None,
-        reduce: Optional[Callable[[jax.Array], jax.Array]] = reduce_none,
-    ):
-        """Param constructor.
-
-        Args:
-            value: the initial value of the Param.
-            reduce: a function that takes an array of shape ``(n, *dims)`` and returns one of shape ``(*dims)``. Used to
-                    combine the multiple states produced in an pcax.Vectorize call. Default options are ``reduce_none``,
-                    ``reduce_mean`` and ``reduce_id``.
-        """
-        super().__init__(value, reduce)
-        self._value = value
 
 
 class ParamRef(_AbstractParam):
@@ -409,7 +397,7 @@ class ParamRef(_AbstractParam):
         return f"{self.__class__.__name__}(ref={repr(self.ref)})"
 
 
-class ParamCache(_BaseParam, ParamRef):
+class ParamCache(Param, ParamRef):
     """A parameter dictionary used to store interemediate transformations of the referenced parameter. Those are
     normally only stored in the computation tree and are not accessible to the user."""
 
@@ -422,7 +410,7 @@ class ParamCache(_BaseParam, ParamRef):
             param: the Parameter to keep the reference of.
         """
 
-        _BaseParam.__init__(self, {}, None)
+        Param.__init__(self, {}, None)
         ParamRef.__init__(self, param)
 
     def __getitem__(self, __key: str):
@@ -454,6 +442,22 @@ class ParamDict(Dict[str, _AbstractParam]):
     """A ParamDict is a dictionary (name, var) with some additional methods to make manipulation of collections of
     parameters easy. In particular, iterating through a ParamDict will iterate through each unique parameter stored
     in the dictionary, avoiding duplicate references."""
+
+    @staticmethod
+    def from_pytree(pytree, prefix: str = ""):
+        leaves_with_path, _ = jax.tree_util.tree_flatten_with_path(
+            pytree,
+            is_leaf=lambda x: isinstance(x, _AbstractParam)
+        )
+
+        return ParamDict(
+            map(
+                lambda leaf_with_path: (
+                    prefix + ".".join(map(lambda k: str(k), leaf_with_path[0])), leaf_with_path[1]
+                ),
+                leaves_with_path
+            )
+        )
 
     def __init__(self, *args, **kwargs):
         """ParamDict constructor.
@@ -546,9 +550,9 @@ class ParamDict(Dict[str, _AbstractParam]):
 
         return params
 
-    def rename(self, name):
+    def with_prefix(self, pre):
         return ParamDict(
-            {re.sub(r"\(.*?\)", name, k, count=1): v for k, v in self.items()}
+            {f"{pre}{k}": v for k, v in self.items()}
         )
 
 

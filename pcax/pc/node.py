@@ -5,7 +5,7 @@ __all__ = [
 import jax
 from typing import Callable, Dict, Any, Tuple, Union, Optional
 
-from ..core import RKG, RandomKeyGenerator, ParamCache
+from ..core import RKG, RandomKeyGenerator, ParamCache, set_param
 from .parameters import NodeParam
 from .energymodule import EnergyModule
 
@@ -22,13 +22,13 @@ class VarView:
 
     def __getitem__(self, var):
         if self.slices is None:
-            return var.value
-        return var.value[self.slices]
+            return var
+        return var[self.slices]
 
     def __setitem__(self, var, value):
         if self.slices is None:
-            var.value = value
-        var.value = var.value.at[self.slices].set(value)
+            var = set_param(var, value)
+        var = set_param(var, var.at[self.slices].set(value))
 
 
 def _init_fn(self, rkg: RandomKeyGenerator):
@@ -41,7 +41,7 @@ def _forward_fn(self, rgk: RandomKeyGenerator):
 
 def _energy_fn(self, rkg: RandomKeyGenerator):
     e = self["x"] - self["u"]
-    return 0.5 * (e * e).sum(axis=-1)
+    return 0.5 * (e * e).sum()
 
 
 class Node(EnergyModule):
@@ -87,7 +87,7 @@ class Node(EnergyModule):
 
     def __setitem__(self, key: str, value: jax.Array):
         if key == "x":
-            self.x.value = value
+            self.x = set_param(self.x, value)
         elif key.startswith("x:"):
             self.views[key.split(":", 1)[1]][self.x] = value
         else:
@@ -100,7 +100,7 @@ class Node(EnergyModule):
             rkg = RKG
 
         if key == "x":
-            return self.x.value
+            return self.x
         elif key.startswith("x:"):
             return self.views[key.split(":", 1)[1]][self.x]
 
@@ -122,7 +122,7 @@ class Node(EnergyModule):
         self.x_tmp.clear()
 
     def clear_nodes(self):
-        self.x.value = None
+        self.x = set_param(self.x, None)
 
     def register_blueprints(self, blueprints: Tuple[str, Callable[[Any], jax.Array]]):
         for key, blueprint in blueprints:

@@ -1,6 +1,9 @@
 __all__ = [
     "Module",
-    "Function"
+    "Function",
+    "to_stateless",
+    "to_stateful",
+    "pure_fn"
 ]
 
 import abc
@@ -8,6 +11,7 @@ from typing import Tuple, Callable, Any, Optional
 import functools
 
 import jax
+import equinox as eqx
 
 from .util import repr_function
 from .parameters import _AbstractParam, ParamDict
@@ -51,12 +55,73 @@ class _ModuleMeta(abc.ABCMeta):
         return cls
 
 
+def to_stateless(pytree: Any, keep_values: bool = False):
+    # Replace all the model parameters with their values
+    params, pytree = eqx.partition(
+        pytree,
+        lambda x: isinstance(x, _AbstractParam),
+        is_leaf=lambda x: isinstance(x, _AbstractParam)
+    )
+
+    # Copy the raw tensor values in the new pytree (replacing the None values)
+    if keep_values is True:
+        pytree = jax.tree_util.tree_map(
+            lambda s, p: p.value if isinstance(p, _AbstractParam) else s,
+            pytree,
+            params,
+            is_leaf=lambda x: x is None
+        )
+
+    return pytree, params
+
+
+def to_stateful(pytree: Any, params: Any, keep_values: bool = False):
+    if keep_values is True:
+        # Set params values to the pytree's values
+        def s2p(p, s):
+            p.value = s
+
+            return p
+
+        params = jax.tree_util.tree_map(
+            s2p,
+            params,
+            pytree,
+            is_leaf=lambda x: isinstance(x, _AbstractParam)
+        )
+
+    # Combine pytree and params
+    pytree = jax.tree_util.tree_map(
+        lambda p, s: p if isinstance(p, _AbstractParam) else s,
+        params,
+        pytree,
+        is_leaf=lambda x: isinstance(x, _AbstractParam) or x is None
+    )
+
+    return pytree
+
+
+def pure_fn(fn):
+    """Transform a function into a pure args function. A pure function sees all pcax.Params as jax.Array.
+    NOTE: being pure, all changes to args parameters that are not Modules are not tracked."""
+    @functools.wraps(fn)
+    def wrap_fn(*args, **kwargs):
+        (args, kwargs), params = to_stateless((args, kwargs), keep_values=True)
+
+        r = fn(*args, **kwargs)
+
+        (args, kwargs) = to_stateful((args, kwargs), params, keep_values=True)
+
+        return r
+
+    return wrap_fn
+
 # Modules ##############################################################################################################
 
 
 class Module(metaclass=_ModuleMeta):
     """A pcax Module is analogous to a Pytorch module: it is the base class each model should inherit from, as it is
-    used to keep track of all Parameter used by such model.
+    used to keep track of all Parameters used by such model.
     """
 
     def __init__(self) -> None:
@@ -65,14 +130,9 @@ class Module(metaclass=_ModuleMeta):
     def parameters(self) -> ParamDict:
         """Returns a dictionary of all the parameters of the module."""
 
-        params = ParamDict()
-        parameters, _ = jax.tree_util.tree_flatten_with_path(self, is_leaf=lambda x: isinstance(x, _AbstractParam))
-        scope = f"({self.__class__.__name__})."
-        for k, v in parameters:
-            if isinstance(v, _AbstractParam):
-                params[scope + ".".join(map(repr, k))] = v
+        _, params = to_stateless(self)
 
-        return params
+        return ParamDict.from_pytree(params, f"({self.__class__.__name__}).")
 
     @abc.abstractmethod
     def __call__(self, *args, **kwargs):

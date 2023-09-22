@@ -1,6 +1,11 @@
 __all__ = [
     "Module",
     "Function",
+    "to_stateless",
+    "to_stateful",
+    "pure_fn",
+    "get_param",
+    "set_param",
     "Param",
     "ParamRef",
     "ParamCache",
@@ -15,9 +20,15 @@ __all__ = [
 
 
 from .modules import (
-    Module, Function
+    Module,
+    Function,
+    to_stateless,
+    to_stateful,
+    pure_fn
 )
 from .parameters import (
+    get_param,
+    set_param,
     Param,
     ParamRef,
     ParamCache,
