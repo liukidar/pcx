@@ -47,77 +47,85 @@ class _AbstractTransformation(abc.ABC):
     a dictionary of tensors to the jax transformation).
     """
 
-    def __init__(self,
-                 fn: Union['_AbstractTransformation', Callable],
-                 filter: Union[f, Callable[[ParamDict], ParamDict]]
-                 ):
+    def __init__(
+        self,
+        fn: Union['_AbstractTransformation', Callable],
+        filter: Union[f, Callable[[ParamDict], ParamDict]]
+    ):
         """_AbstractTransformation constructor.
 
             Args:
                 f: the function (or pcax transformation) to be processed by the current transformation,
                 filter: the filter used to select which parameters should undergo the transformation.
         """
+
+        self.transform = None
+        self.filter = filter
+
         if isinstance(fn, _AbstractTransformation):
             self.__wrapped__ = fn.__wrapped__
             self.fn = copy.deepcopy(fn)
         else:
             self.__wrapped__ = fn
             self.fn = fn
-        self.params: ParamDict = None
-        self.filter = filter
-        self.transform = None
-        self.kwargs = {}
 
     def __call__(self, *args, **kwargs: Any) -> Any:
         fn = self._build(
+            kwargs,
             functools.reduce(
                 lambda x, y: x + y,
-                (m.parameters().rename(k) for k, m in kwargs.items() if isinstance(m, Module)),
+                (m.parameters().with_prefix(k) for k, m in kwargs.items() if isinstance(m, Module)),
                 RKG.parameters(),
-            ),
-            kwargs
+            )
         )
         return fn(*args)
 
-    def _build(self, params, kwargs):
+    def _build(self, kwargs, params):
         if isinstance(self.fn, _AbstractTransformation):
-            t = self.fn._build(params, kwargs)
+            t = self.fn._build(kwargs, params)
         else:
             t = self.fn
 
-        self.params = params
+        # Create cached kwargs that contains a partitioned reference to the params present in kwargs
+        cached_kwargs = {
+            'kwargs': kwargs,
+            'params': self.partition(params)
+        }
 
-        self.transform = self._make_transform(t, kwargs)
+        self.transform = self._make_transform(t, cached_kwargs)
+        return Function(
+            lambda *args: self._call(cached_kwargs, *args),
+            params
+        )
 
-        def fn(*args):
-            return self._call(self.partition, *args)
+    def _functional(self, t: Callable, cached_kwargs: Dict[str, Any]) -> Callable:
+        def wrapper(transformed_params, *args):
+            target_params, other_params = cached_kwargs['params']
+            target_params = move(transformed_params[0], target_params)
 
-        return Function(fn, self.params)
+            # This probably results in a no-op
+            other_params = move(transformed_params[1], other_params)
 
-    def _functional(self, t: Callable, kwargs: Dict[str, Any]) -> Callable:
-        def wrapper(params_copy, *args):
-            params_partition = tuple(move(c, p) for c, p in zip(params_copy, self.partition))
             if isinstance(t, Function):
                 output = t(*args)
             else:
-                output = t(*args, **kwargs)
+                output = t(*args, **cached_kwargs['kwargs'])
 
-            return output, params_partition
+            return output, (target_params, other_params)
 
         return wrapper
 
-    @property
-    def partition(self) -> Tuple[ParamDict, ParamDict]:
-        target = self.params.filter(self.filter) + RKG.parameters()
+    def partition(self, params) -> Tuple[ParamDict, ParamDict]:
+        target = params.filter(self.filter) + RKG.parameters()
 
-        return target, self.params - target
+        return target, params - target
 
     @abc.abstractmethod
-    def _call(self, *args):
+    def _call(self, cached_kwargs, *args):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _make_transform(self, fn, kwargs):
+    def _make_transform(self, fn, cached_kwargs):
         raise NotImplementedError()
 
     def __repr__(self):
@@ -202,32 +210,32 @@ class Jit(_AbstractTransformation):
     def snapshot(self, **kwargs: Module):
         t = copy.deepcopy(self)
         t.transform = None
-        t.kwargs = {}
 
         return t._build(
+            kwargs,
             functools.reduce(
                 lambda x, y: x + y,
-                (m.parameters().rename(k) for k, m in kwargs.items() if isinstance(m, Module)),
+                (m.parameters().with_prefix(k) for k, m in kwargs.items() if isinstance(m, Module)),
                 RKG.parameters(),
-            ),
-            kwargs
+            )
         )
 
-    def _call(self, params_partition, *args):
-        output, params_partition = self.transform(
-            params_partition, self.static_args_hash, *args
+    def _call(self, cached_kwargs, *args):
+        target_params, other_params = cached_kwargs['params']
+        output, (target_params, other_params) = self.transform(
+            (target_params, other_params), self.static_args_hash, *args
         )
 
         return output
 
-    def _build(self, params, kwargs):
+    def _build(self, kwargs, params):
         self.static_args_hash = hash_pytree(kwargs)
 
-        return super()._build(params, kwargs)
+        return super()._build(kwargs, params)
 
-    def _make_transform(self, fn, kwargs):
+    def _make_transform(self, fn, cached_kwargs):
         return jax.jit(
-            lambda params, _, *args: self._functional(fn, kwargs)(params, *args),
+            lambda params, _, *args: self._functional(fn, cached_kwargs)(params, *args),
             static_argnums=(1,),
             donate_argnums=(0,) + tuple(x + 2 for x in self.donate_argnums),
             inline=self.inline,
@@ -265,7 +273,9 @@ class Vectorize(_AbstractTransformation):
         self.out_axis = out_axis
         self.axis_name = axis_name
 
-    def _call(self, params_partition, *args):
+    def _call(self, cached_kwargs, *args):
+        target_params, other_params = cached_kwargs['params']
+
         if len(self.in_axis) > 0:
             in_axis_argnums = [
                 (x, v) for x, v in enumerate(self.in_axis) if v is not None
@@ -274,21 +284,21 @@ class Vectorize(_AbstractTransformation):
                 in_axis_argnums[0][1]
             ]
         else:
-            nsplits = next(iter(params_partition[0].values())).shape[0]
+            nsplits = next(iter(target_params.values())).shape[0]
 
-        for rkg in params_partition[0].filter(f(_RKGState)):
+        for rkg in target_params.filter(f(_RKGState)):
             rkg.value = rkg.split(nsplits)
 
-        output, params_partition = self.transform(
-            params_partition,
+        output, (target_params, other_params) = self.transform(
+            (target_params, other_params),
             *args
         )
-        for p in params_partition[0]:
+        for p in target_params:
             p.reduce()
 
         return output
 
-    def _make_transform(self, fn, kwargs):
+    def _make_transform(self, fn, cached_kwargs):
         def vmap(
             *fn_args,
             **fn_kwargs
@@ -304,7 +314,7 @@ class Vectorize(_AbstractTransformation):
             )
 
         return jax.vmap(
-            self._functional(vmap, kwargs),
+            self._functional(vmap, cached_kwargs),
             in_axes=((0, None),) + self.in_axis,
             out_axes=(jt.tree_map(
                 lambda o: 0 if isinstance(o, int) else None,
@@ -348,23 +358,22 @@ class _DerivativeBase(_AbstractTransformation):
         self.input_argnums = input_argnums
         self.has_aux = has_aux
 
-    @property
-    def partition(self) -> Tuple[ParamDict, ParamDict]:
-        target = self.params.filter(self.filter)
+    def partition(self, params) -> Tuple[ParamDict, ParamDict]:
+        target = params.filter(self.filter)
 
-        return target, self.params - target
+        return target, params - target
 
-    def _call(self, params_partition, *args):
-        params_copy = tuple(move(p) for p in params_partition)
+    def _call(self, cached_kwargs, *args):
+        target_params, other_params = cached_kwargs['params']
         inputs = [args[i] for i in self.input_argnums]
 
-        g, (output, params_partition) = self.transform(
-            (inputs, params_copy[0]),
-            params_copy[1],
+        g, (output, (target_params, other_params)) = self.transform(
+            (inputs, move(target_params)),
+            other_params,
             *args
         )
         # Map the gradients to the variables.
-        g = (g[0], {id(k): v.value for k, v in zip(params_partition[0], g[1])})
+        g = (g[0], {id(k): v.value for k, v in zip(target_params, g[1])})
 
         # Discard the input gradients if empty.
         if len(self.input_argnums) == 0:
@@ -375,13 +384,13 @@ class _DerivativeBase(_AbstractTransformation):
         else:
             return g
 
-    def _make_transform(self, fn, kwargs):
-        def derivative(params_inputs, params_other, *args):
-            inputs, params_target = params_inputs
+    def _make_transform(self, fn, cached_kwargs):
+        def derivative(targets, other_params, *args):
+            inputs, target_params = targets
             for i, arg in zip(self.input_argnums, inputs):
                 args[i] = arg
 
-            output, params_partition = self._functional(fn, kwargs)((params_target, params_other), *args)
+            output, params_partition = self._functional(fn, cached_kwargs)((target_params, other_params), *args)
 
             if not isinstance(output, tuple | list):
                 output = (output,)
