@@ -82,7 +82,7 @@
                 "--save-best-results",
                 "--save-intermediate-results",
                 "--save-results-every-n-epochs=1",
-                "--use-gpus=2,3"
+                "--use-gpus=0"
             ]
         },
         {
