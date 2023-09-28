@@ -232,7 +232,7 @@ def main():
         scheduler = None
         if params.hypertunning_use_early_stop_scheduler:
             scheduler = ASHAScheduler(
-                time_attr="epochs",
+                time_attr="epoch",
                 grace_period=params.hypertunning_early_stop_grace_period_epochs,
             )
         experiment_dir = os.path.join(params.results_dir, params.experiment_name)
