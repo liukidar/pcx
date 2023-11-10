@@ -5,7 +5,7 @@ __all__ = [
 import jax
 from typing import Callable, Dict, Any, Tuple, Union, Optional
 
-from ..core import RKG, RandomKeyGenerator, ParamCache, set_param
+from ..core import RKG, RandomKeyGenerator, ParamCache, set_param, get_param
 from .parameters import NodeParam
 from .energymodule import EnergyModule
 
@@ -100,7 +100,7 @@ class Node(EnergyModule):
             rkg = RKG
 
         if key == "x":
-            return self.x
+            return get_param(self.x)
         elif key.startswith("x:"):
             return self.views[key.split(":", 1)[1]][self.x]
 

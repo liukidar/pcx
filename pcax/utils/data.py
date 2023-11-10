@@ -97,7 +97,7 @@ class BatchAlignedSampler(torch.utils.data.Sampler):
             if dataset.target_transform is not None:
                 y = dataset.target_transform(y)
 
-            buckets.setdefault(y.item(), []).append(i)
+            buckets.setdefault(int(y), []).append(i)
 
         self.indices_by_class = tuple(
             np.array(bucket) for bucket in buckets.values()
