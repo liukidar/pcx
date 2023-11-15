@@ -2,7 +2,8 @@ import jax
 from typing import Callable
 
 from ..nn.layer import Linear
-from ..pc.energymodule import EnergyModule, Node
+from ..pc.energymodule import EnergyModule
+from ..pc.node import Node
 from ..pc.parameters import LayerParam
 from ..utils.context import vectorize
 from ..core import f
@@ -13,11 +14,13 @@ class pexec_MultiLinearBlock(EnergyModule):
     def __init__(self,
                  dim: int,
                  nm_layers: int,
-                 act_fn: Callable[[jax.Array], jax.Array] = jax.nn.gelu):
+                 act_fn: Callable[[jax.Array], jax.Array] = jax.nn.gelu,
+                 init_mode: str = "zeros"):
         super().__init__()
         self.act_fn = act_fn
         self.dim = dim
         self.nm_layers = nm_layers
+        self.init_mode = init_mode
 
         # Create a single vectorized layer
         self.fc_layers = Linear(1, 1)  # dummy dimension number
@@ -46,23 +49,24 @@ class pexec_MultiLinearBlock(EnergyModule):
 
             # Uncomment the following line to simulate parallel initialization
             # (and decomment the loop below and the call to jax.numpy.stack)
-            # us = jax.numpy.zeros((self.nm_layers, self.dim))
+            if self.init_mode == "zeros":
+                us = jax.numpy.zeros((self.nm_layers, self.dim))
+            elif self.init_mode == "forward":
+                us = []
+                for i in range(self.nm_layers):
+                    self.fc_layers.nn.weight.value = weights[i]
+                    self.fc_layers.nn.bias.value = biases[i]
 
-            us = []
-            for i in range(self.nm_layers):
-                self.fc_layers.nn.weight.value = weights[i]
-                self.fc_layers.nn.bias.value = biases[i]
+                    u = self.act_fn(self.fc_layers(u))
 
-                u = self.act_fn(self.fc_layers(u))
+                    if i == self.nm_layers - 1:
+                        # us = us.at[i].set(x)
+                        us.append(x)
+                    else:
+                        # us = us.at[i].set(u)
+                        us.append(u)
 
-                if i == self.nm_layers - 1:
-                    # us = us.at[i].set(x)
-                    us.append(x)
-                else:
-                    # us = us.at[i].set(u)
-                    us.append(u)
-
-            us = jax.numpy.stack(us, axis=0)
+                us = jax.numpy.stack(us, axis=0)
 
             # Save activations
             self.pc_nodes["x"] = us
