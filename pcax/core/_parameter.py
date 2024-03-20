@@ -106,7 +106,11 @@ class BaseParam(metaclass=_BaseParamMeta):
 # Parameter #############################################################################################################
 
 
-class Param(BaseParam):
+class DynamicParam(BaseParam):
+    pass
+
+
+class Param(DynamicParam):
     """
     The base class to represent and store a dynamic value in pcax.
     This is mainly used to wrap jax.Arrays and track them through JAX transformations.
@@ -249,7 +253,7 @@ class Param(BaseParam):
         return self._value.ndim
 
 
-class ParamDict(BaseParam):
+class ParamDict(DynamicParam):
     def __init__(self, value: Dict[str, jax.Array | Any | None] = {}):
         super().__init__(value)
 

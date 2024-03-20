@@ -12,7 +12,7 @@ from jaxtyping import  PyTree
 import jax.tree_util as jtu
 import equinox as eqx
 
-from ..core._parameter import BaseParam, Param
+from ..core._parameter import BaseParam, DynamicParam
 from ..core._static import StaticParam
 
 
@@ -137,7 +137,7 @@ def tree_extract(
     pydag: PyTree,
     *rest: ...,
     extract_fn: Callable[[Any | Tuple[Any, ...]], Any] = lambda x: x.get(),
-    filter_fn: Callable[[Any], bool] = lambda x: isinstance(x, Param),
+    filter_fn: Callable[[Any], bool] = lambda x: isinstance(x, DynamicParam),
     is_pytree: bool = False
 ) -> Sequence[Any]:
     """Extract an ordered sequence of values from the BaseParams of a pytree.
@@ -181,7 +181,7 @@ def tree_inject(
     pydag: PyTree,
     values: Sequence[Any],
     inject_fn: Callable[[Tuple[Any, Any]], None] = lambda n, v: n.set(v),
-    filter_fn: Callable[[Any], bool] = lambda x: isinstance(x, Param),
+    filter_fn: Callable[[Any], bool] = lambda x: isinstance(x, DynamicParam),
     is_pytree: bool = False,
     strict: bool = True
 ) -> PyTree:
