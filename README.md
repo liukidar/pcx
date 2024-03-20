@@ -1,21 +1,30 @@
 # PCAX
 
+
 ## Introduction
 
 pcax is a Python JAX-based library designed to develop highly configurable predictive coding networks. It is strictly forbidden to share any piece of code without permission.
 
+
 ## Install
 
-First, create an environment with Python 3.10 or newer and [install JAX](https://github.com/google/jax#installation) in the correct version for your accelerator device. For cuda >= 11.4, the command is
+First, create an environment with Python 3.10 or newer and [install JAX](https://github.com/google/jax#installation) in the correct version for your accelerator device. For cuda >= 12.0, the command is
 
 ```shell
-pip install "jax[cuda11_cudnn82]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+pip install -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+```
+
+For CPU only:
+
+```shell
+pip install -U "jax[cpu]"
 ```
 
 Then you hav two options:
 
 - Install a stable version
 - Clone this repository and install the package by linking to the this folder. The installation of this libary only links to this folder and thus dynamically updates with all your changes.
+
 
 ### Install stable version
 
@@ -30,7 +39,7 @@ pip install path/to/wheel_file.whl
 Clone this repository locally and then:
 
 ```shell
-pip install -e /path/to/this/repo/
+pip install -e /path/to/this/repo/ --config-settings editable_mode=strict
 ```
 
 ## Docs
@@ -51,7 +60,7 @@ python -m http.server
 ```
 
 If you are hosting the server remotely via SSH using VS Code, the port should be automatically forwarded to your machine. If not, you can do that manually in the "PORTS" tab of the VS Code terminal.
-In the future, we will host the docs of the latest commit on the main branch on PSSR. Link will follow.
+
 
 ## Contribute
 
@@ -67,6 +76,7 @@ The GHA only check that everything is in order, but does not alter the code for 
 Please add comments and docstrings to your changes.
 
 One warning: We cannot test GPU features on GHA. Please do this locally as well, even though it might not result in an error in the GHA.
+
 
 ### VSCode
 
@@ -85,6 +95,7 @@ Add this to you `settings.json`:
 ```
 
 It will continuously check your code using flake8 and mypy and set the formatting to black. As the linting is expensive, creating pre-commit hooks would be nicer though.
+
 
 ### Skip Github Actions
 

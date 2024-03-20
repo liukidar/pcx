@@ -1,41 +1,42 @@
 __all__ = ["Optim"]
 
-from ..core import Module
-from ..core.parameters import Param, ParamRef
-import jax.numpy as jnp
+from jaxtyping import PyTree
+import optax
+import jax.tree_util as jtu
+import equinox as eqx
+
+from ..core._module import BaseModule
+from ..core._parameter import Param, BaseParam, Param
+from ..core._static import static
 
 
-class Optim(Module):
-    def __init__(self, optax_opt, vars, allow_none_grads=False):
-        self.optax_opt = optax_opt
-        self.train_refs = [ParamRef(x) for x in vars]
-        self.reset_state()
-        self.allow_none_grads = allow_none_grads
+class Optim(BaseModule):
+    def __init__(
+        self,
+        optax_opt: optax.GradientTransformation,
+        parameters: PyTree | None = None
+    ):
+        self.optax_opt = static(optax_opt)
+        
+        if parameters is not None:
+            self.init(parameters)
 
-    def __call__(self, grads):
-        train_vars = {id(var.ref): var.ref.value for var in self.train_refs}
-        if self.allow_none_grads:
-            grads = {
-                id(var.ref): grads.get(id(var.ref), None) for var in self.train_refs
-            }
-        else:
-            grads = {id(var.ref): grads[id(var.ref)] for var in self.train_refs}
-        updates, self.state.value = self.optax_opt.update(
-            grads, self.state.value, train_vars
+    def step(self, module: PyTree, grads: PyTree) -> None:
+        updates, state = self.optax_opt.update(
+            grads,
+            self.state.get(),
+            module
         )
-        for var in self.train_refs:
-            update = updates[id(var.ref)]
-            if update is not None:
-                var.ref.value += update
+        self.state.set(state)
+        
+        jtu.tree_map(
+            lambda u, p: p.set(eqx.apply_updates(p.get(), u.get())),
+            updates,
+            module,
+            is_leaf=lambda x: isinstance(x, BaseParam)
+        )
 
-    def reset_state(self) -> None:
+    def init(self, parameters: PyTree) -> None:
         self.state = Param(
-            self.optax_opt.init({id(var.ref): var.ref.value for var in self.train_refs})
+            self.optax_opt.init(parameters)
         )
-
-    @property
-    def step_count(self) -> 'jnp.ndarray[int]':
-        try:
-            return self.state.value[-1][-1].count
-        except AttributeError:
-            return "Step count not available."
