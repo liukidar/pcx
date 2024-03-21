@@ -334,11 +334,11 @@ class Vmap(_BaseTransform):
         
         # Compute vaxes dimension which is necessary to split the 'RKGStates'.
         def _extract_vaxes_dim(node, mask):
-            for param in filter(lambda node: isinstance(node, jax.Array), jtu.tree_leaves(node)):
+            for param in filter(lambda node: hasattr(node, 'shape'), jtu.tree_leaves(node)):
                 return param.shape[mask]
             
             return None
-        
+
         _vaxis_dim = jtu.tree_leaves(
             jtu.tree_map(
                 lambda mask, node: _extract_vaxes_dim(node, mask), 
