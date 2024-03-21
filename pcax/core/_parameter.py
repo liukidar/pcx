@@ -125,7 +125,7 @@ class Param(DynamicParam):
         return self
 
     def __repr__(self):
-        rvalue = re.sub("[\n]+", "\n", repr(self._value))
+        rvalue = f"[{','.join(map(str, self.shape))}], {self.dtype}" if self._value is not None else "None"
         t = f"{self.__class__.__name__}({rvalue})"
         
         return t

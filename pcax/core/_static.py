@@ -119,6 +119,9 @@ class StaticParam(BaseParam):
     def __eq__(self, __value: object) -> bool:
         # 'get' handles '__value' being a Param or not.
         return self.get() == get(__value)
+    
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({repr(self._static_value)})"
 
 
 # Utils ################################################################################################################
