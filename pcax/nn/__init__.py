@@ -10,6 +10,8 @@ __all__ = [
     "LayerParam",
     "LayerState",
     
+    "shared",
+    
     # "",
 ]
 
@@ -27,6 +29,11 @@ from ._layer import (
 from ._parameter import (
     LayerParam,
     LayerState,
+)
+
+
+from ._shared import (
+    shared,
 )
 
 

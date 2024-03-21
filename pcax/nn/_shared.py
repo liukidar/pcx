@@ -1,3 +1,5 @@
+__all__ = ['shared']
+
 from typing import Type, Callable, Any
 from jaxtyping import PyTree
 from types import UnionType
@@ -12,13 +14,13 @@ from ..core._tree import tree_ref, tree_unref
 #
 # SHARED
 #
-# Simple utility to simplify parameter sharing between modules.
+# Utility to simplify parameter sharing between modules.
 #
 ####################################################################################################
 
 
 def shared(module: PyTree, filter: Callable[[Any], bool] | Type[BaseParam] = BaseParam) -> PyTree:
-    """Creates a copy of the input pytree which sharees all the target parameters with the original.
+    """Creates a copy of the input pytree which shares all the target parameters with the original.
     It can be used to create modules with weight sharing:
     
     ```python
@@ -26,7 +28,7 @@ def shared(module: PyTree, filter: Callable[[Any], bool] | Type[BaseParam] = Bas
     linear2 = shared(linear1)
     ```
     
-    The same can be achieve manually if only a subset of the parameters is to be shared:
+    The same can be achieved manually if only a subset of the parameters is to be shared:
     
     ```python
     linear1 = Linear(10, 10)
