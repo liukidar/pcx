@@ -136,7 +136,7 @@ def tree_apply(
 def tree_extract(
     pydag: PyTree,
     *rest: ...,
-    extract_fn: Callable[[Any | Tuple[Any, ...]], Any] = lambda x: x.get(),
+    extract_fn: Callable[[Any | Tuple[Any, ...]], Any] = lambda x: x,
     filter_fn: Callable[[Any], bool] = lambda x: isinstance(x, DynamicParam),
     is_pytree: bool = False
 ) -> Sequence[Any]:
@@ -179,7 +179,9 @@ def tree_extract(
 
 def tree_inject(
     pydag: PyTree,
-    values: Sequence[Any],
+    *,
+    params: PyTree = None,
+    values: Sequence[Any] = None,
     inject_fn: Callable[[Tuple[Any, Any]], None] = lambda n, v: n.set(v),
     filter_fn: Callable[[Any], bool] = lambda x: isinstance(x, DynamicParam),
     is_pytree: bool = False,
@@ -203,13 +205,18 @@ def tree_inject(
         PyTree: pytree with values injected via 'inject_fn'.
     """
     assert is_pytree is True, "Not implemented for non-pytrees."
+    
+    if values is None:
+        values = filter(filter_fn, jtu.tree_leaves(params, is_leaf=lambda x: isinstance(x, BaseParam)))
+    else:        
+        assert params is None, "Cannot specify both 'values' and 'params'"
 
     # We use jtu.tree_leaves to apply inject_fn to the dynamically identified leaves of the pytree.
     _values_it = iter(values)
     def _inject_param(x: Any):
         if isinstance(x, BaseParam):
             if filter_fn(x):
-                inject_fn(x, next(_values_it))
+                inject_fn(x, next(_values_it).get())
 
             return True
         else:
