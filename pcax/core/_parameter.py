@@ -125,7 +125,7 @@ class Param(DynamicParam):
         return self
 
     def __repr__(self):
-        rvalue = f"[{','.join(map(str, self.shape))}], {self.dtype}" if self._value is not None else "None"
+        rvalue = f"[{','.join(map(str, self.shape))}], {self.dtype}" if isinstance(self._value, jax.Array) else repr(self._value)
         t = f"{self.__class__.__name__}({rvalue})"
         
         return t
