@@ -118,13 +118,13 @@ class _BaseTransform(abc.ABC):
                 # This is a small optimization; in general, we could unref (the input 'kwargs')/ref (inside '__call__')
                 # every time we call fn. Instead, we ref only once at the beginning of the nested transformation chain
                 # and unref only at the end, when the original function is called.
-                return lambda *args, **kwargs: (fn(*args, **kwargs, is_pytree=True), tree_extract(kwargs, is_pytree=True))
+                return lambda *args, **kwargs: (fn(*args, **kwargs, is_pytree=True), kwargs)
         else:
             self.__wrapped__ = fn
             def map_fn(fn):
                 # We unref only when the original function, not a _BaseTransform, is called, as many transformations
                 # could be nested one into the other, and it is necessary to unref only when the function is actually called.
-                return lambda *args, **kwargs: (fn(*args, **tree_unref(kwargs)), tree_extract(kwargs, is_pytree=True))
+                return lambda *args, **kwargs: (fn(*args, **tree_unref(kwargs)), kwargs)
 
         self.fn = tuple(map_fn(fn) for fn in fns)
         if len(self.fn) == 1:
@@ -141,12 +141,12 @@ class _BaseTransform(abc.ABC):
         """
         if is_pytree is False:
             kwargs = tree_ref(kwargs)
-        _r, _values = self._t(*args, **kwargs)
+        _r, _kwargs = self._t(*args, **kwargs)
         
         # This is the key part: the updated values are injected back into the original parameters in 'kwargs'. 'kwargs' is still
         # the original structure as it hasn't undergone any transformation (which happens only inside '_t').
         # The update values are obtained by calling 'extract', which is done automatically by the wrapped 'fn'.
-        tree_inject(kwargs, _values, is_pytree=True)
+        tree_inject(kwargs, params=_kwargs, is_pytree=True)
 
         return _r
 
@@ -214,12 +214,34 @@ class Jit(_BaseTransform):
         super().__init__(fn)
         
         def _wrap_fn(*args, **kwargs):
-            return self.fn(*args, **kwargs)
+            _r, _kwargs = self.fn(*args, **kwargs)
+            
+            return _r, tree_extract(_kwargs, is_pytree=True)
         
         self.wrap_fn = jax.jit(
             _wrap_fn,
             **t_kwargs
         )
+        
+    def __call__(self, *args, is_pytree: bool = False, **kwargs: Any) -> Any:
+        """Call the transformed function.
+
+        Args:
+            is_pytree (bool, optional): whether the input kwargs are a pytree (do not contain duplicate parameter references).
+
+        Returns:
+            Any: the transformed output of the wrapped function.
+        """
+        if is_pytree is False:
+            kwargs = tree_ref(kwargs)
+        _r, _values = self._t(*args, **kwargs)
+        
+        # This is the key part: the updated values are injected back into the original parameters in 'kwargs'. 'kwargs' is still
+        # the original structure as it hasn't undergone any transformation (which happens only inside '_t').
+        # The update values are obtained by calling 'extract', which is done automatically by the wrapped 'fn'.
+        tree_inject(kwargs, values=_values, is_pytree=True)
+
+        return _r
     
     def _t(self, *args, **kwargs):
         _r, _values = self.wrap_fn(*args, **kwargs)
@@ -346,14 +368,14 @@ class Vmap(_BaseTransform):
             )
         )[0]
         
-        _rnd_mask, _values_mask = zip(
-            *tree_extract(
-                kwargs,
-                _kwargs_mask,
-                extract_fn=lambda p, m: (p.set(p.split(_vaxis_dim)) is not None if isinstance(p, RKGState) else False, m),
-                is_pytree=True
-            )
-        )
+        # _rnd_mask, _values_mask = zip(
+        #     *tree_extract(
+        #         kwargs,
+        #         _kwargs_mask,
+        #         extract_fn=lambda p, m: (p.set(p.split(_vaxis_dim)) is not None if isinstance(p, RKGState) else False, m),
+        #         is_pytree=True
+        #     )
+        # )
 
         def _wrap_fn(*args):
             *_args, _kwargs = args
@@ -366,14 +388,14 @@ class Vmap(_BaseTransform):
             **{
                 **self.t_kwargs,
                 "in_axes": _in_axes_mask,
-                "out_axes": (self.t_kwargs.get("out_axes", None), _values_mask),
+                "out_axes": (self.t_kwargs.get("out_axes", None), _kwargs_mask),
             }
         )(*args, kwargs)
         
-        _values = jtu.tree_map(
-            lambda is_rkg_state, value: value[0] if is_rkg_state else value,
-            _rnd_mask,
-            _values
-        )
+        # _values = jtu.tree_map(
+        #     lambda is_rkg_state, value: value[0] if is_rkg_state else value,
+        #     _rnd_mask,
+        #     _values
+        # )
         
         return _r, _values
