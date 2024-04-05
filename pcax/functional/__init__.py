@@ -24,42 +24,32 @@ def scan(
     length: int | None = None,
     reverse: bool = False,
     unroll: int | bool = 1,
-    *args,
-    **kwargs
 ) -> Any:
     """Utility function to use the jax.lax.scan syntax for the Scan transformation."""
-    return Scan(f, xs=xs, length=length, reverse=reverse, unroll=unroll)(*args, **kwargs)
+    return Scan(f, xs=xs, length=length, reverse=reverse, unroll=unroll)
 
 
 def while_loop(
     f: _BaseTransform | Callable,
     cond_fun: _BaseTransform | Callable,
-    *args,
-    **kwargs
 ) -> Any:
     """Utility function to use the jax.lax.while_loop syntax for the WhileLoop transformation."""
-    return WhileLoop(f, cond_fun=cond_fun)(*args, **kwargs)
+    return WhileLoop(f, cond_fun=cond_fun)
 
 
 def cond(
-    pred: Any,
     true_fun: _BaseTransform | Callable,
     false_fun: _BaseTransform | Callable,
-    *args,
-    **kwargs
 ) -> Any:
     """Utility function to use the jax.lax.cond syntax for the Cond transformation."""
-    return Cond(true_fun, false_fun)(pred, *args, **kwargs)
+    return Cond(true_fun, false_fun)
 
 
 def switch(
-    index: Any,
     branches: Sequence[_BaseTransform | Callable],
-    *args,
-    **kwargs
 ) -> Any:
     """Utility function to use the jax.lax.switch syntax for the Switch transformation."""
-    return Switch(branches)(index, *args, **kwargs)
+    return Switch(branches)
 
 
 

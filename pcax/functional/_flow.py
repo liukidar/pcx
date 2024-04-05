@@ -11,7 +11,7 @@ from functools import partial
 
 import jax
 
-from ._transform import _BaseTransform
+from ._transform import _make_tuple, _BaseTransform
 
 
 ########################################################################################################################
@@ -47,12 +47,12 @@ class Scan(_BaseTransform):
     """
     pcax wrap around jax.lax.scan(fn, ...).
     Takes the same function arguments (except 'init') but does not require a compact carry argument.
-    In particular, fn must have signature fn(*args, x, **kwargs) -> args, y.
+    In particular, fn must have signature fn(x, *args, **kwargs) -> args, y.
     
     Example:
     
     ```python
-    def f(count, x):
+    def f(x, count):
         count = count + x
         return (count + x,), 
         
@@ -75,18 +75,18 @@ class Scan(_BaseTransform):
         self.t_kwargs = t_kwargs
 
     def _t(self, *args, **kwargs):
-        def _wrap_fn(*args):
-            (_args, _kwargs), _x = args
-            (_r, _y), _kwargs = self.fn(*_args, _x, **kwargs)
+        def _wrap_fn(args, x):
+            _args, _kwargs = args
+            (_r, _y), _kwargs = self.fn(x, *_args, **_kwargs)
             
-            return (_r, _kwargs), _y
+            return (_make_tuple(_r), _kwargs), _y
 
-        (_r, _kwargs), _y = jax.lax.scan(
+        (_r, kwargs), _y = jax.lax.scan(
             _wrap_fn,
             (args, kwargs),
             **self.t_kwargs
         )
-        return (_r, _y), _kwargs
+        return (_r, _y), kwargs
 
 
 class WhileLoop(_BaseTransform):
@@ -108,32 +108,39 @@ class WhileLoop(_BaseTransform):
             fn (_BaseTransformation | Callable): function corresponding to `body_fun`
                 for jax.lax.while_loop.
         """
-        super().__init__(fn, filter)
+        super().__init__(fn)
 
-        self.cond_fn = t_kwargs["cond_fn"]
-        del t_kwargs["cond_fn"]
+        self.cond_fun = t_kwargs["cond_fun"]
+        del t_kwargs["cond_fun"]
         self.t_kwargs = t_kwargs
     
     def _t(self, *args, **kwargs):
         def _wrap_fn(args):
             _args, _kwargs = args
-            _r, _kwargs = self.fn(*_args, **kwargs)
+            _r, _kwargs = self.fn(*_args, **_kwargs)
             
-            return _r, _kwargs
+            return _make_tuple(_r), _kwargs
+        
+        # we allow `cond_fun` to look at both args and kwargs
+        def _cond_fn(carry):
+            args, kwargs = carry
+            del kwargs['__RKG']
+            
+            return self.cond_fun(*args, **kwargs)
 
-        _r, _kwargs = jax.lax.while_loop(
-            lambda carry: self.cond_fn(*carry[:-1], **carry[-1]),
+        _r, kwargs = jax.lax.while_loop(
+            _cond_fn,
             _wrap_fn,
             (args, kwargs),
             **self.t_kwargs
         )
-        return _r, _kwargs
+        return _r, kwargs
 
 
 class Cond(_BaseTransform):
     """
     pcax wrap around jax.lax.cond(..., true_fn, false_fn, ...).
-    Takes the same function arguments (except 'cond' amd '*operands').
+    Takes the same function arguments (except 'cond' and '*operands').
     """
 
     def __init__(
@@ -153,19 +160,19 @@ class Cond(_BaseTransform):
         self.t_kwargs = t_kwargs
         
     def _t(self, cond, *args, **kwargs):
-        def _wrap_fn(i, *args):
+        def _wrap_fn(i, args):
             _args, _kwargs = args
-            _r, _kwargs = self.fn[i](*_args, **kwargs)
+            _r, _kwargs = self.fn[i](*_args, **_kwargs)
             
             return _r, _kwargs
 
-        _r, _kwargs = jax.lax.cond(
+        _r, kwargs = jax.lax.cond(
             cond,
             *tuple(partial(_wrap_fn, i) for i in range(len(self.fn))),
             (args, kwargs),
             **self.t_kwargs
         )
-        return _r, _kwargs
+        return _r, kwargs
 
 
 class Switch(_BaseTransform):
@@ -189,9 +196,9 @@ class Switch(_BaseTransform):
         self.t_kwargs = t_kwargs
         
     def _t(self, index, *args, **kwargs):
-        def _wrap_fn(i, *args):
+        def _wrap_fn(i, args):
             _args, _kwargs = args
-            _r, _kwargs = self.fn[i](*_args, **kwargs)
+            _r, _kwargs = self.fn[i](*_args, **_kwargs)
             
             return _r, _kwargs
 
