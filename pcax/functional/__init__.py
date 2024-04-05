@@ -87,7 +87,7 @@ def jit(
     
 
 def vmap(
-    kwargs_mask: Any = None,
+    kwargs_mask: Any = {},
     in_axes: Sequence[int | None] = None,
     out_axes: Sequence[int | None] = None,
     axis_name: str | None = None
@@ -99,7 +99,7 @@ def vmap(
 
 
 def value_and_grad(
-    kwargs_mask: Any = None,
+    kwargs_mask: Any = {},
     argnums: int | Sequence[int] = (),
     has_aux: bool = False,
     reduce_axes: Sequence[Hashable] = ()
