@@ -16,6 +16,8 @@ import equinox as eqx
 
 from ..core._module import Module
 from ..core._random import RandomKeyGenerator, RKG
+from ..core._parameter import BaseParam
+from ..core._static import StaticParam
 from ._parameter import LayerParam
 
 
@@ -30,6 +32,7 @@ from ._parameter import LayerParam
 
 # Core #################################################################################################################
 
+
 class Layer(Module):
     def __init__(
         self,
@@ -40,19 +43,20 @@ class Layer(Module):
     ):
         super().__init__()
         self.nn = jtu.tree_map(
-            lambda w: LayerParam(w) if filter(w) else w,
+            lambda w: LayerParam(w) if filter(w) else StaticParam(w),
             cls(*args, **kwargs),
         )
 
     def __call__(self, *args, key=None, **kwargs):
         # Can do this, since nn is stateless
         _nn = jtu.tree_map(
-            lambda w: w.value if isinstance(w, LayerParam) else w,
+            lambda w: w.get() if isinstance(w, BaseParam) else w,
             self.nn,
+            is_leaf=lambda w: isinstance(w, BaseParam),
         )
 
         return _nn(*args, **kwargs, key=key)
-    
+
 
 # Common Layers ########################################################################################################
 
@@ -84,7 +88,7 @@ class Conv(Layer):
         dilation: int | Sequence[int] = 1,
         groups: int = 1,
         use_bias: bool = True,
-        rkg: RandomKeyGenerator = RKG
+        rkg: RandomKeyGenerator = RKG,
     ):
         super().__init__(
             eqx.nn.Conv,
@@ -97,7 +101,7 @@ class Conv(Layer):
             dilation,
             groups,
             use_bias,
-            key=rkg()
+            key=rkg(),
         )
 
 
@@ -112,7 +116,7 @@ class Conv2d(Conv):
         dilation: int | Sequence[int] = 1,
         groups: int = 1,
         use_bias: bool = True,
-        rkg: RandomKeyGenerator = RKG
+        rkg: RandomKeyGenerator = RKG,
     ):
         super().__init__(2, in_channels, out_channels, kernel_size, stride, padding, dilation, groups, use_bias, rkg)
 
@@ -127,7 +131,7 @@ class MaxPool2d(Layer):
         stride: int | Sequence[int] = 1,
         padding: int | Sequence[int] | Sequence[Tuple[int, int]] = 0,
         use_ceil: bool = False,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(eqx.nn.MaxPool2d, kernel_size, stride, padding, use_ceil, **kwargs)
 
@@ -139,6 +143,6 @@ class AvgPool2d(Layer):
         stride: int | Sequence[int] = 1,
         padding: int | Sequence[int] | Sequence[Tuple[int, int]] = 0,
         use_ceil: bool = False,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(eqx.nn.AvgPool2d, kernel_size, stride, padding, use_ceil, **kwargs)
