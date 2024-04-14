@@ -1,4 +1,4 @@
-__all__ = ["f"]
+__all__ = ["Mask", "m"]
 
 from typing import Any, Tuple, Dict, Type, Callable
 import types
@@ -26,25 +26,25 @@ class Mask:
     ):
         self.x = x
         self.map_to = map_to
-    
+
     def __call__(self, pydag: Any, is_pytree: bool = False) -> Any:
         if self.map_to is None:
             def map_fn(param: Any | Param):
                 _mask_value = Mask.apply(self.x, param)
-                
+
                 return param if _mask_value is True else None
         else:
             def map_fn(param: Any | Param):
                 return self.map_to[Mask.apply(self.x, param)]
-            
+
         t = jtu.tree_map(
             map_fn,
             pydag if is_pytree else tree_ref(pydag),
             is_leaf=lambda x: isinstance(x, BaseParam)
         )
-        
+
         return t
-        
+
     @staticmethod
     def apply(mask, leaf: Any) -> Any:
         if isinstance(mask, type | types.UnionType):
@@ -63,7 +63,7 @@ class m:
         x: Type | 'm' | Callable | None = None,
     ):
         self.x = x
-    
+
     def __call__(self, leaf: Any) -> Any:
         return Mask.apply(self.x, leaf)
 
