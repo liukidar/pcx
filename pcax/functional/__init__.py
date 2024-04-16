@@ -3,7 +3,6 @@ __all__ = [
     "while_loop",
     "cond",
     "switch",
-    
     "jit",
     "vmap",
     "value_and_grad",
@@ -52,7 +51,6 @@ def switch(
     return Switch(branches)
 
 
-
 # Transform ############################################################################################################
 
 
@@ -74,13 +72,13 @@ def jit(
         )
 
     return decorator
-    
+
 
 def vmap(
     kwargs_mask: Any = {},
-    in_axes: Sequence[int | None] = None,
-    out_axes: Sequence[int | None] = None,
-    axis_name: str | None = None
+    in_axes: Sequence[int | None] = (),
+    out_axes: Sequence[int | None] = (),
+    axis_name: str | None = None,
 ):
     def decorator(fn: _BaseTransform | Callable):
         return Vmap(fn, kwargs_mask, in_axes=in_axes, out_axes=out_axes, axis_name=axis_name)
@@ -92,7 +90,7 @@ def value_and_grad(
     kwargs_mask: Any = {},
     argnums: int | Sequence[int] = (),
     has_aux: bool = False,
-    reduce_axes: Sequence[Hashable] = ()
+    reduce_axes: Sequence[Hashable] = (),
 ):
     def decorator(fn: _BaseTransform | Callable):
         return ValueAndGrad(fn, kwargs_mask, argnums=argnums, has_aux=has_aux, reduce_axes=reduce_axes)
