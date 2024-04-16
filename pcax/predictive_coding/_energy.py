@@ -19,12 +19,12 @@ from ..core._random import RKG, RandomKeyGenerator
 ########################################################################################################################
 
 
-# Core ##################################################################################################################
+# Core #################################################################################################################
 
 
 def zero_energy(vode, rkg: RandomKeyGenerator = RKG):
     """used to unconstrain the value of a vode from its prior distribution (i.e., input)."""
-    return 0.0
+    return jax.numpy.zeros((1,))
 
 
 def se_energy(vode, rkg: RandomKeyGenerator = RKG):
