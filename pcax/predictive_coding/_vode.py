@@ -86,13 +86,13 @@ class Ruleset(BaseModule):
 
         for _pattern, _rules in self.rules.items():
             if re.match(_pattern, status) is None:
-                break
+                continue
 
             for _rule in _rules:
                 if _match := re.match(rule_pattern, _rule):
                     yield _match.group(1, 2)
 
-    def apply_transformation(
+    def apply_set_transformation(
         self, node: "Vode", tform: str, key: str, value: Any | None = None, rkg: RandomKeyGenerator = RKG
     ) -> Any | None:
         """Recursively apply the transformation specified by the given tform to the given value.
@@ -107,11 +107,45 @@ class Ruleset(BaseModule):
         Returns:
             Any | None: transformed value.
         """
-        _value = value if value is not None else node.get(tform, None)
+
+        if ":" in tform:
+            tform, _t = tform.rsplit(":", 1)
+
+            value = self.tforms[_t](
+                node,
+                key,
+                self.apply_set_transformation(node, tform, key, value, rkg),
+                rkg
+            )
+
+        return value
+
+    def apply_get_transformation(
+        self, node: "Vode", tform: str, key: str, rkg: RandomKeyGenerator = RKG
+    ) -> Any | None:
+        """Recursively apply the transformation specified by the given tform to the given value.
+
+        Args:
+            node (Vode): target vode.
+            tform (str): sequence of ":"-separated transformations to apply to the value.
+            key (str): input key.
+            value (Any | None, optional): input value.
+            rkg (RandomKeyGenerator, optional): random key generator. Defaults to RKG.
+
+        Returns:
+            Any | None: transformed value.
+        """
+        _value = node.get(tform, None)
 
         if _value is None and ":" in tform:
-            _tform, _t = tform.rsplit(":", 1)
-            _value = self.tforms[_t](node, key, self.apply_transformation(node, _tform, key, value, rkg), rkg)
+            tform, _t = tform.rsplit(":", 1)
+
+            _value = self.tforms[_t](
+                node,
+                key,
+                self.apply_get_transformation(node, tform, key, rkg),
+                rkg
+            )
 
         return _value
 
@@ -132,7 +166,8 @@ class Vode(EnergyModule):
         self,
         shape: Tuple[int, ...],
         energy_fn: Callable[["Vode", RandomKeyGenerator], jax.Array] = se_energy,
-        ruleset: Ruleset = Ruleset({STATUS.INIT: ("h, u <- u",)}),
+        ruleset: dict = {},
+        tforms: dict = {},
         param_type: type[VodeParam] = VodeParam,
         *param_args,
         **param_kwargs,
@@ -156,7 +191,7 @@ class Vode(EnergyModule):
         self.h = param_type(*param_args, **param_kwargs)
         self.cache = param_type.Cache()
         self.energy_fn = static(energy_fn)
-        self.ruleset = ruleset
+        self.ruleset = Ruleset({STATUS.INIT: ("h, u <- u",), **ruleset}, tforms)
 
     def __call__(self, u: jax.Array | None, rkg: RandomKeyGenerator = RKG, output="h", **kwargs) -> jax.Array | Any:
         """Deep learning layers are typically implemented as callable objects, taking in input the incoming activation
@@ -206,7 +241,7 @@ class Vode(EnergyModule):
 
         rules = tuple(self.ruleset.filter(self.status, _rule_pattern))
         for _targets, _tform in rules:
-            _value = self.ruleset.apply_transformation(self, _tform, _tform.split(":", 1)[0], value, rkg)
+            _value = self.ruleset.apply_set_transformation(self, _tform, _tform.split(":", 1)[0], value, rkg)
 
             for _target in _targets.split(","):
                 _target = _target.strip()
@@ -246,10 +281,13 @@ class Vode(EnergyModule):
                 return _param.get()
             else:
                 return self.cache.get(key, default)
-        elif len(_rules) > 1:
+        else:
+            # TODO: use warnings
+            if len(_rules) > 1:
+                print(f"WARNING: Multiple output rules matched for key '{key}' in status '{self.status}'.")
             (_target, _tform) = _rules[0]
 
-            _value = self.ruleset.apply_transformation(self, _tform, _target, rkg=rkg)
+            _value = self.ruleset.apply_get_transformation(self, _tform, _target, rkg=rkg)
 
             if ":" in _tform:
                 self.cache[_tform] = _value
