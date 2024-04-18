@@ -46,10 +46,10 @@ def step(
     
     # Enforce status to be a tuple.
     status = (status, None) if not isinstance(status, list | tuple) else status
-    clear_params = (None, clear_params) if not isinstance(status, list | tuple) else clear_params
+    clear_params = (None, clear_params) if not isinstance(clear_params, list | tuple) else clear_params
     
     if clear_params[0] is not None:
-        module.clear_params(clear_params)
+        module.clear_params(clear_params[0])
         
     tree_apply(lambda m: m._status.set(status[0]), lambda x: isinstance(x, EnergyModule), tree=module)
 
@@ -58,4 +58,4 @@ def step(
     tree_apply(lambda m: m._status.set(status[1]), lambda x: isinstance(x, EnergyModule), tree=module)
     
     if clear_params[1] is not None:
-        module.clear_params(clear_params)
+        module.clear_params(clear_params[1])
