@@ -13,7 +13,7 @@ from ..core._static import static
 
 ########################################################################################################################
 #
-# MODULE
+# ENERGY MODULE
 #
 # predictive_coding.Module inherits from core.Module and adds a status attribute to the module to configure the behavior
 # of its methods. It also introduces the concept of energy. In particular, it is used by 'preditive_coding.Vode'.
