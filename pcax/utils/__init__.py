@@ -1,13 +1,13 @@
 __all__ = [
     "step",
-    "Optim"
+    "Optim",
     
     "save_params",
-    "load_params"
+    "load_params",
 ]
 
-from .context import (step)
-from .optim import (Optim)
+from ._misc import (step)
+from ._optim import (Optim)
 
 
 from ._serialisation import (

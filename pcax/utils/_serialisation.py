@@ -17,7 +17,7 @@ from ..nn._parameter import LayerParam
 #
 # SERIALIZATION
 #
-# Utility to save/load a model.
+# Utilities to save/load a model.
 #
 ########################################################################################################################
 
