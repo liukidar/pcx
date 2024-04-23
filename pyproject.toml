@@ -24,3 +24,4 @@ no_implicit_reexport = true
 
 [tool.black]
 line-length = 120
+
