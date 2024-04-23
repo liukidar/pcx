@@ -26,7 +26,7 @@ extensions = [
     'sphinx.ext.githubpages',
     'sphinx.ext.napoleon',
     "nbsphinx",
-    "nbsphinx_link",
+    # "nbsphinx_link",
     ]
 
 

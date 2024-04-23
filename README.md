@@ -44,6 +44,7 @@ pip install -e /path/to/this/repo/ --config-settings editable_mode=strict
 ! TODO Redo
 
 ```
+cp ../examples/* source/examples
 sphinx-apidoc -f -o ../docs/source/ ../pcax/
 ```
 
