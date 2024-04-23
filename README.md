@@ -41,29 +41,7 @@ pip install -e /path/to/this/repo/ --config-settings editable_mode=strict
 
 ## Docs
 
-! TODO Redo
-
-```
-cp ../examples/* source/examples
-sphinx-apidoc -f -o ../docs/source/ ../pcax/
-```
-
-The `docs` folder in the repository links to the [liukidar/pcax-docs](https://github.com/liukidar/pcax-docs) repository. To load it locally, please run:
-
-```shell
-git submodule update --init --recursive
-```
-
-If the `docs` folder remains empty, you probably do not have access to the [pcax-docs](https://github.com/liukidar/pcax-docs) repository yet.
-
-The documentation can be viewed by launching a http server in the docs folder:
-
-```shell
-cd path/to/docs
-python -m http.server
-```
-
-If you are hosting the server remotely via SSH using VS Code, the port should be automatically forwarded to your machine. If not, you can do that manually in the "PORTS" tab of the VS Code terminal.
+Go to `/docs/README.md` to learn how to get them.
 
 ## Contribute
 
