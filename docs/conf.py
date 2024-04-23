@@ -9,7 +9,7 @@
 project = 'PCAX'
 copyright = '2024, Luca Pinchetti et al.'
 author = 'Luca Pinchetti et al.'
-release = '0.0.6'
+release = '0.6'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
