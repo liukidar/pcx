@@ -43,7 +43,7 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'furo' # sphinx_rtd_theme, furo
+html_theme = 'sphinx_book_theme' # sphinx_rtd_theme, furo, sphinx_book_theme
 html_static_path = ['_static']
 
 
@@ -59,6 +59,10 @@ napoleon_use_admonition_for_references = False
 napoleon_use_ivar = False
 napoleon_use_param = True
 napoleon_use_rtype = True
+
+html_theme_options = {
+    "show_navbar_depth": 3
+}
 
 # html_sidebars = {
 #     '**': [
