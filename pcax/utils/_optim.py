@@ -16,7 +16,7 @@ from ..core._static import static
 #
 # Optim offers a simple interface to the optax library. Being a 'BaseModule' it can be pass through pcax transformations
 # with its state being tracked and updated. Note that init can be called anytime to reset the optimizer state. This
-# can be helpful when the optimizer is used in a loop and the state needs to be reset at each iteration (for example, 
+# can be helpful when the optimizer is used in a loop and the state needs to be reset at each iteration (for example,
 # this may be the case for the vode opimitzer after each mini-batch).
 #
 # DEV NOTE: currently all the state is stored as a single parameter. This may be insufficient for advanced learning
@@ -59,7 +59,7 @@ class Optim(BaseModule):
             grads (PyTree): the computed gradients to apply. Provided gradients must match the same structure of the
                 module used to initialise the optimizer.
         """
-        
+
         # Filter out the Params that do not have a gradient (this, for example, includes all the StaticParam whose
         # current state my differ from the original parameter structure and thus be incomparible with the gradients
         # structure). By doing so, and by enforcing the basic requirement that the gradients for all target paramemters
@@ -83,6 +83,8 @@ class Optim(BaseModule):
             module,
             is_leaf=lambda x: isinstance(x, BaseParam)
         )
+
+        return updates
 
     def init(self, parameters: PyTree) -> None:
         # We compute a static filter identifying the parameters given to be optimised. This is useful to filter out
