@@ -42,7 +42,7 @@
 		}
 	},
 	// Install pcax package
-	"postStartCommand": "pip install -e ."
+	"postStartCommand": "cp /home/pcax/workspace/poetry.lock /workspaces/pcax/poetry.lock; pip install -e ."
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 	// Uncomment the next line to run commands after the container is created.

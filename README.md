@@ -8,20 +8,26 @@ pcax is a Python JAX-based library designed to develop highly configurable predi
 
 Run your development environment in a docker container. This is the most straightforward option to work with `pcax`, as the development environment is pre-configured for you.
 
-The `Dockerfile` is located in `pcax/docker`, with the `run.sh` script that builds and runs it. You can play with the `Dockerfile` directly if you know what you are doing or if you don't use VSCode.
+The `Dockerfile` is located in `pcax/docker`, with the `run.sh` script that builds and runs it. You can play with the `Dockerfile` directly if you know what you are doing or if you don't use VSCode. If you want a fully automated environment setup, then forget about the `pcax/docker` directory and read on.
 
 **Warning**: This image should run on CUDA 12.2 or later, but not earlier. Make sure that your `nvidia-smi` reports CUDA >=12.2. If not, update the base `nvidia/cuda` image and the fix at the bottom in the `docker/Dockerfile` to use the same version of CUDA as your host does.
+
+**PyTorch with GPU support**: By default, the image will install a CPU-only PyTorch. If you need GPU support with PyTorch, do the following:
+1. Replace ALL occurrences of `source = "torch-cpu"` with `source = "torch-gpu"` in the [pyproject.toml](./pyproject.toml) file.
+1. Remove the [poetry.lock](./poetry.lock) file, it will be regenerated.
+1. Follow the instructions below. It will take 20 minutes more to install only during the first launch. Note that JAX always comes with GPU support.
 
 Requirements:
 
 1. A CUDA >=12.2 enabled machine with an NVIDIA GPU. You can do without a GPU, probably, just omit the steps related to the GPU passthrough and configuration.
 2. [Install docker](https://docs.docker.com/engine/install/).
-3. Install [nvidia-container-toolkit](https://github.com/NVIDIA/nvidia-container-toolkit) to enable docker to use the GPU. **Make sure to re-start the docker daemon after this step**. For example, on Ubuntu this will be `sudo systemctl restart docker`.
-4. Install [Visual Studio Code](https://code.visualstudio.com/download).
-5. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) in VSCode.
-6. Optionally, [read how to develop inside container with VS Code](https://code.visualstudio.com/docs/devcontainers/containers).
+3. Install [nvidia-container-toolkit](https://github.com/NVIDIA/nvidia-container-toolkit) to enable docker to use the GPU.
+4. **Make sure to re-start the docker daemon after the previous step**. For example, on Ubuntu this will be `sudo systemctl restart docker`.
+5. Install [Visual Studio Code](https://code.visualstudio.com/download).
+6. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) in VSCode.
+7. Optionally, [read how to develop inside container with VS Code](https://code.visualstudio.com/docs/devcontainers/containers).
 
-Once everything is done, open this project in VS Code and execute the `Dev Containers: Reopen in Container` command (Ctrl/Cmd+Shift+P). This will build the docker image and open the project inside that docker image. Building the docker image for the first time may take around 5 minutes.
+Once everything is done, open this project in VS Code and execute the `Dev Containers: Reopen in Container` command (Ctrl/Cmd+Shift+P). This will build the docker image and open the project inside that docker image. Building the docker image for the first time may take around 20 minutes, depending on your internet speed. If you want install torch with GPU support, it will take 20 more minutes during the first launch.
 
 You can always exit the container by running the `Dev Containers: Reopen folder locally` command.
 You can rebuild the container by running the `Dev Containers: Rebuild Container` command.
@@ -32,7 +38,6 @@ When running a Jupyter Notebook it will prompt you to select an environment. Sel
 1. You are not supposed to modify the `docker/Dockerfile` unless you perfectly know what you are doing and why.
 1. You are not supposed to run the docker container directly. The Dev Containers extension will do this for you. If you think you need to `docker run -it` then something is really wrong.
 1. Use `poetry` to add a python package to the environment: `poetry add --group dev [package]`. The `--group dev` part should be omitted if this package is needed for the core `pcax` code. Try not to install packages with `pip`.
-1. After you `poetry add` something please re-install jax by running: `pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html`.
 1. Please update your docker to >>20.10.9. [This image is known not to work with docker <= 20.10.9](https://stackoverflow.com/questions/71941032/why-i-cannot-run-apt-update-inside-a-fresh-ubuntu22-04). It failes with the following message: `E: Problem executing scripts APT::Update::Post-Invoke 'rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb /var/cache/apt/*.bin || true'`.
 1. Sometimes Pylance fails to start because it depends on the Python extension that starts later. In this case, just reload the window by running the `Developer: Reload window` command.
 
