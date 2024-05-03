@@ -24,14 +24,20 @@ class ModelParams(Hyperparams):
         search_space=tune.choice([32, 64, 128, 256, 512, 1024]),
         tunable=True,
     )
-    output_dim: int = HP(
-        "Dimension of the data. Must be output_dim >> internal_dim.", default=784
-    )
+    output_dim: int = HP("Dimension of the data. Must be output_dim >> internal_dim.", default=784)
     num_hidden_layers: int = HP(
         "Number of the hidden layers in the generator, excluding input and output layers.",
-        default=1,
+        default=4,
         search_space=tune.choice([1, 2, 3, 4]),
         tunable=True,
+    )
+    extend_hidden_layers: bool = HP(
+        "Whether to add copies of the last hidden layer to the network as the training progresses. When enabled, the network starts with one hidden layer and grows up to num_hidden_layers.",
+        default=True,
+    )
+    extend_hidden_layers_every_n_epochs: int = HP(
+        "Add a copy of the last hidden layer to the network every N epochs.",
+        default=1,
     )
     activation: str = HP(
         "Activation function to use in the generator.",
@@ -97,13 +103,9 @@ class Params(ModelParams, RayTuneHyperparamsMixin):
         tunable=False,
     )
 
-    data_dir: str = HP(
-        "Directory to save data to.", default="data", adjust_relative_path=True
-    )
+    data_dir: str = HP("Directory to save data to.", default="data", adjust_relative_path=True)
     results_dir: str = HP("Directory to save results to.", default="results")
-    overwrite_results_dir: bool = HP(
-        "Whether to overwrite the results directory", default=False
-    )
+    overwrite_results_dir: bool = HP("Whether to overwrite the results directory", default=False)
     save_best_results: bool = HP(
         "Whether to save the best model",
         default=True,

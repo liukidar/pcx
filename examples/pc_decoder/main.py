@@ -36,7 +36,7 @@ def main():
         or params.hypertunning_gpu_memory_fraction_per_trial > 1
     ):
         raise ValueError(
-            f"--hypertunning-gpu-memory-fraction-per-trial must be in [0, 1]"
+            "--hypertunning-gpu-memory-fraction-per-trial must be in [0, 1]"
         )
 
     if params.do_hypertunning:

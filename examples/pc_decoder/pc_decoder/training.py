@@ -63,7 +63,7 @@ class TrainOnBatchResult(NamedTuple):
     gradients: list[dict[str, jax.Array]]
 
 
-@pxu.jit()
+# @pxu.jit()
 def train_on_batch(
     examples: jax.Array,
     *,
@@ -120,9 +120,7 @@ def run_training_experiment(params: Params) -> None:
         if params.overwrite_results_dir:
             shutil.rmtree(results_dir)
         else:
-            raise RuntimeError(
-                f"Results dir {results_dir} already exists and is not empty!"
-            )
+            raise RuntimeError(f"Results dir {results_dir} already exists and is not empty!")
     results_dir.mkdir(parents=True, exist_ok=True)
 
     model = PCDecoder(
@@ -166,7 +164,18 @@ def train_model(
             model.w_parameters(),
         )
 
-    train_batch_fn = train_on_batch.snapshot(
+    # train_batch_fn = train_on_batch.snapshot(
+    #     model=model,
+    #     optim_x=optim_x,
+    #     optim_w=optim_w,
+    #     loss=loss,  # type: ignore
+    #     T=params.T,  # type: ignore
+    # )
+
+    from functools import partial
+
+    train_batch_fn = partial(
+        train_on_batch,
         model=model,
         optim_x=optim_x,
         optim_w=optim_w,
@@ -181,9 +190,7 @@ def train_model(
         T=params.T,  # type: ignore
     )
 
-    train_loader, test_loader, train_data_mean, train_data_std = get_data_loaders(
-        params
-    )
+    train_loader, test_loader, train_data_mean, train_data_std = get_data_loaders(params)
     if DEBUG:
         train_loader = ReentryIsliceIterator(train_loader, DEBUG_BATCH_NUMBER)  # type: ignore
         test_loader = ReentryIsliceIterator(test_loader, DEBUG_BATCH_NUMBER)  # type: ignore
@@ -220,11 +227,7 @@ def train_model(
                     del batch_res
                     gc.collect()
 
-            epoch_train_mse: float = float(
-                np.mean(
-                    epoch_train_mses[-params.use_last_n_batches_to_compute_metrics :]
-                )
-            )
+            epoch_train_mse: float = float(np.mean(epoch_train_mses[-params.use_last_n_batches_to_compute_metrics :]))
             train_mses.append(epoch_train_mse)
             logging.info(f"Finished training in epoch {epoch + 1}")
 
@@ -246,17 +249,15 @@ def train_model(
             }
 
             should_save_intermediate_results = (
-                params.save_intermediate_results
-                and (epoch + 1) % params.save_results_every_n_epochs == 0
+                params.save_intermediate_results and (epoch + 1) % params.save_results_every_n_epochs == 0
             )
-            should_save_best_results = (
-                params.save_best_results and epoch_test_mse < best_test_mse
-            )
+            should_save_best_results = params.save_best_results and epoch_test_mse < best_test_mse
             best_train_mse = min(best_train_mse, epoch_train_mse)
             best_test_mse = min(best_test_mse, epoch_test_mse)
             if should_save_intermediate_results or should_save_best_results:
                 logging.info(
-                    f"Saving results for epoch {epoch + 1}. Best epoch: {should_save_best_results}. MSE: {epoch_test_mse}"
+                    f"Saving results for epoch {epoch + 1}. "
+                    f"Best epoch: {should_save_best_results}. MSE: {epoch_test_mse}"
                 )
                 epoch_results = results_dir / f"epochs_{epoch + 1}"
                 epoch_results.mkdir()
@@ -277,6 +278,9 @@ def train_model(
             if params.do_hypertunning:
                 session.report(epoch_report)
 
+            if params.extend_hidden_layers and (epoch + 1) % params.extend_hidden_layers_every_n_epochs == 0:
+                model.extend_hidden_layers()
+
             logging.info(f"Finished epoch {epoch + 1}")
             tepoch.set_postfix(train_mse=epoch_train_mse, test_mse=epoch_test_mse)
 
@@ -296,15 +300,13 @@ def train_model(
             run.summary["internal_states_mean"] = internal_states_mean
             run.summary["internal_states_std"] = internal_states_std
     else:
-        logging.error(f"No best epoch exists for this run")
+        logging.error("No best epoch exists for this run")
 
     if run is not None:
         run.summary["train_mse"] = best_train_mse
         run.summary["test_mse"] = best_test_mse
 
-    logging.info(
-        f"Finished training for {params.epochs} epochs, test_mse={best_test_mse}"
-    )
+    logging.info(f"Finished training for {params.epochs} epochs, test_mse={best_test_mse}")
 
 
 def visualize_epoch(

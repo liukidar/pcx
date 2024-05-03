@@ -7,7 +7,6 @@ from uuid import uuid4
 import jax
 import jax.numpy as jnp
 import numpy as np
-from numpy.typing import NDArray
 from pc_decoder.params import ModelParams
 
 import pcax as px  # type: ignore
@@ -49,7 +48,7 @@ class PCDecoder(px.EnergyModule):
             [nn.Linear(self.p.internal_dim, self.p.hidden_dim)]
             + [
                 nn.Linear(self.p.hidden_dim, self.p.hidden_dim)
-                for _ in range(self.p.num_hidden_layers)
+                for _ in range(self.p.num_hidden_layers if not self.p.extend_hidden_layers else 1)
             ]
             + [nn.Linear(self.p.hidden_dim, self.p.output_dim)]
         )
@@ -59,9 +58,13 @@ class PCDecoder(px.EnergyModule):
 
         self.pc_nodes[-1].x.frozen = True
 
-    def __call__(
-        self, example: jax.Array | None = None, internal_state: jax.Array | None = None
-    ) -> jax.Array:
+    def extend_hidden_layers(self) -> None:
+        if not self.p.extend_hidden_layers or self.num_layers == self.p.num_hidden_layers + 2:
+            return
+        self.fc_layers.insert(-1, self.fc_layers[-1].copy())
+        self.pc_nodes.insert(-1, self.pc_nodes[-1].copy())
+
+    def __call__(self, example: jax.Array | None = None, internal_state: jax.Array | None = None) -> jax.Array:
         if internal_state is None:
             if self.prior_layer is not None:
                 internal_state = self.prior_layer(jnp.ones((1,)))
@@ -128,7 +131,9 @@ class PCDecoder(px.EnergyModule):
 
     @property
     def num_layers(self) -> int:
-        return self.p.num_hidden_layers + 2
+        if not self.p.extend_hidden_layers:
+            assert len(self.fc_layers) == self.p.num_hidden_layers + 2
+        return len(self.fc_layers)
 
     @property
     def prediction(self) -> jax.Array:
@@ -174,8 +179,7 @@ class PCDecoder(px.EnergyModule):
 
         with np.load(os.path.join(savedir, "w_params.npz")) as npzfile:
             weights: dict[str, jax.Array] = {
-                id_to_name[param_id]: jnp.array(npzfile[param_id])
-                for param_id in npzfile.files
+                id_to_name[param_id]: jnp.array(npzfile[param_id]) for param_id in npzfile.files
             }
 
             missing_parameters = set()
@@ -190,9 +194,7 @@ class PCDecoder(px.EnergyModule):
                     missing_parameters.add(param_name)
 
         if missing_parameters:
-            logging.error(
-                f"When loadings weights {len(missing_parameters)} were not found: {missing_parameters}"
-            )
+            logging.error(f"When loadings weights {len(missing_parameters)} were not found: {missing_parameters}")
 
 
 @pxu.vectorize(px.f(px.NodeParam, with_cache=True), in_axis=(0,), out_axis=("sum",))  # type: ignore
@@ -219,9 +221,7 @@ def feed_forward_predict(internal_state: jax.Array, *, model: PCDecoder) -> jax.
 
 
 @pxu.jit()
-def get_internal_states_on_batch(
-    examples, *, model: PCDecoder, optim_x, loss, T
-) -> jax.Array:
+def get_internal_states_on_batch(examples, *, model: PCDecoder, optim_x, loss, T) -> jax.Array:
     model.converge_on_batch(examples, optim_x=optim_x, loss=loss, T=T)
     assert model.internal_state is not None
     return model.internal_state
