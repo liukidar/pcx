@@ -42,11 +42,11 @@
 		}
 	},
 	// Install pcax package
-	"postStartCommand": "cp /home/pcax/workspace/poetry.lock /workspaces/pcax/poetry.lock; pip install -e ."
+	"postStartCommand": "cp /home/pcax/workspace/poetry.lock /workspaces/pcax/poetry.lock; pip install -e .",
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 	// Uncomment the next line to run commands after the container is created.
 	// "postCreateCommand": "cat /etc/os-release",
 	// Uncomment to connect as an existing user other than the container default. More info: https://aka.ms/dev-containers-non-root.
-	// "remoteUser": "devcontainer"
+	"remoteUser": "pcax"
 }
