@@ -6,10 +6,6 @@ __all__ = [
     "jit",
     "vmap",
     "value_and_grad",
-    "Scan",
-    "WhileLoop",
-    "Cond",
-    "Switch",
 ]
 
 from typing import Any, Hashable, Sequence, Callable
