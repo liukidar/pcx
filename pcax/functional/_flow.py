@@ -40,19 +40,19 @@ from ._transform import _make_tuple, _BaseTransform
 
 class Scan(_BaseTransform):
     """
-    pcax wrap around jax.lax.scan(fn, ...).
+    pcax wrap around ``jax.lax.scan(fn, ...).``
     Takes the same function arguments (except 'init') but does not require a compact carry argument.
-    In particular, fn must have signature fn(x, *args, **kwargs) -> args, y.
+    In particular, ``fn`` must have signature ``fn(x, *args, **kwargs) -> args, y``.
 
     Example:
 
-    ```python
-    def f(x, count):
-        count = count + x
-        return (count + x,), None
+    .. code-block:: python
 
-    Scan(f, xs=jax.numpy.arange(5))(0)  # [0, 1, 3, 6, 10], None
-    ```
+        def f(x, count):
+            count = count + x
+            return (count + x,), None
+
+        Scan(f, xs=jax.numpy.arange(5))(0)  # [0, 1, 3, 6, 10], None
     """
 
     def __init__(self, fn: "_BaseTransform" | Callable, **t_kwargs: Any):
@@ -111,7 +111,9 @@ class WhileLoop(_BaseTransform):
 
             return self.cond_fun(*args, **kwargs)
 
-        _r, kwargs = jax.lax.while_loop(_cond_fn, _wrap_fn, (args, kwargs), **self.t_kwargs)
+        _r, kwargs = jax.lax.while_loop(
+            _cond_fn, _wrap_fn, (args, kwargs), **self.t_kwargs
+        )
         return _r, kwargs
 
 
@@ -121,7 +123,12 @@ class Cond(_BaseTransform):
     Takes the same function arguments (except 'cond' and '*operands').
     """
 
-    def __init__(self, true_fn: _BaseTransform | Callable, false_fn: _BaseTransform | Callable, **t_kwargs: Any):
+    def __init__(
+        self,
+        true_fn: _BaseTransform | Callable,
+        false_fn: _BaseTransform | Callable,
+        **t_kwargs: Any,
+    ):
         """Cond constructor.
 
         Args:
@@ -140,7 +147,10 @@ class Cond(_BaseTransform):
             return _r, _kwargs
 
         _r, kwargs = jax.lax.cond(
-            cond, *tuple(partial(_wrap_fn, i) for i in range(len(self.fn))), (args, kwargs), **self.t_kwargs
+            cond,
+            *tuple(partial(_wrap_fn, i) for i in range(len(self.fn))),
+            (args, kwargs),
+            **self.t_kwargs,
         )
         return _r, kwargs
 
@@ -169,6 +179,9 @@ class Switch(_BaseTransform):
             return _r, _kwargs
 
         _r, _kwargs = jax.lax.switch(
-            index, tuple(partial(_wrap_fn, i) for i in range(len(self.fn))), (args, kwargs), **self.t_kwargs
+            index,
+            tuple(partial(_wrap_fn, i) for i in range(len(self.fn))),
+            (args, kwargs),
+            **self.t_kwargs,
         )
         return _r, _kwargs
