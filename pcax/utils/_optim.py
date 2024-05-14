@@ -50,7 +50,7 @@ class Optim(BaseModule):
         if parameters is not None:
             self.init(parameters)
 
-    def step(self, module: PyTree, grads: PyTree) -> None:
+    def step(self, module: PyTree, grads: PyTree, apply_updates: bool = True) -> None:
         """Performs a gradient update step similarly to Pytorch's 'optimizer.step()' by calling first 'optax_opt.update'
         and then 'eqx.apply_updates'.
 
@@ -77,14 +77,25 @@ class Optim(BaseModule):
         )
         self.state.set(state)
 
+        if apply_updates:
+            self.apply_updates(module, updates)
+
+        return updates
+
+    def apply_updates(self, module: PyTree, updates: PyTree) -> None:
+        """Applies the updates to the module parameters.
+
+        Args:
+            module (PyTree): the module storing the target parameters.
+            updates (PyTree): the updates to apply. Provided updates must match the same structure of the module used to
+                initialise the optimizer.
+        """
         jtu.tree_map(
             lambda u, p: set(p, eqx.apply_updates(get(p), get(u))),
             updates,
             module,
             is_leaf=lambda x: isinstance(x, BaseParam)
         )
-
-        return updates
 
     def init(self, parameters: PyTree) -> None:
         # We compute a static filter identifying the parameters given to be optimised. This is useful to filter out
@@ -97,6 +108,10 @@ class Optim(BaseModule):
         ))
         parameters = eqx.filter(parameters, self.filter.get(), is_leaf=lambda x: isinstance(x, BaseParam))
 
-        self.state = Param(
+        self.state.set(
             self.optax_opt.init(parameters)
         )
+
+    def clear(self) -> None:
+        self.state.set(None)
+        self.filter.set(None)
