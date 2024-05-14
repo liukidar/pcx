@@ -111,3 +111,7 @@ class Optim(BaseModule):
         self.state.set(
             self.optax_opt.init(parameters)
         )
+
+    def clear(self) -> None:
+        self.state.set(None)
+        self.filter.set(None)
