@@ -54,7 +54,7 @@ class Scan(_BaseTransform):
     ```python
     def f(x, count):
         count = count + x
-        return (count + x,), 
+        return (count + x,), None
         
     Scan(f, xs=jax.numpy.arange(5))(0)  # [0, 1, 3, 6, 10], None
     ```
