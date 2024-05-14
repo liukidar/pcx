@@ -108,6 +108,6 @@ class Optim(BaseModule):
         ))
         parameters = eqx.filter(parameters, self.filter.get(), is_leaf=lambda x: isinstance(x, BaseParam))
 
-        self.state = Param(
+        self.state.set(
             self.optax_opt.init(parameters)
         )
