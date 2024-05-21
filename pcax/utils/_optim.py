@@ -29,13 +29,9 @@ from ..core._static import static
 
 
 class Optim(BaseModule):
-    """Optim inherits from core.BaseModule and thus it is a pytree. It is a thin wrapper around the optax library.
-    """
-    def __init__(
-        self,
-        optax_opt: optax.GradientTransformation,
-        parameters: PyTree | None = None
-    ):
+    """Optim inherits from core.BaseModule and thus it is a pytree. It is a thin wrapper around the optax library."""
+
+    def __init__(self, optax_opt: optax.GradientTransformation, parameters: PyTree | None = None):
         """Optim constructor.
 
         Args:
@@ -50,7 +46,9 @@ class Optim(BaseModule):
         if parameters is not None:
             self.init(parameters)
 
-    def step(self, module: PyTree, grads: PyTree, apply_updates: bool = True) -> None:
+    def step(
+        self, module: PyTree, grads: PyTree, scale_by_batch_size: bool = False, apply_updates: bool = True
+    ) -> None:
         """Performs a gradient update step similarly to Pytorch's 'optimizer.step()' by calling first 'optax_opt.update'
         and then 'eqx.apply_updates'.
 
@@ -68,7 +66,16 @@ class Optim(BaseModule):
         # For example 'grads' could contain gradients computed for parameters not targeted by this optimiser without
         # causing any issue since they will be filtered out automatically.
         module = eqx.filter(module, self.filter.get(), is_leaf=lambda x: isinstance(x, BaseParam))
-        grads = eqx.filter(grads, self.filter.get(), is_leaf=lambda x: isinstance(x, BaseParam))
+
+        if scale_by_batch_size is True:
+            grads = jtu.tree_map(
+                lambda x, f: x.set(x * x.shape[0]) if f is True else None,
+                grads,
+                self.filter.get(),
+                is_leaf=lambda x: isinstance(x, BaseParam),
+            )
+        else:
+            grads = eqx.filter(grads, self.filter.get(), is_leaf=lambda x: isinstance(x, BaseParam))
 
         updates, state = self.optax_opt.update(
             grads,
@@ -94,23 +101,19 @@ class Optim(BaseModule):
             lambda u, p: set(p, eqx.apply_updates(get(p), get(u))),
             updates,
             module,
-            is_leaf=lambda x: isinstance(x, BaseParam)
+            is_leaf=lambda x: isinstance(x, BaseParam),
         )
 
     def init(self, parameters: PyTree) -> None:
         # We compute a static filter identifying the parameters given to be optimised. This is useful to filter out
         # he remaining parameters and allow them to change structure without affecting the functioning of the
         # optimizer.
-        self.filter.set(jtu.tree_map(
-            lambda x: get(x) is not None,
-            parameters,
-            is_leaf=lambda x: isinstance(x, BaseParam)
-        ))
+        self.filter.set(
+            jtu.tree_map(lambda x: get(x) is not None, parameters, is_leaf=lambda x: isinstance(x, BaseParam))
+        )
         parameters = eqx.filter(parameters, self.filter.get(), is_leaf=lambda x: isinstance(x, BaseParam))
 
-        self.state.set(
-            self.optax_opt.init(parameters)
-        )
+        self.state.set(self.optax_opt.init(parameters))
 
     def clear(self) -> None:
         self.state.set(None)
