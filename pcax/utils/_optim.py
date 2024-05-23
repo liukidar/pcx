@@ -47,7 +47,7 @@ class Optim(BaseModule):
             self.init(parameters)
 
     def step(
-        self, module: PyTree, grads: PyTree, scale_by_batch_size: bool = False, apply_updates: bool = True
+        self, module: PyTree, grads: PyTree, scale_by_batch_size: bool = False, apply_updates: bool = True, mul: float = None
     ) -> None:
         """Performs a gradient update step similarly to Pytorch's 'optimizer.step()' by calling first 'optax_opt.update'
         and then 'eqx.apply_updates'.
@@ -70,6 +70,13 @@ class Optim(BaseModule):
         if scale_by_batch_size is True:
             grads = jtu.tree_map(
                 lambda x, f: x.set(x * x.shape[0]) if f is True else None,
+                grads,
+                self.filter.get(),
+                is_leaf=lambda x: isinstance(x, BaseParam),
+            )
+        elif mul is not None:
+            grads = jtu.tree_map(
+                lambda x, f: x.set(x * mul) if f is True else None,
                 grads,
                 self.filter.get(),
                 is_leaf=lambda x: isinstance(x, BaseParam),
