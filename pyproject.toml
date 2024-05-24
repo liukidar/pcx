@@ -7,11 +7,6 @@ license = "Propriaetary. Confidential. No part of this work can be disclosed or 
 readme = "README.md"
 
 [[tool.poetry.source]]
-name = "jax"
-url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
-priority = "explicit"
-
-[[tool.poetry.source]]
 name = "torch-gpu"
 url = "https://download.pytorch.org/whl/cu121"
 priority = "explicit"
@@ -27,7 +22,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-jaxlib = {version = "0.4.26+cuda12.cudnn89", source = "jax"}
+jax = {extras = ["cuda12"], version = "^0.4.28"}
 optax = "0.*"
 equinox = "0.*"
 
@@ -41,6 +36,7 @@ scikit-learn = "1.*"
 matplotlib = "3.*"
 seaborn = "0.*"
 jupyter = "1.*"
+datasets = "^2.19.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "23.*"
@@ -50,6 +46,7 @@ tox = "4.*"
 isort = "5.*"
 flake8 = "7.*"
 pytest-cov = "5.*"
+flax = "^0.8.3"
 
 [tool.pytest.ini_options]
 addopts = "--cov=pcax"

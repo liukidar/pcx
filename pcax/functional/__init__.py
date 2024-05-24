@@ -23,31 +23,31 @@ def scan(
     length: int | None = None,
     reverse: bool = False,
     unroll: int | bool = 1,
-) -> Any:
-    """Utility function to use the jax.lax.scan syntax for the Scan transformation."""
+) -> Scan:
+    """Utility function to use the jax.lax.scan syntax for the :class:`~pcax.functional.Scan` transformation."""
     return Scan(f, xs=xs, length=length, reverse=reverse, unroll=unroll)
 
 
 def while_loop(
     f: _BaseTransform | Callable,
     cond_fun: _BaseTransform | Callable,
-) -> Any:
-    """Utility function to use the jax.lax.while_loop syntax for the WhileLoop transformation."""
+) -> WhileLoop:
+    """Utility function to use the jax.lax.while_loop syntax for the :class:`~pcax.functional.WhileLoop` transformation."""
     return WhileLoop(f, cond_fun=cond_fun)
 
 
 def cond(
     true_fun: _BaseTransform | Callable,
     false_fun: _BaseTransform | Callable,
-) -> Any:
-    """Utility function to use the jax.lax.cond syntax for the Cond transformation."""
+) -> Cond:
+    """Utility function to use the jax.lax.cond syntax for the :class:`~pcax.functional.Cond` transformation."""
     return Cond(true_fun, false_fun)
 
 
 def switch(
     branches: Sequence[_BaseTransform | Callable],
-) -> Any:
-    """Utility function to use the jax.lax.switch syntax for the Switch transformation."""
+) -> Switch:
+    """Utility function to use the jax.lax.switch syntax for the :class:`~pcax.functional.Switch` transformation."""
     return Switch(branches)
 
 
@@ -59,7 +59,7 @@ def jit(
     # static_argnames=None,  # this is currently disabled as it hasn't been tested.
     donate_argnums=None,
     donate_argnames=None,
-    **kwargs
+    **kwargs,
 ):
     def decorator(fn: _BaseTransform | Callable):
         return Jit(
@@ -68,7 +68,7 @@ def jit(
             # static_argnames=static_argnames,
             donate_argnums=donate_argnums,
             donate_argnames=donate_argnames,
-            **kwargs
+            **kwargs,
         )
 
     return decorator
@@ -81,7 +81,9 @@ def vmap(
     axis_name: str | None = None,
 ):
     def decorator(fn: _BaseTransform | Callable):
-        return Vmap(fn, kwargs_mask, in_axes=in_axes, out_axes=out_axes, axis_name=axis_name)
+        return Vmap(
+            fn, kwargs_mask, in_axes=in_axes, out_axes=out_axes, axis_name=axis_name
+        )
 
     return decorator
 
@@ -93,6 +95,8 @@ def value_and_grad(
     reduce_axes: Sequence[Hashable] = (),
 ):
     def decorator(fn: _BaseTransform | Callable):
-        return ValueAndGrad(fn, kwargs_mask, argnums=argnums, has_aux=has_aux, reduce_axes=reduce_axes)
+        return ValueAndGrad(
+            fn, kwargs_mask, argnums=argnums, has_aux=has_aux, reduce_axes=reduce_axes
+        )
 
     return decorator
