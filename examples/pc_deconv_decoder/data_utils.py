@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 from datasets import load_dataset
 import numpy as np
@@ -25,8 +25,8 @@ def get_batches(dataset, batch_size):
         yield preprocess_data(batch)
 
 
-def reconstruct_image(image_ids: list[int], predictor, dataset):
-    os.makedirs("images", exist_ok=True)
+def reconstruct_image(image_ids: list[int], predictor, dataset, output_dir: Path):
+    output_dir.mkdir(exist_ok=True)
     images = [dataset["img"][i] for i in image_ids]
     imgs = np.asarray(images, dtype=np.uint8)
     input = imgs.astype(np.float32) / 255.0
@@ -37,4 +37,4 @@ def reconstruct_image(image_ids: list[int], predictor, dataset):
     for image_id, orig_img, pred_img in zip(image_ids, imgs, pred_imgs):
         two_images = np.concatenate((orig_img, sep, pred_img), axis=1)
         image = Image.fromarray(two_images)
-        image.save(f"images/image_{image_id}.png")
+        image.save(output_dir / f"image_{image_id}.png")
