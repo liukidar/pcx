@@ -247,7 +247,7 @@ def train_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim
         with pxu.step(model, clear_params=pxc.VodeParam.Cache):
             _, g = inference_step(examples, model=model)
 
-        optim_h.step(model, g["model"])
+        optim_h.step(model, g["model"], True)
 
     # Learning step
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
@@ -272,8 +272,7 @@ def generate_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, op
         with pxu.step(model, clear_params=pxc.VodeParam.Cache):
             _, g = inference_step(examples, model=model)
 
-        optim_h.step(model, g["model"])
-
+        optim_h.step(model, g["model"], True)
     pred = generate(model.internal_state, model=model)
 
     return pred
@@ -301,9 +300,9 @@ def eval_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_
     # with pxu.step(model, STATUS_FORWARD, clear_params=pxc.VodeParam.Cache):
     #     x_hat = forward(model=model)
 
-    pred = generate_on_batch(T, examples, model=model, optim_h=optim_h)
+    pred = jnp.clip(generate_on_batch(T, examples, model=model, optim_h=optim_h), 0.0, 1.0)
 
-    mse_loss = jnp.square(jnp.clip(pred.flatten(), 0.0, 1.0) - examples.flatten()).mean()
+    mse_loss = jnp.square(pred.flatten() - examples.flatten()).mean()
 
     return mse_loss, pred
 
@@ -332,7 +331,7 @@ def main():
         num_layers=2,
         kernel_size=5,
         act_fn=jax.nn.gelu,
-        output_act_fn=jax.nn.sigmoid,
+        output_act_fn=lambda x: x,
         channel_last=True,
     )
 
@@ -344,7 +343,7 @@ def main():
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
         forward(jnp.zeros((batch_size, *output_dim)), model=model)
 
-    optim_h = pxu.Optim(optax.sgd(3e-2 * batch_size), pxu.Mask(pxc.VodeParam)(model))
+    optim_h = pxu.Optim(optax.sgd(3e-2), pxu.Mask(pxc.VodeParam)(model))
     optim_w = pxu.Optim(optax.adamw(1e-3), pxu.Mask(pxnn.LayerParam)(model))
 
     train_dataset, test_dataset = load_cifar10()
@@ -367,31 +366,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-# import equinox as eqx
-
-# c = eqx.nn.ConvTranspose(
-#     num_spatial_dims=2,
-#     in_channels=64,
-#     out_channels=3,
-#     kernel_size=3,
-#     stride=2,
-#     padding=1,
-#     output_padding=1,
-#     key=jax.random.PRNGKey(0),
-# )
-# input = jnp.ones((64, 4, 4))
-# output = c(input)
-# print(output.shape)
-
-
-# # Example usage
-# input_dim = 4
-# desired_output_dim = 8
-# stride = 2
-# kernel_size = 3
-
-# padding, output_padding = calculate_padding_and_output_padding(input_dim, desired_output_dim, stride, kernel_size)
-# print(f"Required padding: {padding}")
-# print(f"Required output_padding: {output_padding}")
