@@ -212,23 +212,23 @@ def _calculate_padding_and_output_padding(
     return padding, output_padding
 
 
-@pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=0)
+# @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=0)
 def forward(example: jax.Array | None = None, *, model: PCDeconvDecoder) -> jax.Array:
     return model(example=example)
 
 
-@pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=0)
+# @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=0)
 def generate(internal_state: jax.Array, *, model: PCDeconvDecoder) -> jax.Array:
     return model.generate(internal_state=internal_state)
 
 
-@pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=(None, 0), axis_name="batch")
+# @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=(None, 0), axis_name="batch")
 def energy(example: jax.Array, *, model: PCDeconvDecoder) -> jax.Array:
     y_ = model(example=example)
     return jax.lax.pmean(model.energy().sum(), "batch"), y_
 
 
-@pxf.jit(static_argnums=0)
+# @pxf.jit(static_argnums=0)
 def train_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim):
     model.train()
 
@@ -255,7 +255,7 @@ def train_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim
     optim_w.step(model, g["model"])
 
 
-@pxf.jit(static_argnums=0)
+# @pxf.jit(static_argnums=0)
 def generate_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
     model.eval()
 
@@ -276,10 +276,13 @@ def generate_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, op
 
     pred = generate(model.internal_state, model=model)
 
+    # with pxu.step(model, STATUS_FORWARD, clear_params=pxc.VodeParam.Cache):
+    #     pred = forward(None, model=model)
+
     return pred
 
 
-@pxf.jit(static_argnums=0)
+# @pxf.jit(static_argnums=0)
 def eval_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
     # model.eval()
 
@@ -310,7 +313,7 @@ def eval_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_
 
 def train(dl, T, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim):
     for x, y in dl:
-        train_on_batch(T, x, model=model, optim_w=optim_w, optim_h=optim_h)
+        train_on_batch(T, x[0], model=model, optim_w=optim_w, optim_h=optim_h)
 
 
 def eval(dl, T, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
@@ -332,17 +335,17 @@ def main():
         num_layers=2,
         kernel_size=5,
         act_fn=jax.nn.gelu,
-        output_act_fn=jax.nn.sigmoid,
+        # output_act_fn=jax.nn.sigmoid,
         channel_last=True,
     )
 
     batch_size = 500
-    nm_epochs = 15
+    nm_epochs = 2
     T = 10
-    num_images = 20
+    num_images = 5
 
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-        forward(jnp.zeros((batch_size, *output_dim)), model=model)
+        forward(jnp.zeros(output_dim), model=model)
 
     optim_h = pxu.Optim(optax.sgd(3e-2 * batch_size), pxu.Mask(pxc.VodeParam)(model))
     optim_w = pxu.Optim(optax.adamw(1e-3), pxu.Mask(pxnn.LayerParam)(model))
@@ -360,7 +363,8 @@ def main():
     def predictor(images):
         model.clear_params(pxc.VodeParam)
         model.clear_params(pxc.VodeParam.Cache)
-        return generate_on_batch(T, images, model=model, optim_h=optim_h)
+        preds = generate_on_batch(T, images, model=model, optim_h=optim_h)
+        return preds
 
     reconstruct_image(list(range(num_images)), predictor, test_dataset)
 
