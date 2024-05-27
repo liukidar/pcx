@@ -127,7 +127,7 @@ class PCDeconvDecoder(pxc.EnergyModule):
         assert len(input_dims) == len(output_dims)
         assert output_dims[-1] == output_dim
 
-        logging.info(f"Using deconvs with shapes: {output_dims!r}")
+        logging.info(f"Shape transform: {input_dim} -> {' -> '.join(str(dim) for dim in output_dims)}")
 
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
@@ -301,7 +301,6 @@ def energy(example: jax.Array, *, model: PCDeconvDecoder) -> jax.Array:
 @pxf.jit(static_argnums=0)
 def train_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim):
     model.train()
-    optim_h.init(pxu.Mask(pxc.VodeParam)(model))
 
     inference_step = pxf.value_and_grad(
         pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]), has_aux=True
@@ -312,6 +311,8 @@ def train_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim
     # Init step
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
         forward(examples, model=model)
+
+    optim_h.init(pxu.Mask(pxc.VodeParam)(model))
 
     # Inference steps
     for _ in range(T):
@@ -331,7 +332,6 @@ def train_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim
 @pxf.jit(static_argnums=0)
 def generate_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
     model.eval()
-    optim_h.init(pxu.Mask(pxc.VodeParam)(model))
 
     inference_step = pxf.value_and_grad(
         pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]), has_aux=True
@@ -340,6 +340,8 @@ def generate_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, op
     # Init step
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
         forward(examples, model=model)
+
+    optim_h.init(pxu.Mask(pxc.VodeParam)(model))
 
     # Inference steps
     for _ in range(T):
@@ -383,7 +385,7 @@ def run_experiment(
     internal_state_dim: tuple[int, int, int] = (4, 4, 8),
     # bottleneck_dim: int = 128,
     kernel_size: int = 5,
-    act_fn: str | None = "hard_tanh",
+    act_fn: str | None = "tanh",
     output_act_fn: str | None = None,
     batch_size: int = 500,
     epochs: int = 15,
