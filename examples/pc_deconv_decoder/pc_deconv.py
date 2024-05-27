@@ -30,6 +30,7 @@ ACTIVATION_FUNCS = {
     "leaky_relu": jax.nn.leaky_relu,
     "gelu": jax.nn.gelu,
     "tanh": jax.nn.tanh,
+    "hard_tanh": jax.nn.hard_tanh,
     "sigmoid": jax.nn.sigmoid,
 }
 
@@ -41,10 +42,9 @@ class PCDeconvDecoder(pxc.EnergyModule):
         num_layers: int,
         input_dim: tuple[int, int, int],
         output_dim: tuple[int, int, int],
-        compression_factor: float = 4.0,
         out_channels_per_layer: list[int] | None = None,
         kernel_size: Union[int, Sequence[int]],
-        bottleneck_dim: int,
+        # bottleneck_dim: int,
         act_fn: Callable[[jax.Array], jax.Array],
         output_act_fn: Callable[[jax.Array], jax.Array] = lambda x: x,
         channel_last: bool = True,
@@ -71,7 +71,6 @@ class PCDeconvDecoder(pxc.EnergyModule):
 
         input_dim = (input_channels, *input_spatial_dim)
         output_dim = (output_channels, *output_spatial_dim)
-        input_flat_dim = math.prod(input_dim)
 
         spatial_scale = output_spatial_dim / input_spatial_dim
         if np.any(spatial_scale % 1 != 0):
@@ -133,7 +132,8 @@ class PCDeconvDecoder(pxc.EnergyModule):
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
 
-        self.layers = [pxnn.Linear(in_features=bottleneck_dim, out_features=input_dim[0] * input_dim[1] * input_dim[2])]
+        # self.layers = [pxnn.Linear(in_features=bottleneck_dim, out_features=input_dim[0] * input_dim[1] * input_dim[2])]
+        self.layers = []
 
         for layer_input, layer_output in zip(input_dims, output_dims):
             paddings = [
@@ -167,17 +167,23 @@ class PCDeconvDecoder(pxc.EnergyModule):
             )
 
         self.vodes = [
-            pxc.Vode(
-                (bottleneck_dim,),
-                energy_fn=pxc.zero_energy,
-                ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",)},
-                tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros(n.shape.get())},
-            ),
+            # pxc.Vode(
+            #     (bottleneck_dim,),
+            #     energy_fn=pxc.zero_energy,
+            #     ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",)},
+            #     tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros(n.shape.get())},
+            # ),
+            # pxc.Vode(
+            #     input_dim,
+            #     ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",), STATUS_FORWARD: ("h -> u",)},
+            #     tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros_like(v)},
+            # ),
             pxc.Vode(
                 input_dim,
-                ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",), STATUS_FORWARD: ("h -> u",)},
-                tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros_like(v)},
-            ),
+                energy_fn=pxc.zero_energy,
+                ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",)},
+                tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros(n.shape)},
+            )
         ]
         for layer_output in output_dims:
             self.vodes.append(
@@ -196,13 +202,31 @@ class PCDeconvDecoder(pxc.EnergyModule):
         if internal_state is not None:
             x = internal_state
 
-        x = self.act_fn(self.layers[0](x))
-        x = self.vodes[1](x.reshape((8, 8, 8)))
+        # x = self.act_fn(self.layers[0](x))
+        # x = self.vodes[1](x.reshape((8, 8, 8)))
 
-        for i, layer in enumerate(self.layers[1:]):
+        for i, layer in enumerate(self.layers):
             act_fn = self.act_fn if i < len(self.layers) - 1 else self.output_act_fn
             x = act_fn(layer(x))
-            x = self.vodes[i + 2](x)
+            # jax.debug.print(
+            #     "Layer {i}: {shape}: {nan} [{min}, {mean}, {max}]",
+            #     i=i,
+            #     shape=x.shape,
+            #     nan=jnp.any(jnp.isnan(x)),
+            #     mean=x.mean(),
+            #     min=x.min(),
+            #     max=x.max(),
+            # )
+            x = self.vodes[i + 1](x)
+            # jax.debug.print(
+            #     "Vode {i}: {shape}: {nan} [{min}, {mean}, {max}]",
+            #     i=i,
+            #     shape=x.shape,
+            #     nan=jnp.any(jnp.isnan(x)),
+            #     mean=x.mean(),
+            #     min=x.min(),
+            #     max=x.max(),
+            # )
 
         if example is not None:
             if self.channel_last.get():
@@ -219,8 +243,8 @@ class PCDeconvDecoder(pxc.EnergyModule):
         if x is None:
             x = self.internal_state
 
-        x = self.act_fn(self.layers[0](x)).reshape((8, 8, 8))
-        for i, layer in enumerate(self.layers[1:]):
+        # x = self.act_fn(self.layers[0](x)).reshape((8, 8, 8))
+        for i, layer in enumerate(self.layers):
             act_fn = self.act_fn if i < len(self.layers) - 1 else self.output_act_fn
             x = act_fn(layer(x))
 
@@ -355,10 +379,11 @@ def eval(dl, T, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
 
 def run_experiment(
     *,
-    num_layers: int = 2,
-    internal_state_dim: tuple[int, int, int] = (8, 8, 8),
+    num_layers: int = 3,
+    internal_state_dim: tuple[int, int, int] = (4, 4, 8),
+    # bottleneck_dim: int = 128,
     kernel_size: int = 5,
-    act_fn: str | None = "gelu",
+    act_fn: str | None = "hard_tanh",
     output_act_fn: str | None = None,
     batch_size: int = 500,
     epochs: int = 15,
@@ -384,8 +409,9 @@ def run_experiment(
         num_layers=num_layers,
         input_dim=input_dim,
         output_dim=output_dim,
+        out_channels_per_layer=[8, 5, 3],
         kernel_size=kernel_size,
-        bottleneck_dim=128,
+        # bottleneck_dim=bottleneck_dim,
         act_fn=ACTIVATION_FUNCS[act_fn],
         output_act_fn=ACTIVATION_FUNCS[output_act_fn],
         channel_last=True,
@@ -402,6 +428,8 @@ def run_experiment(
 
     if len(train_dataset) % batch_size != 0 or len(test_dataset) % batch_size != 0:
         raise ValueError("The dataset size must be divisible by the batch size.")
+
+    print("Training...")
 
     test_losses = []
     for epoch in range(epochs):
@@ -422,4 +450,4 @@ def run_experiment(
 
 
 if __name__ == "__main__":
-    run_experiment(checkpoint_dir=Path("results/dev"))
+    run_experiment(checkpoint_dir=Path("results/pc_deconv"))
