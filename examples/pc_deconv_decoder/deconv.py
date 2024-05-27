@@ -3,6 +3,7 @@ from flax.training import train_state
 import jax
 import jax.numpy as jnp
 import optax
+from pathlib import Path
 
 from data_utils import load_cifar10, get_batches, preprocess_data, reconstruct_image
 
@@ -74,33 +75,38 @@ def train_step(state, batch):
     return state.apply_gradients(grads=grads)
 
 
-# Training loop
-rng = jax.random.PRNGKey(0)
-state = create_train_state(rng, learning_rate=0.001)
-num_epochs = 15
-batch_size = 64
-num_reconstrct_images = 20
+def main():
+    # Training loop
+    rng = jax.random.PRNGKey(0)
+    state = create_train_state(rng, learning_rate=0.001)
+    num_epochs = 15
+    batch_size = 64
+    num_reconstrct_images = 20
 
-train_dataset, test_dataset = load_cifar10()
+    train_dataset, test_dataset = load_cifar10()
 
-for epoch in range(num_epochs):
-    for batch in get_batches(train_dataset, batch_size):
-        state = train_step(state, batch)
-    print(f"Epoch {epoch + 1}, Loss: {compute_loss(state.params, preprocess_data(train_dataset[:batch_size]))}")
+    for epoch in range(num_epochs):
+        for batch in get_batches(train_dataset, batch_size):
+            state = train_step(state, batch)
+        print(f"Epoch {epoch + 1}, Loss: {compute_loss(state.params, preprocess_data(train_dataset[:batch_size]))}")
+
+    def evaluate_model(state, test_dataset):
+        """Evaluate the model on the test set."""
+        test_loss = 0.0
+        num_batches = 0
+        for batch in get_batches(test_dataset, batch_size):
+            test_loss += compute_loss(state.params, batch)
+            num_batches += 1
+        return test_loss / num_batches
+
+    test_loss = evaluate_model(state, test_dataset)
+    print(f"Test Loss: {test_loss}")
+
+    def predictor(input):
+        return model.apply({"params": state.params}, input)
+
+    reconstruct_image(list(range(num_reconstrct_images)), predictor, test_dataset, Path("deconv_images"))
 
 
-def evaluate_model(state, test_dataset):
-    """Evaluate the model on the test set."""
-    test_loss = 0.0
-    num_batches = 0
-    for batch in get_batches(test_dataset, batch_size):
-        test_loss += compute_loss(state.params, batch)
-        num_batches += 1
-    return test_loss / num_batches
-
-
-test_loss = evaluate_model(state, test_dataset)
-print(f"Test Loss: {test_loss}")
-
-for i in range(num_reconstrct_images):
-    reconstruct_image(model, state.params, test_dataset, i)
+if __name__ == "__main__":
+    main()

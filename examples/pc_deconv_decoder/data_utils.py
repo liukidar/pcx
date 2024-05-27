@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 from datasets import load_dataset
 import numpy as np
@@ -25,13 +25,16 @@ def get_batches(dataset, batch_size):
         yield preprocess_data(batch)
 
 
-def reconstruct_image(model, params, dataset, image_id: int):
-    img = np.asarray(dataset["img"][image_id], dtype=np.uint8)
-    input = img.astype(np.float32) / 255.0
-    pred = model.apply({"params": params}, input)
-    pred_img = np.asarray(pred * 255.0, dtype=np.uint8)
-    sep = np.zeros((img.shape[0], 5, img.shape[2]), dtype=np.uint8)
-    two_images = np.concatenate((img, sep, pred_img), axis=1)
-    image = Image.fromarray(two_images)
-    os.makedirs("images", exist_ok=True)
-    image.save(f"images/image_{image_id}.png")
+def reconstruct_image(image_ids: list[int], predictor, dataset, output_dir: Path):
+    output_dir.mkdir(exist_ok=True)
+    images = [dataset["img"][i] for i in image_ids]
+    imgs = np.asarray(images, dtype=np.uint8)
+    input = imgs.astype(np.float32) / 255.0
+    preds = predictor(input)
+    preds = np.clip(preds, 0.0, 1.0)
+    pred_imgs = np.asarray(preds * 255.0, dtype=np.uint8)
+    sep = np.zeros((imgs.shape[1], 3, imgs.shape[3]), dtype=np.uint8)
+    for image_id, orig_img, pred_img in zip(image_ids, imgs, pred_imgs):
+        two_images = np.concatenate((orig_img, sep, pred_img), axis=1)
+        image = Image.fromarray(two_images)
+        image.save(output_dir / f"image_{image_id}.png")

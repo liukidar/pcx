@@ -1,5 +1,6 @@
 from typing import Callable, Union, Sequence
 import math
+from pathlib import Path
 
 # Core dependencies
 import jax
@@ -15,7 +16,7 @@ import pcax.utils as pxu
 import pcax.functional as pxf
 
 from conv_transpose_layer import ConvTranspose
-from data_utils import load_cifar10, get_batches
+from data_utils import load_cifar10, get_batches, reconstruct_image
 
 
 STATUS_FORWARD = "forward"
@@ -24,9 +25,11 @@ STATUS_FORWARD = "forward"
 class PCDeconvDecoder(pxc.EnergyModule):
     def __init__(
         self,
+        *,
+        num_layers: int,
         input_dim: tuple[int, int, int],
         output_dim: tuple[int, int, int],
-        num_layers: int,
+        out_channels_per_layer: list[int] | None = None,
         kernel_size: Union[int, Sequence[int]],
         act_fn: Callable[[jax.Array], jax.Array],
         output_act_fn: Callable[[jax.Array], jax.Array] = lambda x: x,
@@ -62,13 +65,6 @@ class PCDeconvDecoder(pxc.EnergyModule):
                 f"input_dim: {input_dim}, output_dim: {output_dim}, scale: {spatial_scale}"
             )
 
-        channel_diff = output_channels - input_channels
-        if channel_diff >= 0:
-            raise ValueError(
-                "The number of input channels must be greater than the number of output channels. "
-                f"input_channels: {input_channels}, output_channels: {output_channels}"
-            )
-
         step_scale = spatial_scale ** (1 / num_layers)
         if np.any(step_scale % 1 != 0):
             raise ValueError(
@@ -77,7 +73,29 @@ class PCDeconvDecoder(pxc.EnergyModule):
             )
         step_scale = step_scale.astype(np.int32)
 
-        step_channel_diff = channel_diff // num_layers
+        if out_channels_per_layer:
+            if len(out_channels_per_layer) != num_layers:
+                raise ValueError(
+                    "out_channels_per_layer must be equal to the number of layers. "
+                    f"num_layers: {num_layers}, channels_per_layer: {out_channels_per_layer}"
+                )
+            if out_channels_per_layer[-1] != output_channels:
+                raise ValueError(
+                    "The number of channels in the last layer must be equal to the number of output channels. "
+                    f"output_channels: {output_channels}, channels_per_layer[-1]: {out_channels_per_layer[-1]}"
+                )
+        else:
+            channel_diff = output_channels - input_channels
+            if channel_diff >= 0:
+                raise ValueError(
+                    "The number of input channels must be greater than the number of output channels. "
+                    f"input_channels: {input_channels}, output_channels: {output_channels}"
+                )
+            step_channel_diff = channel_diff // num_layers
+            out_channels_per_layer = [
+                (input_channels + i * step_channel_diff) if i < num_layers else output_channels
+                for i in range(1, num_layers + 1)
+            ]
 
         input_dims: list[tuple[int, int, int]] = [input_dim]
         output_dims: list[tuple[int, int, int]] = []
@@ -85,7 +103,7 @@ class PCDeconvDecoder(pxc.EnergyModule):
             inp = input_dims[i]
             output_dims.append(
                 (
-                    inp[0] + step_channel_diff if i < num_layers - 1 else output_channels,
+                    out_channels_per_layer[i],
                     inp[1] * step_scale[0],
                     inp[2] * step_scale[1],
                 )
@@ -148,7 +166,7 @@ class PCDeconvDecoder(pxc.EnergyModule):
             )
         self.vodes[-1].h.frozen = True
 
-    def __call__(self, example: jax.Array | None = None, internal_state: jax.Array | None = None):
+    def __call__(self, example: jax.Array | None = None, internal_state: jax.Array | None = None) -> jax.Array:
         # The defined ruleset for the first node is to set the hidden state to zero,
         # independent of the input, so we always pass '-1'.
         x = self.vodes[0](-1)
@@ -163,12 +181,28 @@ class PCDeconvDecoder(pxc.EnergyModule):
         if example is not None:
             if self.channel_last.get():
                 example = example.transpose(2, 0, 1)
-            self.vodes[-1].set("h", example.flatten())
+            self.vodes[-1].set("h", example)
 
         pred = self.vodes[-1].get("u")
         if self.channel_last.get():
             pred = pred.transpose(1, 2, 0)
         return pred
+
+    def generate(self, internal_state: jax.Array | None = None) -> jax.Array:
+        x = internal_state
+        if x is None:
+            x = self.internal_state
+        for i, layer in enumerate(self.layers):
+            act_fn = self.act_fn if i < len(self.layers) - 1 else self.output_act_fn
+            x = act_fn(layer(x))
+
+        if self.channel_last.get():
+            x = x.transpose(1, 2, 0)
+        return x
+
+    @property
+    def internal_state(self) -> jax.Array:
+        return self.vodes[0].get("h")
 
 
 def _calculate_padding_and_output_padding(
@@ -197,8 +231,13 @@ def _calculate_padding_and_output_padding(
 
 
 @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=0)
-def forward(example: jax.Array, *, model: PCDeconvDecoder) -> jax.Array:
+def forward(example: jax.Array | None = None, *, model: PCDeconvDecoder) -> jax.Array:
     return model(example=example)
+
+
+@pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=0)
+def generate(internal_state: jax.Array, *, model: PCDeconvDecoder) -> jax.Array:
+    return model.generate(internal_state=internal_state)
 
 
 @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=(None, 0), axis_name="batch")
@@ -224,18 +263,18 @@ def train_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim
     # Inference steps
     for _ in range(T):
         with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-            _, g = inference_step(model=model)
+            _, g = inference_step(examples, model=model)
 
-        optim_h.step(model, g["model"])
+        optim_h.step(model, g["model"], scale_by_batch_size=True)
 
     # Learning step
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-        _, g = learning_step(model=model)
+        _, g = learning_step(examples, model=model)
     optim_w.step(model, g["model"])
 
 
 @pxf.jit(static_argnums=0)
-def eval_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
+def generate_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
     model.eval()
 
     inference_step = pxf.value_and_grad(
@@ -249,16 +288,21 @@ def eval_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_
     # Inference steps
     for _ in range(T):
         with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-            _, g = inference_step(model=model)
+            _, g = inference_step(examples, model=model)
 
-        optim_h.step(model, g["model"])
+        optim_h.step(model, g["model"], scale_by_batch_size=True)
+    pred = generate(model.internal_state, model=model)
 
-    with pxu.step(model, STATUS_FORWARD, clear_params=pxc.VodeParam.Cache):
-        x_hat = forward(None, model=model)
+    return pred
 
-    mse_loss = jnp.square(jnp.clip(x_hat.flatten(), 0.0, 1.0) - examples.flatten()).mean()
 
-    return mse_loss, x_hat
+@pxf.jit(static_argnums=0)
+def eval_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
+    pred = jnp.clip(generate_on_batch(T, examples, model=model, optim_h=optim_h), 0.0, 1.0)
+
+    mse_loss = jnp.square(pred.flatten() - examples.flatten()).mean()
+
+    return mse_loss, pred
 
 
 def train(dl, T, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim):
@@ -276,63 +320,71 @@ def eval(dl, T, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
     return np.mean(e)
 
 
-def main():
-    input_dim = (64, 4, 4)
-    output_dim = (3, 32, 32)
-    model = PCDeconvDecoder(
-        input_dim,
-        output_dim,
-        num_layers=3,
-        kernel_size=3,
-        act_fn=jax.nn.relu,
-        output_act_fn=jax.nn.sigmoid,
-        channel_last=False,
-    )
+def run_experiment(
+    *,
+    num_layers: int = 2,
+    internal_state_dim: tuple[int, int, int] = (8, 8, 8),
+    kernel_size: int = 5,
+    batch_size: int = 500,
+    epochs: int = 15,
+    T: int = 15,
+    optim_x_lr: float = 3e-2,
+    optim_x_momentum: float = 0.0,
+    optim_w_lr: float = 1e-3,
+    optim_w_b1: float = 0.9,
+    optim_w_b2: float = 0.999,
+    num_sample_images: int = 10,
+    checkpoint_dir: Path | None = None,
+) -> float:
+    if checkpoint_dir is not None:
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    batch_size = 128
-    nm_epochs = 3
+    train_dataset, test_dataset = load_cifar10()
+
+    input_dim = internal_state_dim
+    output_dim = (*train_dataset[0]["img"].size, 3)
+
+    model = PCDeconvDecoder(
+        num_layers=num_layers,
+        input_dim=input_dim,
+        output_dim=output_dim,
+        kernel_size=kernel_size,
+        act_fn=jax.nn.gelu,
+        output_act_fn=lambda x: x,
+        channel_last=True,
+    )
 
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
         forward(jnp.zeros((batch_size, *output_dim)), model=model)
 
-    optim_h = pxu.Optim(optax.sgd(3e-2 * batch_size), pxu.Mask(pxc.VodeParam)(model))
-    optim_w = pxu.Optim(optax.adamw(5e-4), pxu.Mask(pxnn.LayerParam)(model))
+    optim_h = pxu.Optim(optax.sgd(learning_rate=optim_x_lr, momentum=optim_x_momentum), pxu.Mask(pxc.VodeParam)(model))
+    optim_w = pxu.Optim(
+        optax.adamw(learning_rate=optim_w_lr, b1=optim_w_b1, b2=optim_w_b2), pxu.Mask(pxnn.LayerParam)(model)
+    )
 
-    train_dataset, test_dataset = load_cifar10()
+    if len(train_dataset) % batch_size != 0 or len(test_dataset) % batch_size != 0:
+        raise ValueError("The dataset size must be divisible by the batch size.")
 
-    for e in range(nm_epochs):
-        train(get_batches(train_dataset, batch_size), T=20, model=model, optim_w=optim_w, optim_h=optim_h)
-        mse_loss = eval(get_batches(test_dataset, batch_size), T=20, model=model, optim_h=optim_h)
-        print(f"Epoch {e + 1}/{nm_epochs} - Test Loss: {mse_loss:.4f}")
+    test_losses = []
+    for epoch in range(epochs):
+        train(get_batches(train_dataset, batch_size), T=T, model=model, optim_w=optim_w, optim_h=optim_h)
+        mse_loss = eval(get_batches(test_dataset, batch_size), T=T, model=model, optim_h=optim_h)
+        test_losses.append(mse_loss)
+        print(f"Epoch {epoch + 1}/{epochs} - Test Loss: {mse_loss:.4f}")
+
+    def predictor(images):
+        model.clear_params(pxc.VodeParam)
+        model.clear_params(pxc.VodeParam.Cache)
+        optim_h_temp = pxu.Optim(
+            optax.sgd(learning_rate=optim_x_lr, momentum=optim_x_momentum), pxu.Mask(pxc.VodeParam)(model)
+        )
+        return generate_on_batch(T, images, model=model, optim_h=optim_h_temp)
+
+    if checkpoint_dir is not None:
+        reconstruct_image(list(range(num_sample_images)), predictor, test_dataset, checkpoint_dir / "images")
+
+    return min(test_losses)
 
 
 if __name__ == "__main__":
-    main()
-
-
-# import equinox as eqx
-
-# c = eqx.nn.ConvTranspose(
-#     num_spatial_dims=2,
-#     in_channels=64,
-#     out_channels=3,
-#     kernel_size=3,
-#     stride=2,
-#     padding=1,
-#     output_padding=1,
-#     key=jax.random.PRNGKey(0),
-# )
-# input = jnp.ones((64, 4, 4))
-# output = c(input)
-# print(output.shape)
-
-
-# # Example usage
-# input_dim = 4
-# desired_output_dim = 8
-# stride = 2
-# kernel_size = 3
-
-# padding, output_padding = calculate_padding_and_output_padding(input_dim, desired_output_dim, stride, kernel_size)
-# print(f"Required padding: {padding}")
-# print(f"Required output_padding: {output_padding}")
+    run_experiment(checkpoint_dir=Path("results/dev"))
