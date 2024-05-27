@@ -2,9 +2,12 @@
 **/.DS_Store
 
 .vscode
+# The line **/data is a pattern that matches any directory named data at any level in your project. 
 **/data
 **/results
 **/wandb
+**/plots
+
 
 
 # Byte-compiled / optimized / DLL files
@@ -135,7 +138,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-
 
 # Ignore all numpy files
 *.npz
