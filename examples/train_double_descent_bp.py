@@ -46,6 +46,10 @@ class TwoLayerNN(px.Module):
         self, input_dim: int, hidden_dim: int, output_dim: int, act_fn: Callable[[jax.Array], jax.Array]
     ) -> None:
         super().__init__()
+        self._train_step = 0
+        self._val_step = 0
+        self._test_step = 0
+
 
         self.act_fn = px.static(act_fn)
 
@@ -123,6 +127,7 @@ def train_on_batch(x: jax.Array, y: jax.Array, *, model: TwoLayerNN, optim_w: px
 
 def train(dl, *, model: TwoLayerNN, optim_w: pxu.Optim, progress: Progress):
     for x, y in dl:
+        progress.update_batch()
         train_on_batch(x, jax.nn.one_hot(y, 10), model=model, optim_w=optim_w)
 
 
