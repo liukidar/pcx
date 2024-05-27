@@ -44,6 +44,7 @@ class PCDeconvDecoder(pxc.EnergyModule):
         compression_factor: float = 4.0,
         out_channels_per_layer: list[int] | None = None,
         kernel_size: Union[int, Sequence[int]],
+        bottleneck_dim: int,
         act_fn: Callable[[jax.Array], jax.Array],
         output_act_fn: Callable[[jax.Array], jax.Array] = lambda x: x,
         channel_last: bool = True,
@@ -132,7 +133,8 @@ class PCDeconvDecoder(pxc.EnergyModule):
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
 
-        self.layers = []
+        self.layers = [pxnn.Linear(in_features=bottleneck_dim, out_features=input_dim[0] * input_dim[1] * input_dim[2])]
+
         for layer_input, layer_output in zip(input_dims, output_dims):
             paddings = [
                 _calculate_padding_and_output_padding(
@@ -166,11 +168,16 @@ class PCDeconvDecoder(pxc.EnergyModule):
 
         self.vodes = [
             pxc.Vode(
-                input_dim,
+                (bottleneck_dim,),
                 energy_fn=pxc.zero_energy,
                 ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",)},
-                tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros(n.shape)},
-            )
+                tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros(n.shape.get())},
+            ),
+            pxc.Vode(
+                input_dim,
+                ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",), STATUS_FORWARD: ("h -> u",)},
+                tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros_like(v)},
+            ),
         ]
         for layer_output in output_dims:
             self.vodes.append(
@@ -189,10 +196,13 @@ class PCDeconvDecoder(pxc.EnergyModule):
         if internal_state is not None:
             x = internal_state
 
-        for i, layer in enumerate(self.layers):
+        x = self.act_fn(self.layers[0](x))
+        x = self.vodes[1](x.reshape((8, 8, 8)))
+
+        for i, layer in enumerate(self.layers[1:]):
             act_fn = self.act_fn if i < len(self.layers) - 1 else self.output_act_fn
             x = act_fn(layer(x))
-            x = self.vodes[i + 1](x)
+            x = self.vodes[i + 2](x)
 
         if example is not None:
             if self.channel_last.get():
@@ -208,7 +218,9 @@ class PCDeconvDecoder(pxc.EnergyModule):
         x = internal_state
         if x is None:
             x = self.internal_state
-        for i, layer in enumerate(self.layers):
+
+        x = self.act_fn(self.layers[0](x)).reshape((8, 8, 8))
+        for i, layer in enumerate(self.layers[1:]):
             act_fn = self.act_fn if i < len(self.layers) - 1 else self.output_act_fn
             x = act_fn(layer(x))
 
@@ -265,6 +277,7 @@ def energy(example: jax.Array, *, model: PCDeconvDecoder) -> jax.Array:
 @pxf.jit(static_argnums=0)
 def train_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim):
     model.train()
+    optim_h.init(pxu.Mask(pxc.VodeParam)(model))
 
     inference_step = pxf.value_and_grad(
         pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]), has_aux=True
@@ -283,6 +296,8 @@ def train_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim
 
         optim_h.step(model, g["model"], scale_by_batch_size=True)
 
+    optim_h.clear()
+
     # Learning step
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
         _, g = learning_step(examples, model=model)
@@ -292,6 +307,7 @@ def train_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim
 @pxf.jit(static_argnums=0)
 def generate_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
     model.eval()
+    optim_h.init(pxu.Mask(pxc.VodeParam)(model))
 
     inference_step = pxf.value_and_grad(
         pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]), has_aux=True
@@ -307,6 +323,7 @@ def generate_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, op
             _, g = inference_step(examples, model=model)
 
         optim_h.step(model, g["model"], scale_by_batch_size=True)
+    optim_h.clear()
     pred = generate(model.internal_state, model=model)
 
     return pred
@@ -333,7 +350,7 @@ def eval(dl, T, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
         e, y_hat = eval_on_batch(T, x, model=model, optim_h=optim_h)
         losses.append(e)
 
-    return np.mean(e)
+    return np.mean(losses)
 
 
 def run_experiment(
@@ -368,6 +385,7 @@ def run_experiment(
         input_dim=input_dim,
         output_dim=output_dim,
         kernel_size=kernel_size,
+        bottleneck_dim=128,
         act_fn=ACTIVATION_FUNCS[act_fn],
         output_act_fn=ACTIVATION_FUNCS[output_act_fn],
         channel_last=True,
@@ -376,7 +394,7 @@ def run_experiment(
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
         forward(jnp.zeros((batch_size, *output_dim)), model=model)
 
-    optim_h = pxu.Optim(optax.sgd(learning_rate=optim_x_lr, momentum=optim_x_momentum), pxu.Mask(pxc.VodeParam)(model))
+    optim_h = pxu.Optim(optax.sgd(learning_rate=optim_x_lr, momentum=optim_x_momentum))
     optim_w = pxu.Optim(
         optax.adamw(learning_rate=optim_w_lr, weight_decay=optim_w_wd, b1=optim_w_b1, b2=optim_w_b2),
         pxu.Mask(pxnn.LayerParam)(model),
@@ -395,10 +413,7 @@ def run_experiment(
     def predictor(images):
         model.clear_params(pxc.VodeParam)
         model.clear_params(pxc.VodeParam.Cache)
-        optim_h_temp = pxu.Optim(
-            optax.sgd(learning_rate=optim_x_lr, momentum=optim_x_momentum), pxu.Mask(pxc.VodeParam)(model)
-        )
-        return generate_on_batch(T, images, model=model, optim_h=optim_h_temp)
+        return generate_on_batch(T, images, model=model, optim_h=optim_h)
 
     if checkpoint_dir is not None:
         reconstruct_image(list(range(num_sample_images)), predictor, test_dataset, checkpoint_dir / "images")
