@@ -15,14 +15,15 @@ def main(run_info: stune.RunInfo):
             run_info["hp/internal_state_channels"],
         ),
         kernel_size=run_info["hp/kernel_size"],
+        act_fn=run_info["hp/act_fn"],
+        output_act_fn=run_info["hp/output_act_fn"],
         batch_size=run_info["hp/batch_size"],
         epochs=run_info["hp/epochs"],
         T=run_info["hp/T"],
         optim_x_lr=run_info["hp/optim/x/lr"],
         optim_x_momentum=run_info["hp/optim/x/momentum"],
         optim_w_lr=run_info["hp/optim/w/lr"],
-        optim_w_b1=run_info["hp/optim/w/b1"],
-        optim_w_b2=run_info["hp/optim/w/b2"],
+        optim_w_wd=run_info["hp/optim/w/wd"],
     )
 
     return best_loss

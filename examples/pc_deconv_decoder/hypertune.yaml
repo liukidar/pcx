@@ -3,40 +3,38 @@ gpus_per_task: 1
 hp:
     num_layers: 2
     internal_state_dim: 8
-    internal_state_channels:
-        sample_type: categorical
-        sample_space: [8, 12, 16]
-        default: 8
+    internal_state_channels: 8
     kernel_size:
         sample_type: categorical
         sample_space: [3, 5, 7]
         default: 5
-    batch_size: 500
-    epochs: 3
+    act_fn:
+        sample_type: categorical
+        sample_space: [leaky_relu, gelu, tanh]
+        default: leaky_relu
+    output_act_fn: null
+    batch_size: 200
+    epochs: 30
     T:
         sample_type: categorical
-        sample_space: [10, 15, 20]
-        default: 15
+        sample_space: [10, 16, 17, 20, 21, 24, 25]
+        default: 10
     optim:
         x:
             lr:
-                sample_type: categorical
-                sample_space: [5e-2, 3e-2, 1e-2, 3e-3]
-                default: 3e-2
+                sample_type: float
+                sample_space: [[1e-2, 5e-1], null, true]
+                default: 1e-1
             momentum:
-                sample_type: categorical
-                sample_space: [0.0, 0.3, 0.9, 0.99]
-                default: None
+                sample_type: float
+                sample_space: [[0.0, 1.0], 0.05]
+                default: 0.5
         w:
             lr:
-                sample_type: categorical
-                sample_space: [2e-3, 1e-3, 5e-4]
-                default: 1e-3
-            b1:
-                sample_type: categorical
-                sample_space: [0.9, 0.95, 0.99]
-                default: 0.9
-            b2:
-                sample_type: categorical
-                sample_space: [0.999, 0.9999, 0.99999]
-                default: 0.999
+                sample_type: float
+                sample_space: [[3e-5, 3e-4], null, true]
+                default: 1e-4
+            wd:
+                sample_type: float
+                sample_space: [[1e-5, 1e-2], null, true]
+                default: 1e-4

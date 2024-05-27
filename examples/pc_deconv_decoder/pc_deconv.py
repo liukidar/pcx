@@ -1,6 +1,7 @@
 from typing import Callable, Union, Sequence
 import math
 from pathlib import Path
+import logging
 
 # Core dependencies
 import jax
@@ -19,7 +20,18 @@ from conv_transpose_layer import ConvTranspose
 from data_utils import load_cifar10, get_batches, reconstruct_image
 
 
+logging.basicConfig(level=logging.INFO)
+
+
 STATUS_FORWARD = "forward"
+ACTIVATION_FUNCS = {
+    None: lambda x: x,
+    "relu": jax.nn.relu,
+    "leaky_relu": jax.nn.leaky_relu,
+    "gelu": jax.nn.gelu,
+    "tanh": jax.nn.tanh,
+    "sigmoid": jax.nn.sigmoid,
+}
 
 
 class PCDeconvDecoder(pxc.EnergyModule):
@@ -29,6 +41,7 @@ class PCDeconvDecoder(pxc.EnergyModule):
         num_layers: int,
         input_dim: tuple[int, int, int],
         output_dim: tuple[int, int, int],
+        compression_factor: float = 4.0,
         out_channels_per_layer: list[int] | None = None,
         kernel_size: Union[int, Sequence[int]],
         act_fn: Callable[[jax.Array], jax.Array],
@@ -57,6 +70,7 @@ class PCDeconvDecoder(pxc.EnergyModule):
 
         input_dim = (input_channels, *input_spatial_dim)
         output_dim = (output_channels, *output_spatial_dim)
+        input_flat_dim = math.prod(input_dim)
 
         spatial_scale = output_spatial_dim / input_spatial_dim
         if np.any(spatial_scale % 1 != 0):
@@ -112,6 +126,8 @@ class PCDeconvDecoder(pxc.EnergyModule):
                 input_dims.append(output_dims[-1])
         assert len(input_dims) == len(output_dims)
         assert output_dims[-1] == output_dim
+
+        logging.info(f"Using deconvs with shapes: {output_dims!r}")
 
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
@@ -325,12 +341,15 @@ def run_experiment(
     num_layers: int = 2,
     internal_state_dim: tuple[int, int, int] = (8, 8, 8),
     kernel_size: int = 5,
+    act_fn: str | None = "gelu",
+    output_act_fn: str | None = None,
     batch_size: int = 500,
     epochs: int = 15,
     T: int = 15,
     optim_x_lr: float = 3e-2,
     optim_x_momentum: float = 0.0,
     optim_w_lr: float = 1e-3,
+    optim_w_wd: float = 1e-4,
     optim_w_b1: float = 0.9,
     optim_w_b2: float = 0.999,
     num_sample_images: int = 10,
@@ -349,8 +368,8 @@ def run_experiment(
         input_dim=input_dim,
         output_dim=output_dim,
         kernel_size=kernel_size,
-        act_fn=jax.nn.gelu,
-        output_act_fn=lambda x: x,
+        act_fn=ACTIVATION_FUNCS[act_fn],
+        output_act_fn=ACTIVATION_FUNCS[output_act_fn],
         channel_last=True,
     )
 
@@ -359,7 +378,8 @@ def run_experiment(
 
     optim_h = pxu.Optim(optax.sgd(learning_rate=optim_x_lr, momentum=optim_x_momentum), pxu.Mask(pxc.VodeParam)(model))
     optim_w = pxu.Optim(
-        optax.adamw(learning_rate=optim_w_lr, b1=optim_w_b1, b2=optim_w_b2), pxu.Mask(pxnn.LayerParam)(model)
+        optax.adamw(learning_rate=optim_w_lr, weight_decay=optim_w_wd, b1=optim_w_b1, b2=optim_w_b2),
+        pxu.Mask(pxnn.LayerParam)(model),
     )
 
     if len(train_dataset) % batch_size != 0 or len(test_dataset) % batch_size != 0:

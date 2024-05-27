@@ -12,11 +12,13 @@ class ConvEncoder(nn.Module):
     @nn.compact
     def __call__(self, x):
         # x (32, 32, 3)
-        x = nn.Conv(features=16, kernel_size=(4, 4), strides=(2, 2))(x)  # (16, 16, 16)
+        x = nn.Conv(features=5, kernel_size=(4, 4), strides=(2, 2))(x)  # (16, 16, 5)
         x = nn.relu(x)
-        x = nn.Conv(features=32, kernel_size=(4, 4), strides=(2, 2))(x)  # (8, 8, 32)
+        x = nn.Conv(features=8, kernel_size=(4, 4), strides=(2, 2))(x)  # (8, 8, 8)
         x = nn.relu(x)
-        x = nn.Conv(features=64, kernel_size=(4, 4), strides=(2, 2))(x)  # (4, 4, 64)
+
+        x = x.reshape(x.shape[0], -1)  # (512,)
+        x = nn.Dense(features=8 * 8 * 8 // 4)(x)  # (128,)
         x = nn.relu(x)
         return x
 
@@ -24,13 +26,15 @@ class ConvEncoder(nn.Module):
 class ConvDecoder(nn.Module):
     @nn.compact
     def __call__(self, x):
-        # x (4, 4, 64)
-        x = nn.ConvTranspose(features=32, kernel_size=(4, 4), strides=(2, 2))(x)  # (8, 8, 32)
+        # x (256,)
+        x = nn.Dense(features=8 * 8 * 8)(x)  # (512,)
+        x = x.reshape(-1, 8, 8, 8)  # (8, 8, 8)
         x = nn.relu(x)
-        x = nn.ConvTranspose(features=16, kernel_size=(4, 4), strides=(2, 2))(x)  # (16, 16, 16)
+
+        x = nn.ConvTranspose(features=5, kernel_size=(4, 4), strides=(2, 2))(x)  # (16, 16, 5)
         x = nn.relu(x)
         x = nn.ConvTranspose(features=3, kernel_size=(4, 4), strides=(2, 2))(x)  # (32, 32, 3)
-        return nn.sigmoid(x)
+        return jnp.clip(0, 1, x)
 
 
 class ConvAutoEncoder(nn.Module):
