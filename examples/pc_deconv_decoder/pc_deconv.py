@@ -2,6 +2,7 @@ from typing import Callable, Union, Sequence
 import math
 from pathlib import Path
 import logging
+import sys
 
 # Core dependencies
 import jax
@@ -17,7 +18,11 @@ import pcax.utils as pxu
 import pcax.functional as pxf
 
 from conv_transpose_layer import ConvTranspose
-from data_utils import load_cifar10, get_batches, reconstruct_image
+
+sys.path.insert(0, "../")
+from data_utils import get_vision_dataloaders, reconstruct_image  # noqa: E402
+
+sys.path.pop(0)
 
 
 logging.basicConfig(level=logging.INFO)
@@ -44,7 +49,6 @@ class PCDeconvDecoder(pxc.EnergyModule):
         output_dim: tuple[int, int, int],
         out_channels_per_layer: list[int] | None = None,
         kernel_size: Union[int, Sequence[int]],
-        # bottleneck_dim: int,
         act_fn: Callable[[jax.Array], jax.Array],
         output_act_fn: Callable[[jax.Array], jax.Array] = lambda x: x,
         channel_last: bool = True,
@@ -132,7 +136,6 @@ class PCDeconvDecoder(pxc.EnergyModule):
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
 
-        # self.layers = [pxnn.Linear(in_features=bottleneck_dim, out_features=input_dim[0] * input_dim[1] * input_dim[2])]
         self.layers = []
 
         for layer_input, layer_output in zip(input_dims, output_dims):
@@ -202,9 +205,6 @@ class PCDeconvDecoder(pxc.EnergyModule):
         if internal_state is not None:
             x = internal_state
 
-        # x = self.act_fn(self.layers[0](x))
-        # x = self.vodes[1](x.reshape((8, 8, 8)))
-
         for i, layer in enumerate(self.layers):
             act_fn = self.act_fn if i < len(self.layers) - 1 else self.output_act_fn
             x = act_fn(layer(x))
@@ -236,6 +236,22 @@ class PCDeconvDecoder(pxc.EnergyModule):
         pred = self.vodes[-1].get("u")
         if self.channel_last.get():
             pred = pred.transpose(1, 2, 0)
+
+        assert example is None or pred.shape == example.shape
+        assert pred.shape == (3, 32, 32)
+        # jax.debug.print(
+        #     "__call__:\n"
+        #     "P: m={pred_mean} s={pred_std} min={pred_min} max={pred_max}\n"
+        #     "E: m={example_mean} s={example_std} min={example_min} max={example_max}\n",
+        #     pred_mean=pred.mean(axis=(1, 2)),
+        #     pred_std=pred.std(axis=(1, 2)),
+        #     pred_min=pred.min(axis=(1, 2)),
+        #     pred_max=pred.max(axis=(1, 2)),
+        #     example_mean=example.mean(axis=(1, 2)),
+        #     example_std=example.std(axis=(1, 2)),
+        #     example_min=example.min(axis=(1, 2)),
+        #     example_max=example.max(axis=(1, 2)),
+        # )
         return pred
 
     def generate(self, internal_state: jax.Array | None = None) -> jax.Array:
@@ -243,7 +259,6 @@ class PCDeconvDecoder(pxc.EnergyModule):
         if x is None:
             x = self.internal_state
 
-        # x = self.act_fn(self.layers[0](x)).reshape((8, 8, 8))
         for i, layer in enumerate(self.layers):
             act_fn = self.act_fn if i < len(self.layers) - 1 else self.output_act_fn
             x = act_fn(layer(x))
@@ -352,12 +367,29 @@ def generate_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, op
     optim_h.clear()
     pred = generate(model.internal_state, model=model)
 
+    assert pred.shape == examples.shape
+    # jax.debug.print(
+    #     "generate_on_batch:\n"
+    #     "P: m={pred_mean} s={pred_std} min={pred_min} max={pred_max}\n"
+    #     "E: m={examples_mean} s={examples_std} min={examples_min} max={examples_max}\n",
+    #     # pred_shape=pred.shape,
+    #     pred_mean=pred.mean(axis=(0, 2, 3)),
+    #     pred_std=pred.std(axis=(0, 2, 3)),
+    #     pred_min=pred.min(axis=(0, 2, 3)),
+    #     pred_max=pred.max(axis=(0, 2, 3)),
+    #     # examples_shape=examples.shape,
+    #     examples_mean=examples.mean(axis=(0, 2, 3)),
+    #     examples_std=examples.std(axis=(0, 2, 3)),
+    #     examples_min=examples.min(axis=(0, 2, 3)),
+    #     examples_max=examples.max(axis=(0, 2, 3)),
+    # )
+
     return pred
 
 
 @pxf.jit(static_argnums=0)
 def eval_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
-    pred = jnp.clip(generate_on_batch(T, examples, model=model, optim_h=optim_h), 0.0, 1.0)
+    pred = generate_on_batch(T, examples, model=model, optim_h=optim_h)
 
     mse_loss = jnp.square(pred.flatten() - examples.flatten()).mean()
 
@@ -382,8 +414,7 @@ def eval(dl, T, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
 def run_experiment(
     *,
     num_layers: int = 3,
-    internal_state_dim: tuple[int, int, int] = (4, 4, 8),
-    # bottleneck_dim: int = 128,
+    internal_state_dim: tuple[int, int, int] = (8, 4, 4),
     kernel_size: int = 5,
     act_fn: str | None = "tanh",
     output_act_fn: str | None = None,
@@ -399,13 +430,14 @@ def run_experiment(
     num_sample_images: int = 10,
     checkpoint_dir: Path | None = None,
 ) -> float:
+    # Channel first: (batch, channel, height, width)
     if checkpoint_dir is not None:
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    train_dataset, test_dataset = load_cifar10()
+    dataset = get_vision_dataloaders(dataset_name="cifar10", batch_size=batch_size, should_normalize=False)
 
     input_dim = internal_state_dim
-    output_dim = (*train_dataset[0]["img"].size, 3)
+    output_dim = dataset.train_dataset[0][0].shape
 
     model = PCDeconvDecoder(
         num_layers=num_layers,
@@ -413,10 +445,9 @@ def run_experiment(
         output_dim=output_dim,
         out_channels_per_layer=[8, 5, 3],
         kernel_size=kernel_size,
-        # bottleneck_dim=bottleneck_dim,
         act_fn=ACTIVATION_FUNCS[act_fn],
         output_act_fn=ACTIVATION_FUNCS[output_act_fn],
-        channel_last=True,
+        channel_last=False,
     )
 
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
@@ -428,15 +459,15 @@ def run_experiment(
         pxu.Mask(pxnn.LayerParam)(model),
     )
 
-    if len(train_dataset) % batch_size != 0 or len(test_dataset) % batch_size != 0:
+    if len(dataset.train_dataset) % batch_size != 0 or len(dataset.test_dataset) % batch_size != 0:
         raise ValueError("The dataset size must be divisible by the batch size.")
 
     print("Training...")
 
     test_losses = []
     for epoch in range(epochs):
-        train(get_batches(train_dataset, batch_size), T=T, model=model, optim_w=optim_w, optim_h=optim_h)
-        mse_loss = eval(get_batches(test_dataset, batch_size), T=T, model=model, optim_h=optim_h)
+        train(dataset.train_dataloader, T=T, model=model, optim_w=optim_w, optim_h=optim_h)
+        mse_loss = eval(dataset.test_dataloader, T=T, model=model, optim_h=optim_h)
         test_losses.append(mse_loss)
         print(f"Epoch {epoch + 1}/{epochs} - Test Loss: {mse_loss:.4f}")
 
@@ -446,7 +477,13 @@ def run_experiment(
         return generate_on_batch(T, images, model=model, optim_h=optim_h)
 
     if checkpoint_dir is not None:
-        reconstruct_image(list(range(num_sample_images)), predictor, test_dataset, checkpoint_dir / "images")
+        reconstruct_image(
+            list(range(num_sample_images)),
+            predictor,
+            dataset.test_dataset,
+            dataset.image_restore,
+            checkpoint_dir / "images",
+        )
 
     return min(test_losses)
 

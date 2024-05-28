@@ -1,5 +1,6 @@
 from typing import Callable
 from pathlib import Path
+import sys
 
 # Core dependencies
 import jax
@@ -15,7 +16,11 @@ import pcax.utils as pxu
 import pcax.functional as pxf
 
 from conv_transpose_layer import ConvTranspose
-from data_utils import load_cifar10, get_batches, reconstruct_image
+
+sys.path.insert(0, "../")
+from data_utils import get_vision_dataloaders, reconstruct_image  # noqa: E402
+
+sys.path.pop(0)
 
 
 STATUS_FORWARD = "forward"
@@ -24,8 +29,6 @@ STATUS_FORWARD = "forward"
 class BPDeconvDecoder(pxc.EnergyModule):
     def __init__(
         self,
-        input_dim: tuple[int, int, int] = (8, 8, 8),
-        bottleneck_dim: int = 128,
         *,
         act_fn: Callable[[jax.Array], jax.Array],
         output_act_fn: Callable[[jax.Array], jax.Array] = lambda x: x,
@@ -33,20 +36,19 @@ class BPDeconvDecoder(pxc.EnergyModule):
         super().__init__()
         self.act_fn = px.static(act_fn)
         self.output_act_fn = px.static(output_act_fn)
-        self.input_dim = px.static(input_dim)
 
         self.layers = [
-            pxnn.Conv2d(3, 5, kernel_size=(5, 5), stride=(2, 2), padding=2),  # (16, 16, 5)
+            pxnn.Conv2d(3, 5, kernel_size=(5, 5), stride=(2, 2), padding=2),  # (5, 16, 16)
             self.act_fn,
             pxnn.Conv2d(5, 8, kernel_size=(5, 5), stride=(2, 2), padding=2),  # (8, 8, 8)
             self.act_fn,
-            pxnn.Conv2d(8, 8, kernel_size=(5, 5), stride=(2, 2), padding=2),  # (4, 4, 8)
+            pxnn.Conv2d(8, 8, kernel_size=(5, 5), stride=(2, 2), padding=2),  # (8, 4, 4)
             self.act_fn,
             ConvTranspose(2, 8, 8, kernel_size=(5, 5), stride=(2, 2), padding=2, output_padding=1),  # (8, 8, 8)
             self.act_fn,
-            ConvTranspose(2, 8, 5, kernel_size=(5, 5), stride=(2, 2), padding=2, output_padding=1),  # (16, 16, 5)
+            ConvTranspose(2, 8, 5, kernel_size=(5, 5), stride=(2, 2), padding=2, output_padding=1),  # (5, 16, 16)
             self.act_fn,
-            ConvTranspose(2, 5, 3, kernel_size=(5, 5), stride=(2, 2), padding=2, output_padding=1),  # (32, 32, 3)
+            ConvTranspose(2, 5, 3, kernel_size=(5, 5), stride=(2, 2), padding=2, output_padding=1),  # (3, 32, 32)
             self.output_act_fn,
         ]
 
@@ -62,9 +64,11 @@ def forward(x: jax.Array | None = None, *, model: BPDeconvDecoder) -> jax.Array:
 
 
 @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=(None, 0), axis_name="batch")
-def loss(y: jax.Array, *, model: BPDeconvDecoder) -> jax.Array:
-    y_ = model(y)
-    return jax.lax.pmean(0.5 * jnp.sum((y - y_) ** 2), "batch"), y_
+def loss(example: jax.Array, *, model: BPDeconvDecoder) -> jax.Array:
+    pred = model(example)
+    assert pred.shape == example.shape
+    mse_loss = jnp.square(pred.flatten() - example.flatten()).mean()
+    return jax.lax.pmean(mse_loss, "batch"), pred
 
 
 @pxf.jit(static_argnums=0)
@@ -88,8 +92,9 @@ def generate_on_batch(T: int, examples: jax.Array, *, model: BPDeconvDecoder):
 
 @pxf.jit(static_argnums=0)
 def eval_on_batch(T: int, examples: jax.Array, *, model: BPDeconvDecoder):
-    pred = jnp.clip(generate_on_batch(T, examples, model=model), 0.0, 1.0)
+    pred = generate_on_batch(T, examples, model=model)
 
+    assert pred.shape == examples.shape
     mse_loss = jnp.square(pred.flatten() - examples.flatten()).mean()
 
     return mse_loss, pred
@@ -97,7 +102,6 @@ def eval_on_batch(T: int, examples: jax.Array, *, model: BPDeconvDecoder):
 
 def train(dl, T, *, model: BPDeconvDecoder, optim_w: pxu.Optim):
     for x, y in dl:
-        x = x.transpose(0, 3, 1, 2)
         train_on_batch(T, x, model=model, optim_w=optim_w)
 
 
@@ -105,7 +109,6 @@ def eval(dl, T, *, model: BPDeconvDecoder):
     losses = []
 
     for x, y in dl:
-        x = x.transpose(0, 3, 1, 2)
         e, y_hat = eval_on_batch(T, x, model=model)
         losses.append(e)
 
@@ -114,15 +117,11 @@ def eval(dl, T, *, model: BPDeconvDecoder):
 
 def run_experiment(
     *,
-    num_layers: int = 2,
-    internal_state_dim: tuple[int, int, int] = (8, 8, 8),
-    kernel_size: int = 5,
     batch_size: int = 500,
     epochs: int = 15,
     T: int = 15,
-    optim_x_lr: float = 3e-2,
-    optim_x_momentum: float = 0.0,
     optim_w_lr: float = 1e-3,
+    optim_w_wd: float = 1e-4,
     optim_w_b1: float = 0.9,
     optim_w_b2: float = 0.999,
     num_sample_images: int = 10,
@@ -131,15 +130,11 @@ def run_experiment(
     if checkpoint_dir is not None:
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    train_dataset, test_dataset = load_cifar10()
+    dataset = get_vision_dataloaders(dataset_name="cifar10", batch_size=batch_size, should_normalize=False)
 
-    input_dim = internal_state_dim
-    output_dim = (3, *train_dataset[0]["img"].size)
-    bottleneck_dim = 128
+    output_dim = dataset.train_dataset[0][0].shape
 
     model = BPDeconvDecoder(
-        input_dim,
-        bottleneck_dim,
         act_fn=jax.nn.tanh,
         output_act_fn=lambda x: x,
     )
@@ -148,29 +143,34 @@ def run_experiment(
         forward(jnp.zeros((batch_size, *output_dim)), model=model)
 
     optim_w = pxu.Optim(
-        optax.adamw(learning_rate=optim_w_lr, b1=optim_w_b1, b2=optim_w_b2), pxu.Mask(pxnn.LayerParam)(model)
+        optax.adamw(learning_rate=optim_w_lr, weight_decay=optim_w_wd, b1=optim_w_b1, b2=optim_w_b2),
+        pxu.Mask(pxnn.LayerParam)(model),
     )
 
-    if len(train_dataset) % batch_size != 0 or len(test_dataset) % batch_size != 0:
+    if len(dataset.train_dataset) % batch_size != 0 or len(dataset.test_dataset) % batch_size != 0:
         raise ValueError("The dataset size must be divisible by the batch size.")
 
     test_losses = []
     for epoch in range(epochs):
-        train(get_batches(train_dataset, batch_size), T=T, model=model, optim_w=optim_w)
-        mse_loss = eval(get_batches(test_dataset, batch_size), T=T, model=model)
+        train(dataset.train_dataloader, T=T, model=model, optim_w=optim_w)
+        mse_loss = eval(dataset.test_dataloader, T=T, model=model)
         test_losses.append(mse_loss)
         print(f"Epoch {epoch + 1}/{epochs} - Test Loss: {mse_loss:.4f}")
 
     def predictor(images):
         model.clear_params(pxc.VodeParam)
         model.clear_params(pxc.VodeParam.Cache)
-        images = images.transpose(0, 3, 1, 2)
         preds = generate_on_batch(T, images, model=model)
-        preds = preds.transpose(0, 2, 3, 1)
         return preds
 
     if checkpoint_dir is not None:
-        reconstruct_image(list(range(num_sample_images)), predictor, test_dataset, checkpoint_dir / "images")
+        reconstruct_image(
+            list(range(num_sample_images)),
+            predictor,
+            dataset.test_dataset,
+            dataset.image_restore,
+            checkpoint_dir / "images",
+        )
 
     return min(test_losses)
 
