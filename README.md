@@ -61,7 +61,7 @@ When running a Jupyter Notebook it will prompt you to select an environment. Sel
 First, create an environment with Python 3.10 or newer and [install JAX](https://github.com/google/jax#installation) in the correct version for your accelerator device. For cuda >= 12.0, the command is
 
 ```shell
-pip install -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+pip install -U "jax[cuda12]"
 ```
 
 For CPU only:
