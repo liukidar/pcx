@@ -1,0 +1,1 @@
+from . import fid_score_mnist

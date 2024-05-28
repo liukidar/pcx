@@ -135,3 +135,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# Mine
+0ld*
+.gitignore*
+slurm*
+# sweep*
+plot*
+# inception_score*
+# pytorch_fid*
