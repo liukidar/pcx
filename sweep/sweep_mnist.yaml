@@ -1,0 +1,50 @@
+program: train_mnist.py
+project: pcax
+name: mnist
+method: bayes
+
+metric:
+  goal: maximize
+  name: is
+
+parameters:
+  batch_size:
+    values: [150, 300, 600, 900]
+  lr_h:
+    distribution: log_uniform_values
+    min: 0.0001
+    max: 0.05
+  momentum:
+    values: [0.0, 0.9]
+  h_var:
+    values: [1.0, 0.3, 0.01, 0.001]
+  gamma:
+    values: [0.0, 0.0001]
+  lr_p:
+    distribution: log_uniform_values
+    min: 0.0001
+    max: 0.1
+  decay_p:
+    values: [0.0, 0.1, 0.01, 0.001, 0.0001]
+  input_var:
+    values: [1, 0.3, 0.1, 0.03, 0.01]
+  activation:
+    values: ["relu", "silu", "tanh"]
+    
+  
+early_terminate:
+  type: hyperband
+  min_iter: 10
+
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --is-wandb
+- "true" 
+- --is-verbose
+- "false" 
+
+
+#dgqmvr52
