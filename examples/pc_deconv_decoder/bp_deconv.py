@@ -1,5 +1,6 @@
 from typing import Callable
 from pathlib import Path
+import math
 import sys
 
 # Core dependencies
@@ -23,13 +24,22 @@ from data_utils import get_vision_dataloaders, reconstruct_image  # noqa: E402
 sys.path.pop(0)
 
 
-STATUS_FORWARD = "forward"
+ACTIVATION_FUNCS = {
+    None: lambda x: x,
+    "relu": jax.nn.relu,
+    "leaky_relu": jax.nn.leaky_relu,
+    "gelu": jax.nn.gelu,
+    "tanh": jax.nn.tanh,
+    "hard_tanh": jax.nn.hard_tanh,
+    "sigmoid": jax.nn.sigmoid,
+}
 
 
 class BPDeconvDecoder(pxc.EnergyModule):
     def __init__(
         self,
         *,
+        kernel_size: int = 5,
         act_fn: Callable[[jax.Array], jax.Array],
         output_act_fn: Callable[[jax.Array], jax.Array] = lambda x: x,
     ):
@@ -37,18 +47,36 @@ class BPDeconvDecoder(pxc.EnergyModule):
         self.act_fn = px.static(act_fn)
         self.output_act_fn = px.static(output_act_fn)
 
+        conv_padding = (kernel_size - 1) // 2
+        input_dims = [4, 8, 16]
+        output_dims = [8, 16, 32]
+        conv_transpose_paddings = []
+        for input_dim, output_dim in zip(input_dims, output_dims):
+            padding, output_padding = _calculate_padding_and_output_padding(
+                input_dim=input_dim, output_dim=output_dim, stride=2, kernel_size=kernel_size
+            )
+            conv_transpose_paddings.append({"padding": padding, "output_padding": output_padding})
+
         self.layers = [
-            pxnn.Conv2d(3, 5, kernel_size=(5, 5), stride=(2, 2), padding=2),  # (5, 16, 16)
+            pxnn.Conv2d(
+                3, 5, kernel_size=(kernel_size, kernel_size), stride=(2, 2), padding=conv_padding
+            ),  # (5, 16, 16)
             self.act_fn,
-            pxnn.Conv2d(5, 8, kernel_size=(5, 5), stride=(2, 2), padding=2),  # (8, 8, 8)
+            pxnn.Conv2d(5, 8, kernel_size=(kernel_size, kernel_size), stride=(2, 2), padding=conv_padding),  # (8, 8, 8)
             self.act_fn,
-            pxnn.Conv2d(8, 8, kernel_size=(5, 5), stride=(2, 2), padding=2),  # (8, 4, 4)
+            pxnn.Conv2d(8, 8, kernel_size=(kernel_size, kernel_size), stride=(2, 2), padding=conv_padding),  # (8, 4, 4)
             self.act_fn,
-            ConvTranspose(2, 8, 8, kernel_size=(5, 5), stride=(2, 2), padding=2, output_padding=1),  # (8, 8, 8)
+            ConvTranspose(
+                2, 8, 8, kernel_size=(kernel_size, kernel_size), stride=(2, 2), **conv_transpose_paddings[0]
+            ),  # (8, 8, 8)
             self.act_fn,
-            ConvTranspose(2, 8, 5, kernel_size=(5, 5), stride=(2, 2), padding=2, output_padding=1),  # (5, 16, 16)
+            ConvTranspose(
+                2, 8, 5, kernel_size=(kernel_size, kernel_size), stride=(2, 2), **conv_transpose_paddings[1]
+            ),  # (5, 16, 16)
             self.act_fn,
-            ConvTranspose(2, 5, 3, kernel_size=(5, 5), stride=(2, 2), padding=2, output_padding=1),  # (3, 32, 32)
+            ConvTranspose(
+                2, 5, 3, kernel_size=(kernel_size, kernel_size), stride=(2, 2), **conv_transpose_paddings[2]
+            ),  # (3, 32, 32)
             self.output_act_fn,
         ]
 
@@ -56,6 +84,31 @@ class BPDeconvDecoder(pxc.EnergyModule):
         for i, layer in enumerate(self.layers):
             x = layer(x)
         return x
+
+
+def _calculate_padding_and_output_padding(
+    *, input_dim: int, output_dim: int, stride: int, kernel_size: int
+) -> tuple[int, int]:
+    """
+    Calculate the padding and output_padding required for a ConvTranspose layer to achieve the desired output dimension.
+
+    Parameters:
+    input_dim (int): The size of the input dimension (height or width).
+    output_dim (int): The desired size of the output dimension (height or width).
+    stride (int): The stride of the convolution.
+    kernel_size (int): The size of the convolution kernel.
+
+    Returns:
+    tuple: The required padding and output_padding to achieve the desired output dimension.
+    """
+    no_padding_output_dim = (input_dim - 1) * stride + kernel_size
+
+    padding = math.ceil(max(no_padding_output_dim - output_dim, 0) / 2)
+    output_padding = max(output_dim - (no_padding_output_dim - 2 * padding), 0)
+
+    assert no_padding_output_dim - 2 * padding + output_padding == output_dim
+
+    return padding, output_padding
 
 
 @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=0)
@@ -71,8 +124,8 @@ def loss(example: jax.Array, *, model: BPDeconvDecoder) -> jax.Array:
     return jax.lax.pmean(mse_loss, "batch"), pred
 
 
-@pxf.jit(static_argnums=0)
-def train_on_batch(T: int, examples: jax.Array, *, model: BPDeconvDecoder, optim_w: pxu.Optim):
+@pxf.jit()
+def train_on_batch(examples: jax.Array, *, model: BPDeconvDecoder, optim_w: pxu.Optim):
     model.train()
 
     learning_step = pxf.value_and_grad(pxu.Mask(pxnn.LayerParam, [False, True]), has_aux=True)(loss)
@@ -83,16 +136,16 @@ def train_on_batch(T: int, examples: jax.Array, *, model: BPDeconvDecoder, optim
     optim_w.step(model, g["model"])
 
 
-@pxf.jit(static_argnums=0)
-def generate_on_batch(T: int, examples: jax.Array, *, model: BPDeconvDecoder):
+@pxf.jit()
+def generate_on_batch(examples: jax.Array, *, model: BPDeconvDecoder):
     model.eval()
 
     return forward(examples, model=model)
 
 
-@pxf.jit(static_argnums=0)
-def eval_on_batch(T: int, examples: jax.Array, *, model: BPDeconvDecoder):
-    pred = generate_on_batch(T, examples, model=model)
+@pxf.jit()
+def eval_on_batch(examples: jax.Array, *, model: BPDeconvDecoder):
+    pred = generate_on_batch(examples, model=model)
 
     assert pred.shape == examples.shape
     mse_loss = jnp.square(pred.flatten() - examples.flatten()).mean()
@@ -100,16 +153,16 @@ def eval_on_batch(T: int, examples: jax.Array, *, model: BPDeconvDecoder):
     return mse_loss, pred
 
 
-def train(dl, T, *, model: BPDeconvDecoder, optim_w: pxu.Optim):
+def train(dl, *, model: BPDeconvDecoder, optim_w: pxu.Optim):
     for x, y in dl:
-        train_on_batch(T, x, model=model, optim_w=optim_w)
+        train_on_batch(x, model=model, optim_w=optim_w)
 
 
-def eval(dl, T, *, model: BPDeconvDecoder):
+def eval(dl, *, model: BPDeconvDecoder):
     losses = []
 
     for x, y in dl:
-        e, y_hat = eval_on_batch(T, x, model=model)
+        e, y_hat = eval_on_batch(x, model=model)
         losses.append(e)
 
     return np.mean(losses)
@@ -117,9 +170,11 @@ def eval(dl, T, *, model: BPDeconvDecoder):
 
 def run_experiment(
     *,
+    kernel_size: int = 5,
+    act_fn: str | None = "tanh",
+    output_act_fn: str | None = None,
     batch_size: int = 500,
     epochs: int = 15,
-    T: int = 15,
     optim_w_lr: float = 1e-3,
     optim_w_wd: float = 1e-4,
     optim_w_b1: float = 0.9,
@@ -135,8 +190,9 @@ def run_experiment(
     output_dim = dataset.train_dataset[0][0].shape
 
     model = BPDeconvDecoder(
-        act_fn=jax.nn.tanh,
-        output_act_fn=lambda x: x,
+        kernel_size=kernel_size,
+        act_fn=ACTIVATION_FUNCS[act_fn],
+        output_act_fn=ACTIVATION_FUNCS[output_act_fn],
     )
 
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
@@ -152,15 +208,15 @@ def run_experiment(
 
     test_losses = []
     for epoch in range(epochs):
-        train(dataset.train_dataloader, T=T, model=model, optim_w=optim_w)
-        mse_loss = eval(dataset.test_dataloader, T=T, model=model)
+        train(dataset.train_dataloader, model=model, optim_w=optim_w)
+        mse_loss = eval(dataset.test_dataloader, model=model)
         test_losses.append(mse_loss)
         print(f"Epoch {epoch + 1}/{epochs} - Test Loss: {mse_loss:.4f}")
 
     def predictor(images):
         model.clear_params(pxc.VodeParam)
         model.clear_params(pxc.VodeParam.Cache)
-        preds = generate_on_batch(T, images, model=model)
+        preds = generate_on_batch(images, model=model)
         return preds
 
     if checkpoint_dir is not None:

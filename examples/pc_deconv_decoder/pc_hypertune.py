@@ -10,9 +10,9 @@ def main(run_info: stune.RunInfo):
     best_loss = run_experiment(
         num_layers=run_info["hp/num_layers"],
         internal_state_dim=(
-            run_info["hp/internal_state_dim"],
-            run_info["hp/internal_state_dim"],
             run_info["hp/internal_state_channels"],
+            run_info["hp/internal_state_dim"],
+            run_info["hp/internal_state_dim"],
         ),
         kernel_size=run_info["hp/kernel_size"],
         act_fn=run_info["hp/act_fn"],
@@ -31,8 +31,8 @@ def main(run_info: stune.RunInfo):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="hypertune.yaml", nargs="?", type=str, help="Configuration file")
-    parser.add_argument("--checkpoint_dir", default="results/hp", type=Path, help="Directory to save checkpoints")
+    parser.add_argument("--config", default="pc_hypertune.yaml", nargs="?", type=str, help="Configuration file")
+    parser.add_argument("--checkpoint_dir", default="results/pc_hp", type=Path, help="Directory to save checkpoints")
     args = parser.parse_args()
 
     main(stune.RunInfo(stune.load_config(args.config)))
