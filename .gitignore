@@ -6,7 +6,8 @@
 **/data
 **/results
 **/wandb
-**/plots
+**/plots_bp
+**/plots_pc
 
 
 

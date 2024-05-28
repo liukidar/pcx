@@ -43,29 +43,22 @@ def get_model_by_name(model_name):
 
 # Model definition
 class TwoLayerNN(pxc.EnergyModule):
-    def __init__(self, input_dim: int, hidden_dim: int, output_dim: int, act_fn: Callable[[jax.Array], jax.Array]) -> None:
+    def __init__(self, input_dim: int, hidden_dim: int, output_dim: int, subset_size: int, act_fn: Callable[[jax.Array], jax.Array]) -> None:
         super().__init__()
         self._train_step = 0
         self._val_step = 0
         self._test_step = 0
+
+        # required for weight initialization scenarios
+        self._dim_output = output_dim
+        self._subset_size = subset_size
+
 
         self.act_fn = px.static(act_fn)
         self.layers = [
             pxnn.Linear(input_dim, hidden_dim),
             pxnn.Linear(hidden_dim, output_dim)
         ]
-
-        # create a glorot uniform initializer:
-        # see: https://pytorch.org/docs/2.0/nn.init.html?highlight=xavier#torch.nn.init.xavier_uniform_
-        # see: https://jax.readthedocs.io/en/latest/_autosummary/jax.nn.initializers.variance_scaling.html#jax.nn.initializers.variance_scaling
-        #initializer = jax.nn.initializers.glorot_uniform() # this is wrong
-        # relu adjust JAX scale value
-        scale_ = 6.0
-        initializer_ = jax.nn.initializers.variance_scaling(scale=scale_, mode='fan_avg', distribution='uniform')
-        # more here: https://jax.readthedocs.io/en/latest/_autosummary/jax.nn.initializers.variance_scaling.html#jax.nn.initializers.variance_scaling
-        # now apply glorot uniform initialization to the weights only
-        for l in self.layers:
-            l.nn.weight.set(initializer_(px.RKG(), l.nn.weight.shape))
         
         self.vodes = [
             pxc.Vode((hidden_dim,)),
@@ -95,6 +88,39 @@ class TwoLayerNN(pxc.EnergyModule):
     def epoch_step(self):
         self._train_step = 0
         self._val_step = 0
+
+    def init_weights(self, prev_model):
+        if prev_model is None or self.num_parameters() > self._subset_size * self._dim_output:
+            # initialize smallest net using Xavier Glorot-uniform distribution
+
+            # create a glorot uniform initializer:
+            # see: https://pytorch.org/docs/2.0/nn.init.html?highlight=xavier#torch.nn.init.xavier_uniform_
+            # see: https://jax.readthedocs.io/en/latest/_autosummary/jax.nn.initializers.variance_scaling.html#jax.nn.initializers.variance_scaling
+            #initializer = jax.nn.initializers.glorot_uniform() # this is wrong
+            # relu adjust JAX scale value
+            scale_ = 6.0
+            initializer_ = jax.nn.initializers.variance_scaling(scale=scale_, mode='fan_avg', distribution='uniform')
+            # more here: https://jax.readthedocs.io/en/latest/_autosummary/jax.nn.initializers.variance_scaling.html#jax.nn.initializers.variance_scaling
+            # now apply glorot uniform initialization to the weights only
+            for l in self.layers:
+                l.nn.weight.set(initializer_(px.RKG(), l.nn.weight.shape))
+
+        else:
+            # initialize larger net using previous model weights and biases
+            # remaining weights are initialized using normal distribution with mean 0 and std 0.01
+            initializer_ = jax.nn.initializers.normal(stddev=0.01)
+
+            # initialize all weight matrices with normal distribution with mean 0 and std 0.01
+            for l in self.layers:
+                l.nn.weight.set(initializer_(px.RKG(), l.nn.weight.shape))
+
+            # partially initialize the weights and biases of the hidden layer with the previous model's weights and biases
+            # TODO
+            initialize_with_previous_weights(
+                self.hidden.weight, prev_model.hidden.weight)
+            initialize_with_previous_bias(
+                self.hidden.bias, prev_model.hidden.bias)
+
 
     def __call__(self, x, y):
         for v, l in zip(self.vodes[:-1], self.layers[:-1]):
@@ -158,7 +184,7 @@ def eval(dl, *, model: TwoLayerNN):
 ###################################### end of model related code ##########################################
 
 class Training:
-    def __init__(self, model, dataset, num_params, epochs, batch_size, learning_rate, noise_level, num_models=None):
+    def __init__(self, model, dataset, num_params, epochs, batch_size, learning_rate, noise_level, prev_model=None, num_models=None):
         self._train_loader = dataset.train_loader
         self._val_loader = dataset.val_loader
         self._test_loader = dataset.test_loader
@@ -176,6 +202,7 @@ class Training:
         self._dataset_name = type(self._val_loader.dataset).__name__
         self._model_name = model.name()
         self._loss_name = "CrossEntropyLoss"
+        self._prev_model = None
 
         if num_models is not None:
             num_params = num_params[:num_models]
@@ -214,6 +241,9 @@ class Training:
 
 
         for model in self._all_models:  # different sized models
+            
+            # Initialize the model with the previous model's weights if it exists
+            model.init_weights(self._prev_model)  # need for 2layer NN
 
             # Initialize the model and optimizers
             with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
@@ -251,6 +281,7 @@ class Training:
             self.all_test_losses[model_name] = e_test
             self.all_train_losses[model_name] = train_losses
             self.all_val_losses[model_name] = val_losses
+            self._prev_model = model
 
             # Explicitly create the path variable with additional parameters
             path = os.path.join(
@@ -292,6 +323,7 @@ if __name__ == "__main__":
     train_subset_size = config["train_subset_size"][model_name.lower()]
     epochs = args.epochs if args.epochs else config["epochs"]
     num_params = config["num_params"][model_name]
+    previous_model = None
     num_models = None
     if args.num:
         num_models = args.num
@@ -299,6 +331,6 @@ if __name__ == "__main__":
     model = get_model_by_name(model_name)
     dataset = get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level)
 
-    training = Training(model, dataset, num_params, epochs, batch_size, learning_rate, noise_level, num_models=num_models)
+    training = Training(model, dataset, num_params, epochs, batch_size, learning_rate, noise_level, prev_model=previous_model, num_models=num_models)
     training.start()
     training.save()
