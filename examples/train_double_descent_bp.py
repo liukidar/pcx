@@ -43,13 +43,15 @@ def get_model_by_name(model_name):
 
 class TwoLayerNN(px.Module):
     def __init__(
-        self, input_dim: int, hidden_dim: int, output_dim: int, act_fn: Callable[[jax.Array], jax.Array]
-    ) -> None:
+        self, input_dim: int, hidden_dim: int, output_dim: int, subset_size: int, act_fn: Callable[[jax.Array], jax.Array]) -> None:
         super().__init__()
         self._train_step = 0
         self._val_step = 0
         self._test_step = 0
 
+        # required for weight initialization scenarios
+        self._dim_output = output_dim
+        self._subset_size = subset_size
 
         self.act_fn = px.static(act_fn)
 
@@ -57,18 +59,6 @@ class TwoLayerNN(px.Module):
             pxnn.Linear(input_dim, hidden_dim),
             pxnn.Linear(hidden_dim, output_dim)
         ]
-
-        # create a glorot uniform initializer:
-        # see: https://pytorch.org/docs/2.0/nn.init.html?highlight=xavier#torch.nn.init.xavier_uniform_
-        # see: https://jax.readthedocs.io/en/latest/_autosummary/jax.nn.initializers.variance_scaling.html#jax.nn.initializers.variance_scaling
-        #initializer = jax.nn.initializers.glorot_uniform() # this is wrong
-        # relu adjust JAX scale value
-        scale_ = 6.0
-        initializer_ = jax.nn.initializers.variance_scaling(scale=scale_, mode='fan_avg', distribution='uniform')
-        # more here: https://jax.readthedocs.io/en/latest/_autosummary/jax.nn.initializers.variance_scaling.html#jax.nn.initializers.variance_scaling
-        # now apply glorot uniform initialization to the weights only
-        for l in self.layers:
-            l.nn.weight.set(initializer_(px.RKG(), l.nn.weight.shape))
 
     @staticmethod
     def name():
@@ -92,6 +82,67 @@ class TwoLayerNN(px.Module):
     def epoch_step(self):
         self._train_step = 0
         self._val_step = 0
+
+    def initialize_with_previous_weights(self, previous_weights):
+            # target_weights: the hidden weights of the current model: self.layers[0].nn.weight
+            # previous_weights: the hidden weights of the previous model: prev_model.layers[0].nn.weight
+            self.layers[0].nn.weight.set(self.layers[0].nn.weight.at[:previous_weights.shape[0], :previous_weights.shape[1]].set(previous_weights))
+
+    def initialize_with_previous_bias(self, previous_bias):
+            # target_bias: the hidden bias of the current model: self.layers[0].nn.bias
+            # previous_bias: the hidden bias of the previous model: prev_model.layers[0].nn.bias
+            self.layers[0].nn.bias.set(self.layers[0].nn.bias.at[:previous_bias.shape[0]].set(previous_bias))
+
+    def init_weights(self, prev_model):
+        if prev_model is None or self.num_parameters() > self._subset_size * self._dim_output:
+            # Initialize smallest net using Xavier Glorot-uniform distribution
+
+            # create a glorot uniform initializer:
+            # see: https://pytorch.org/docs/2.0/nn.init.html?highlight=xavier#torch.nn.init.xavier_uniform_
+            # see: https://jax.readthedocs.io/en/latest/_autosummary/jax.nn.initializers.variance_scaling.html#jax.nn.initializers.variance_scaling
+            #initializer = jax.nn.initializers.glorot_uniform() # this is wrong, due to the scale being 1.0 by default for this function
+            # ReLU adjusting scale value in in JAX
+            scale_ = 6.0
+            initializer_ = jax.nn.initializers.variance_scaling(scale=scale_, mode='fan_avg', distribution='uniform')
+            # more here: https://jax.readthedocs.io/en/latest/_autosummary/jax.nn.initializers.variance_scaling.html#jax.nn.initializers.variance_scaling
+            # Apply Glorot uniform initialization to the weights only
+            for l in self.layers:
+                l.nn.weight.set(initializer_(px.RKG(), l.nn.weight.shape))
+
+            # debug print statement
+            # print that the model was initialized with Glorot uniform
+            """
+            print(f"Initialized model with Glorot uniform initialization")
+            """            
+
+        else:
+            # Initialize larger net using previous model weights and biases
+            # Remaining weights are initialized using normal distribution with mean 0 and std 0.01
+            initializer_ = jax.nn.initializers.normal(stddev=0.01)
+
+            # Initialize all weight matrices with normal distribution with mean 0 and std 0.01
+            for l in self.layers:
+                l.nn.weight.set(initializer_(px.RKG(), l.nn.weight.shape))
+
+            # Partially initialize the weights and biases of the hidden layer with the previous model's weights and biases
+            self.initialize_with_previous_weights(prev_model.layers[0].nn.weight)
+            self.initialize_with_previous_bias(prev_model.layers[0].nn.bias)
+
+            # debug print statements
+            """
+            # print that the model was initialized with previous model's hidden weights and hidden biases
+            print(f"Initialized model with previous model's hidden weights and hidden biases")
+            # compare previous weights with current weights and previous biases with current biases and return boolean for both cases
+            hidden_W = self.layers[0].nn.weight.get()[:prev_model.layers[0].nn.weight.shape[0], :prev_model.layers[0].nn.weight.shape[1]]
+            previous_W = prev_model.layers[0].nn.weight.get()[:prev_model.layers[0].nn.weight.shape[0], :prev_model.layers[0].nn.weight.shape[1]]
+            # Verify the replacement
+            print("Are the weights the same?", jnp.all(hidden_W == previous_W))
+
+            hidden_b = self.layers[0].nn.bias.get()[:prev_model.layers[0].nn.bias.shape[0]]
+            previous_b = prev_model.layers[0].nn.bias.get()[:prev_model.layers[0].nn.bias.shape[0]]
+            # Verify the replacement
+            print("Are the biases the same?", jnp.all(hidden_b == previous_b))
+            """
 
     def __call__(self, x):
         for layer in self.layers[:-1]:
@@ -159,6 +210,7 @@ def eval(dl, *, model: TwoLayerNN):
 class Training:
     def __init__(self, model, dataset, num_params, epochs, batch_size, learning_rate, noise_level, prev_model=None, num_models=None):
         self._train_loader = dataset.train_loader
+        self._subset_size = len(dataset.train_loader.sampler)
         self._val_loader = dataset.val_loader
         self._test_loader = dataset.test_loader
         self.num_classes = len(np.unique(dataset.train_loader.dataset.targets))
@@ -182,7 +234,8 @@ class Training:
 
         # in this loop we create all models with different hidden layer sizes
         for p in num_params:
-            self._all_models.append(TwoLayerNN(input_dim=self.input_dim, hidden_dim=p, output_dim=self.num_classes, act_fn=jax.nn.relu))
+            self._all_models.append(TwoLayerNN(input_dim=self.input_dim, hidden_dim=p, output_dim=self.num_classes, 
+                                               subset_size=self._subset_size, act_fn=jax.nn.relu))
 
 
     def save(self):
@@ -220,7 +273,7 @@ class Training:
 
             # Initialize the optimizer
             with pxu.step(model):
-                optim_w = pxu.Optim(optax.sgd(1e-2, momentum=0.95), pxu.Mask(pxnn.LayerParam)(model))
+                optim_w = pxu.Optim(optax.sgd(self._learning_rate, momentum=0.95), pxu.Mask(pxnn.LayerParam)(model))
 
             progress.update_model()
 
