@@ -15,14 +15,21 @@ import pcax.predictive_coding as pxc
 import pcax.nn as pxnn
 import pcax.utils as pxu
 import pcax.functional as pxf
+from pcax import RKG
 
 from conv_transpose_layer import ConvTranspose
 
 sys.path.insert(0, "../")
-from data_utils import get_vision_dataloaders, reconstruct_image  # noqa: E402
+from data_utils import get_vision_dataloaders, reconstruct_image, seed_everything  # noqa: E402
 
 sys.path.pop(0)
 
+# 0 - 0.0067
+# 1 - 0.0058
+# 2 - 0.0067
+# 3 - 0.0057
+RKG.seed(3)
+seed_everything(3)
 
 ACTIVATION_FUNCS = {
     None: lambda x: x,
@@ -170,13 +177,13 @@ def eval(dl, *, model: BPDeconvDecoder):
 
 def run_experiment(
     *,
-    kernel_size: int = 5,
-    act_fn: str | None = "tanh",
+    kernel_size: int = 7,
+    act_fn: str | None = "hard_tanh",
     output_act_fn: str | None = None,
-    batch_size: int = 500,
-    epochs: int = 15,
-    optim_w_lr: float = 1e-3,
-    optim_w_wd: float = 1e-4,
+    batch_size: int = 200,
+    epochs: int = 30,
+    optim_w_lr: float = 0.0007958728757424726,
+    optim_w_wd: float = 0.0008931102704862562,
     optim_w_b1: float = 0.9,
     optim_w_b2: float = 0.999,
     num_sample_images: int = 10,

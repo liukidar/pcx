@@ -1,6 +1,7 @@
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Callable
+import random
 
 import torch
 import numpy as np
@@ -14,6 +15,12 @@ VISION_DATASETS = {
     "cifar10": torchvision.datasets.CIFAR10,
     "fasion_mnist": torchvision.datasets.FashionMNIST,
 }
+
+
+def seed_everything(seed: int):
+    np.random.seed(seed)
+    torch.manual_seed(0)
+    random.seed(seed)
 
 
 def numpy_collate(batch):
@@ -49,6 +56,16 @@ class TorchDataloader(torch.utils.data.DataLoader):
         persistent_workers=True,
         prefetch_factor=2,
     ):
+        # https://pytorch.org/docs/stable/notes/randomness.html#dataloader
+        def seed_worker(worker_id):
+            worker_seed = torch.initial_seed() % 2**32
+            seed_everything(worker_seed)
+            if worker_init_fn is not None:
+                worker_init_fn(worker_id)
+
+        g = torch.Generator()
+        g.manual_seed(0)
+
         super(self.__class__, self).__init__(
             dataset,
             batch_size=batch_size,
@@ -60,7 +77,8 @@ class TorchDataloader(torch.utils.data.DataLoader):
             pin_memory=pin_memory,
             drop_last=True if batch_sampler is None else None,
             timeout=timeout,
-            worker_init_fn=worker_init_fn,
+            worker_init_fn=seed_worker,
+            generator=g,
             persistent_workers=persistent_workers,
             prefetch_factor=prefetch_factor,
         )
@@ -153,7 +171,7 @@ def get_vision_dataloaders(
 
 def reconstruct_image(image_ids: list[int], predictor, dataset, image_restore, output_dir: Path):
     # Channel first: (batch, channel, height, width)
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(exist_ok=True, parents=True)
     input = np.stack([dataset[i][0] for i in image_ids])
     images = image_restore(input)
     preds = predictor(input)

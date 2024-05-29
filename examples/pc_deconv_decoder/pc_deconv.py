@@ -16,13 +16,21 @@ import pcax.predictive_coding as pxc
 import pcax.nn as pxnn
 import pcax.utils as pxu
 import pcax.functional as pxf
+from pcax import RKG
 
 from conv_transpose_layer import ConvTranspose
 
 sys.path.insert(0, "../")
-from data_utils import get_vision_dataloaders, reconstruct_image  # noqa: E402
+from data_utils import get_vision_dataloaders, reconstruct_image, seed_everything  # noqa: E402
 
 sys.path.pop(0)
+
+# 0 - 0.0068
+# 1 - 0.0069 diverged
+# 2 - 0.0069
+# 3 - 0.0069
+RKG.seed(0)
+seed_everything(0)
 
 
 logging.basicConfig(level=logging.INFO)
@@ -415,16 +423,16 @@ def run_experiment(
     *,
     num_layers: int = 3,
     internal_state_dim: tuple[int, int, int] = (8, 4, 4),
-    kernel_size: int = 5,
+    kernel_size: int = 7,
     act_fn: str | None = "tanh",
     output_act_fn: str | None = None,
-    batch_size: int = 500,
-    epochs: int = 15,
-    T: int = 15,
-    optim_x_lr: float = 3e-2,
-    optim_x_momentum: float = 0.0,
-    optim_w_lr: float = 1e-3,
-    optim_w_wd: float = 1e-4,
+    batch_size: int = 200,
+    epochs: int = 30,
+    T: int = 20,
+    optim_x_lr: float = 0.012339577360613845,
+    optim_x_momentum: float = 0.1,
+    optim_w_lr: float = 0.0007642161267055484,
+    optim_w_wd: float = 3.511389190873198e-05,
     optim_w_b1: float = 0.9,
     optim_w_b2: float = 0.999,
     num_sample_images: int = 10,

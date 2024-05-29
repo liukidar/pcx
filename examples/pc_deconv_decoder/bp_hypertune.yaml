@@ -4,11 +4,11 @@ hp:
     kernel_size:
         sample_type: categorical
         sample_space: [3, 4, 5, 7]
-        default: 5
+        default: 7
     act_fn:
         sample_type: categorical
         sample_space: [relu, leaky_relu, gelu, tanh, hard_tanh]
-        default: tanh
+        default: hard_tanh
     output_act_fn: null
     batch_size: 200
     epochs: 30
@@ -17,8 +17,8 @@ hp:
             lr:
                 sample_type: float
                 sample_space: [[3e-5, 1e-3], null, true]
-                default: 1e-3
+                default: 0.0007958728757424726
             wd:
                 sample_type: float
                 sample_space: [[1e-5, 1e-2], null, true]
-                default: 1e-4
+                default: 0.0008931102704862562
