@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # usage:
-# ./run_experiments.sh -n 0.2 -s train_double_descent_pc.py
+# ./run_double_descent.sh -n 0.2 -s train_double_descent_pc.py
 
 # Default values for parameters
 epochs_list=(100 200 400)
