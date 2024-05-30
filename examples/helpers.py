@@ -82,7 +82,7 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.2
 
         transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,)),
+            transforms.Normalize((0.1307,), (0.3081,)), # MNIST mean and std for normalization via the formula (x - mean) / std
             transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
         ])
     elif dataset_name.lower() == "fashionmnist":
@@ -90,7 +90,7 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.2
 
         transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.2860,), (0.3530,)),
+            transforms.Normalize((0.2860,), (0.3530,)), # FashionMNIST mean and std for normalization via the formula (x - mean) / std
             transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
         ])
     else:
