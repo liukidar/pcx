@@ -3,8 +3,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=16
 # set max wallclock time
-#SBATCH --time=47:59:00
-#SBATCH --partition=medium
+#SBATCH --time=11:59:00
+#SBATCH --partition=short
 # set name of job
 #SBATCH --job-name=mnist_pcax
 # qos

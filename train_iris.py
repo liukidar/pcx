@@ -317,7 +317,7 @@ def main(args):
     plt.ylabel("petal length")
     plt.legend()
     plt.tight_layout()
-    plot_filename = f"plot_{uuid.uuid4().hex}.png"
+    plot_filename = f"plot_{uuid.uuid4().hex}.svg"
     plt.savefig(plot_filename)
     if is_wandb:
         wandb.log({"plot": wandb.Image(plot_filename)})
