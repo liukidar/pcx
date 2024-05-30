@@ -79,14 +79,22 @@ def add_label_noise(dataset, noise_level=0.2):
 def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.2):
     if dataset_name.lower() == "mnist":
         ds = datasets.MNIST
+
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.1307,), (0.3081,)),
+            transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
+        ])
+    elif dataset_name.lower() == "fashionmnist":
+        ds = datasets.FashionMNIST
+
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.2860,), (0.3530,)),
+            transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
+        ])
     else:
         raise NotImplementedError(f"Dataset {dataset_name} isn't available")
-
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,)),
-        transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
-    ])
 
     train_set = ds(root='./data', download=True, train=True, transform=transform)
     train_set = add_label_noise(train_set, noise_level=noise_level)
