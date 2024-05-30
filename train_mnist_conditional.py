@@ -83,7 +83,9 @@ def forward(x, y, *, model: Model):
 @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=(0,), out_axes=(None, 0), axis_name="batch")
 def energy(x, *, model: Model):
     y_ = model(x, None)
-    return jax.lax.psum(model.energy().sum(), "batch"), y_
+    return jax.lax.pmean(model.energy().sum(), "batch"), y_
+
+
 @pxf.jit(static_argnums=0)
 def train_on_batch(
     T: int,
@@ -100,7 +102,7 @@ def train_on_batch(
                 pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]),
                 has_aux=True
             )(energy)(x, model=model)
-        optim_h.step(model, g["model"])
+        optim_h.step(model, g["model"], True)
         return x, None
 
     # print("Training!")
@@ -139,7 +141,7 @@ def eval_on_batch(
                 pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]),
                 has_aux=True
             )(energy)(x, model=model)
-        optim_h.step(model, g["model"])
+        optim_h.step(model, g["model"], True)
         return x, None
 
     # print("Evaluation!")  
@@ -255,6 +257,7 @@ def main(args):
     verbose = args.is_verbose
     
     px.RKG.seed(0)
+    torch.manual_seed(0)
     
     batch_size = args.batch_size
     lr = args.lr_h
@@ -265,10 +268,8 @@ def main(args):
     weight_decay = args.decay_p
     input_var = args.input_var
     activation = args.activation
-    latent_dim = 30
+    latent_dim = 2
     hidden_dim = 256
-
-
 
     if activation == "relu":
         activation = jax.nn.relu
@@ -276,9 +277,12 @@ def main(args):
         activation = jax.nn.tanh
     elif activation =='silu':
         activation = jax.nn.silu
+    elif activation =='l-relu':
+        activation = jax.nn.leaky_relu
+    elif activation == "h-tanh":
+        activation = jax.nn.hard_tanh
     else:
         raise NotImplementedError
-
 
 
     # Define the transformation to scale pixels to the range [-1, 1]
@@ -291,11 +295,14 @@ def main(args):
     train_dl = DataLoader(train_dataset, batch_size=train_dataset.__len__(), shuffle=True)
     data, label = list(train_dl)[0]
     nm_elements = len(data)
-    X = np.zeros((batch_size * (nm_elements // batch_size), latent_dim))
+    X = (label.numpy() % 2)[:batch_size * (nm_elements // batch_size)]
+    X = jax.nn.one_hot(X, 2)
     y = data.numpy()[:batch_size * (nm_elements // batch_size)]
     nm_elements_test =  1024
     X_test = np.zeros((batch_size * (nm_elements_test // batch_size), latent_dim))
-    y_test = np.zeros((batch_size * (nm_elements_test // batch_size), 784)) # is not used
+    X_test[:nm_elements_test//2, 0] = 1
+    X_test[nm_elements_test//2:, 1] = 1
+    y_test = np.zeros((batch_size * (nm_elements_test // batch_size), 784)) # is not usedtrain_dl = list(zip(X.reshape(-1, batch_size, latent_dim), y.reshape(-1, batch_size, 784)))
     train_dl = list(zip(X.reshape(-1, batch_size, latent_dim), y.reshape(-1, batch_size, 784)))
     test_dl = tuple(zip(X_test.reshape(-1, batch_size, latent_dim), y_test.reshape(-1, batch_size, 784)))
     
@@ -313,7 +320,7 @@ def main(args):
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
         forward(jax.numpy.zeros((batch_size, latent_dim)), None, model=model)
         optim_h = pxu.Optim(h_optimiser_fn(lr, momentum, h_var, gamma), pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True))(model))
-        optim_w = pxu.Optim(optax.adam(lr_p), pxu.Mask(pxnn.LayerParam)(model))
+        optim_w = pxu.Optim(optax.adamw(lr_p, weight_decay = weight_decay), pxu.Mask(pxnn.LayerParam)(model))
         # make optimiser that also optimises the activity of the model layer[-1]
         model.vodes[-1].h.frozen = False
         forward(jax.numpy.zeros((batch_size, latent_dim)), None, model=model)
@@ -348,12 +355,17 @@ def main(args):
         best_is = is_
     
 
-    images_reshaped = imgs.reshape(-1, 28, 28)
+    images_reshaped = best_imgs.reshape(-1, 28, 28)
     fig, axes = plt.subplots(10, 10, figsize=(10,10))
     axes = axes.ravel()
-    for i in np.arange(0, 100):
-        axes[i].imshow(images_reshaped[i], cmap='gray', vmin=0, vmax=1)
+
+    for i in np.arange(0, 50):
+        axes[i].imshow(images_reshaped[i], cmap='gray')
         axes[i].axis('off')
+
+    for i in np.arange(0, 50):
+        axes[i+50].imshow(images_reshaped[-50 + i], cmap='gray')
+        axes[i+50].axis('off')
 
     plt.subplots_adjust(wspace=0.5)
     plt.tight_layout()

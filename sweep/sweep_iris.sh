@@ -21,8 +21,6 @@
 module load Anaconda3
 source activate $DATA/envs/pcax
 
-wandb login 7edd27dd0e92add2b9a146291c69cb109c7e3396
-
 for IDX in `seq 28`; do
 	GPU_ID=$((IDX % 4))
 	echo $GPU_ID

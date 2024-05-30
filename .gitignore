@@ -142,6 +142,8 @@ dmypy.json
 .gitignore*
 slurm*
 # sweep*
+# train*
 plot*
 # inception_score*
 # pytorch_fid*
+optim*

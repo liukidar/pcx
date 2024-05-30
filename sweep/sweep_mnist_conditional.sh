@@ -3,8 +3,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=16
 # set max wallclock time
-#SBATCH --time=47:59:00
-#SBATCH --partition=medium
+#SBATCH --time=11:59:00
+#SBATCH --partition=short
 # set name of job
 #SBATCH --job-name=mnist_pcax
 # qos
@@ -20,8 +20,6 @@
 
 module load Anaconda3
 source activate $DATA/envs/pcax
-
-wandb login 7edd27dd0e92add2b9a146291c69cb109c7e3396
 
 for IDX in `seq 4`; do
 	GPU_ID=$((IDX % 4))

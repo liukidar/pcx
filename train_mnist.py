@@ -60,9 +60,16 @@ class Model(pxc.EnergyModule):
         ] + [pxnn.Linear(hidden_dim, output_dim)]
 
         self.vodes = [
-            pxc.Vode((hidden_dim,)) for _ in range(nm_layers-1)
-        ] + [pxc.Vode((output_dim,), se_energy_input)]
-        
+            pxc.Vode((hidden_dim,),
+                ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",)},
+                tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros(n.shape.get())},                
+            ) for _ in range(nm_layers-1)
+        ] + [pxc.Vode((output_dim,), 
+                energy_fn = se_energy_input,
+                ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",)},
+                tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros(n.shape.get())},
+                )
+                ]
         self.out_vode_act_fn = px.static(jax.nn.tanh)
 
         self.vodes[-1].h.frozen = True
@@ -83,7 +90,8 @@ def forward(x, y, *, model: Model):
 @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=(0,), out_axes=(None, 0), axis_name="batch")
 def energy(x, *, model: Model):
     y_ = model(x, None)
-    return jax.lax.psum(model.energy().sum(), "batch"), y_
+    return jax.lax.pmean(model.energy().sum(), "batch"), y_
+
 @pxf.jit(static_argnums=0)
 def train_on_batch(
     T: int,
@@ -100,7 +108,7 @@ def train_on_batch(
                 pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]),
                 has_aux=True
             )(energy)(x, model=model)
-        optim_h.step(model, g["model"])
+        optim_h.step(model, g["model"], True)
         return x, None
 
     # print("Training!")
@@ -117,13 +125,15 @@ def train_on_batch(
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
         (e, y_), g = pxf.value_and_grad(pxu.Mask(pxnn.LayerParam, [False, True]), has_aux=True)(energy)(x, model=model)
     optim_w.step(model, g["model"])
+    return e
 
 
 def train(dl, T,*, model: Model, optim_w: pxu.Optim, optim_h: pxu.Optim, verbose:bool = False):
     model.vodes[-1].h.frozen = True
     dl = tqdm(dl) if verbose else dl
     for x, y in dl:
-        train_on_batch(T, x, y, model=model, optim_w=optim_w, optim_h=optim_h)
+        e = train_on_batch(T, x, y, model=model, optim_w=optim_w, optim_h=optim_h)
+    return e
 
 @pxf.jit(static_argnums=0)
 def eval_on_batch(
@@ -139,7 +149,7 @@ def eval_on_batch(
                 pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]),
                 has_aux=True
             )(energy)(x, model=model)
-        optim_h.step(model, g["model"])
+        optim_h.step(model, g["model"], True)
         return x, None
 
     # print("Evaluation!")  
@@ -251,11 +261,12 @@ def main(args):
         for key, value in wandb.config.items():
             setattr(args, key, value)
         wandb.config.update(args)
-    is_wandb = args.is_wandb
-    verbose = args.is_verbose
     
     px.RKG.seed(0)
-    
+    torch.manual_seed(0)
+
+    is_wandb = args.is_wandb
+    verbose = args.is_verbose    
     batch_size = args.batch_size
     lr = args.lr_h
     momentum = args.momentum
@@ -265,9 +276,8 @@ def main(args):
     weight_decay = args.decay_p
     input_var = args.input_var
     activation = args.activation
-    latent_dim = 2
+    latent_dim = 30
     hidden_dim = 256
-
 
 
     if activation == "relu":
@@ -276,10 +286,12 @@ def main(args):
         activation = jax.nn.tanh
     elif activation =='silu':
         activation = jax.nn.silu
+    elif activation =='l-relu':
+        activation = jax.nn.leaky_relu
+    elif activation == "h-tanh":
+        activation = jax.nn.hard_tanh
     else:
         raise NotImplementedError
-
-
 
     # Define the transformation to scale pixels to the range [-1, 1]
     transform = transforms.Compose([
@@ -291,14 +303,11 @@ def main(args):
     train_dl = DataLoader(train_dataset, batch_size=train_dataset.__len__(), shuffle=True)
     data, label = list(train_dl)[0]
     nm_elements = len(data)
-    X = (label.numpy() % 2)[:batch_size * (nm_elements // batch_size)]
-    X = jax.nn.one_hot(X, 2)
+    X = np.zeros((batch_size * (nm_elements // batch_size), latent_dim))
     y = data.numpy()[:batch_size * (nm_elements // batch_size)]
     nm_elements_test =  1024
     X_test = np.zeros((batch_size * (nm_elements_test // batch_size), latent_dim))
-    X_test[:nm_elements_test//2, 0] = 1
-    X_test[nm_elements_test//2:, 1] = 1
-    y_test = np.zeros((batch_size * (nm_elements_test // batch_size), 784)) # is not usedtrain_dl = list(zip(X.reshape(-1, batch_size, latent_dim), y.reshape(-1, batch_size, 784)))
+    y_test = np.zeros((batch_size * (nm_elements_test // batch_size), 784)) # is not used
     train_dl = list(zip(X.reshape(-1, batch_size, latent_dim), y.reshape(-1, batch_size, 784)))
     test_dl = tuple(zip(X_test.reshape(-1, batch_size, latent_dim), y_test.reshape(-1, batch_size, 784)))
     
@@ -316,7 +325,7 @@ def main(args):
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
         forward(jax.numpy.zeros((batch_size, latent_dim)), None, model=model)
         optim_h = pxu.Optim(h_optimiser_fn(lr, momentum, h_var, gamma), pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True))(model))
-        optim_w = pxu.Optim(optax.adam(lr_p), pxu.Mask(pxnn.LayerParam)(model))
+        optim_w = pxu.Optim(optax.adamw(lr_p, weight_decay = weight_decay), pxu.Mask(pxnn.LayerParam)(model))
         # make optimiser that also optimises the activity of the model layer[-1]
         model.vodes[-1].h.frozen = False
         forward(jax.numpy.zeros((batch_size, latent_dim)), None, model=model)
@@ -329,40 +338,43 @@ def main(args):
 
     best_is = 0
     best_imgs = None
+    fids = []
+    iss = []
+    energies = []
     for e in range(nm_epochs):
         random.shuffle(train_dl)
-        train(train_dl, T=T, model=model, optim_w=optim_w, optim_h=optim_h, verbose=verbose)
+        energy = train(train_dl, T=T, model=model, optim_w=optim_w, optim_h=optim_h, verbose=verbose)
         if e % 10 == 9:
             is_, fid, imgs = eval(test_dl, test_dataset, T_eval, model=model, optim_h=optim_h_eval)
             if verbose:
-                print(f"Epoch {e + 1}/{nm_epochs} - Inception score: {is_ :.2f}, FID score: {fid :.2f}")
+                print(f"Epoch {e + 1}/{nm_epochs} - Inception score: {is_ :.2f}, FID score: {fid :.2f}, Energy: {energy :.2f}")
             if is_wandb:
-                wandb.log({"is":is_, "fid":fid})
+                wandb.log({"is":is_, "fid":fid, "energy": energy})
             if is_ > best_is:
                 best_imgs = imgs
                 best_is = is_
+            fids.append(fid)
+            iss.append(is_)
+            energies.append(energy)
     is_, fid, imgs = eval(test_dl, test_dataset, T_eval, model=model, optim_h=optim_h_eval)
     if verbose:
-        print(f"Epoch {e+1}/{nm_epochs} - Inception score: {is_ :.2f}, FID score: {fid :.2f}")
+        print(f"Epoch {e+1}/{nm_epochs} - Inception score: {is_ :.2f}, FID score: {fid :.2f}, Energy: {energy :.2f}")
     if is_wandb:
-        wandb.log({"is":is_, "fid":fid})
+        wandb.log({"is":is_, "fid":fid, "energy": energy})
     if is_ > best_is:
         best_imgs = imgs
         best_is = is_
-    
+    fids.append(fid)
+    iss.append(is_)
+    energies.append(energy)
 
-    images_reshaped = imgs.reshape(-1, 28, 28)
+    # imgs generated
     fig, axes = plt.subplots(10, 10, figsize=(10,10))
+    images_reshaped = best_imgs.reshape(-1, 28, 28)
     axes = axes.ravel()
-
-    for i in np.arange(0, 50):
-        axes[i].imshow(images_reshaped[i], cmap='gray')
+    for i in np.arange(0, 100):
+        axes[i].imshow(images_reshaped[i], cmap='gray', vmin=0, vmax=1)
         axes[i].axis('off')
-
-    for i in np.arange(0, 50):
-        axes[i+50].imshow(images_reshaped[-50 + i], cmap='gray')
-        axes[i+50].axis('off')
-
     plt.subplots_adjust(wspace=0.5)
     plt.tight_layout()
     plot_filename = f"plot_{uuid.uuid4().hex}.png"
@@ -370,7 +382,24 @@ def main(args):
     if is_wandb:
         wandb.log({"plot": wandb.Image(plot_filename)})
         os.remove(plot_filename)
+    if verbose:
+       plt.show() 
     
+    # fid and energy
+    fid, axes = plt.subplots(1,3, figsize=(9,3))
+    axes[0].plot(energies)
+    axes[0].set_xlabel("energy")
+    axes[1].plot(fids)
+    axes[1].set_xlabel("fid")
+    axes[2].plot(iss)
+    axes[2].set_xlabel("inception score")
+    plt.tight_layout()
+    plot_filename = f"plot_{uuid.uuid4().hex}.png"
+    plt.savefig(plot_filename)
+    if is_wandb:
+        wandb.log({"plot": wandb.Image(plot_filename)})
+        os.remove(plot_filename)
+
     if verbose:
        plt.show() 
     
