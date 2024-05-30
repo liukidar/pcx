@@ -1,5 +1,6 @@
 direction: minimize
 gpus_per_task: 0.125
+dataset_name: cifar10
 hp:
     num_layers: 3
     internal_state_dim: 4

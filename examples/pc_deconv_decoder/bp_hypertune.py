@@ -8,6 +8,7 @@ from bp_deconv import run_experiment
 
 def main(run_info: stune.RunInfo):
     best_loss = run_experiment(
+        dataset_name=run_info["dataset_name"],
         kernel_size=run_info["hp/kernel_size"],
         act_fn=run_info["hp/act_fn"],
         output_act_fn=run_info["hp/output_act_fn"],

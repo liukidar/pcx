@@ -36,6 +36,7 @@ scikit-learn = "1.*"
 matplotlib = "3.*"
 seaborn = "0.*"
 jupyter = "1.*"
+gdown = "^5.2.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "23.*"

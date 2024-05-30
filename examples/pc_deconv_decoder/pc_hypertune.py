@@ -8,6 +8,7 @@ from pc_deconv import run_experiment
 
 def main(run_info: stune.RunInfo):
     best_loss = run_experiment(
+        dataset_name=run_info["dataset_name"],
         num_layers=run_info["hp/num_layers"],
         internal_state_dim=(
             run_info["hp/internal_state_channels"],

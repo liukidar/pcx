@@ -2,6 +2,7 @@ from typing import Callable
 from pathlib import Path
 import math
 import sys
+import logging
 
 # Core dependencies
 import jax
@@ -160,15 +161,21 @@ def eval_on_batch(examples: jax.Array, *, model: BPDeconvDecoder):
     return mse_loss, pred
 
 
-def train(dl, *, model: BPDeconvDecoder, optim_w: pxu.Optim):
+def train(dl, *, model: BPDeconvDecoder, optim_w: pxu.Optim, batch_size: int):
     for x, y in dl:
+        if x.shape[0] != batch_size:
+            logging.warning(f"Skipping batch of size {x.shape[0]} that's not equal to the batch size {batch_size}.")
+            continue
         train_on_batch(x, model=model, optim_w=optim_w)
 
 
-def eval(dl, *, model: BPDeconvDecoder):
+def eval(dl, *, model: BPDeconvDecoder, batch_size: int):
     losses = []
 
     for x, y in dl:
+        if x.shape[0] != batch_size:
+            logging.warning(f"Skipping batch of size {x.shape[0]} that's not equal to the batch size {batch_size}.")
+            continue
         e, y_hat = eval_on_batch(x, model=model)
         losses.append(e)
 
@@ -177,6 +184,7 @@ def eval(dl, *, model: BPDeconvDecoder):
 
 def run_experiment(
     *,
+    dataset_name: str = "cifar10",
     kernel_size: int = 7,
     act_fn: str | None = "hard_tanh",
     output_act_fn: str | None = None,
@@ -192,7 +200,7 @@ def run_experiment(
     if checkpoint_dir is not None:
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    dataset = get_vision_dataloaders(dataset_name="cifar10", batch_size=batch_size, should_normalize=False)
+    dataset = get_vision_dataloaders(dataset_name=dataset_name, batch_size=batch_size, should_normalize=False)
 
     output_dim = dataset.train_dataset[0][0].shape
 
@@ -210,13 +218,13 @@ def run_experiment(
         pxu.Mask(pxnn.LayerParam)(model),
     )
 
-    if len(dataset.train_dataset) % batch_size != 0 or len(dataset.test_dataset) % batch_size != 0:
-        raise ValueError("The dataset size must be divisible by the batch size.")
+    # if len(dataset.train_dataset) % batch_size != 0 or len(dataset.test_dataset) % batch_size != 0:
+    #     raise ValueError("The dataset size must be divisible by the batch size.")
 
     test_losses = []
     for epoch in range(epochs):
-        train(dataset.train_dataloader, model=model, optim_w=optim_w)
-        mse_loss = eval(dataset.test_dataloader, model=model)
+        train(dataset.train_dataloader, model=model, optim_w=optim_w, batch_size=batch_size)
+        mse_loss = eval(dataset.test_dataloader, model=model, batch_size=batch_size)
         test_losses.append(mse_loss)
         print(f"Epoch {epoch + 1}/{epochs} - Test Loss: {mse_loss:.4f}")
 
@@ -232,7 +240,7 @@ def run_experiment(
             predictor,
             dataset.test_dataset,
             dataset.image_restore,
-            checkpoint_dir / "images",
+            checkpoint_dir / dataset_name / "images",
         )
 
     return min(test_losses)

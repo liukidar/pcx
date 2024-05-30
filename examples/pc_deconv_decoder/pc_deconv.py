@@ -246,7 +246,6 @@ class PCDeconvDecoder(pxc.EnergyModule):
             pred = pred.transpose(1, 2, 0)
 
         assert example is None or pred.shape == example.shape
-        assert pred.shape == (3, 32, 32)
         # jax.debug.print(
         #     "__call__:\n"
         #     "P: m={pred_mean} s={pred_std} min={pred_min} max={pred_max}\n"
@@ -404,15 +403,21 @@ def eval_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_
     return mse_loss, pred
 
 
-def train(dl, T, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim):
+def train(dl, T, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim, batch_size: int):
     for x, y in dl:
+        if x.shape[0] != batch_size:
+            logging.warning(f"Skipping batch of size {x.shape[0]} that's not equal to the batch size {batch_size}.")
+            continue
         train_on_batch(T, x, model=model, optim_w=optim_w, optim_h=optim_h)
 
 
-def eval(dl, T, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
+def eval(dl, T, *, model: PCDeconvDecoder, optim_h: pxu.Optim, batch_size: int):
     losses = []
 
     for x, y in dl:
+        if x.shape[0] != batch_size:
+            logging.warning(f"Skipping batch of size {x.shape[0]} that's not equal to the batch size {batch_size}.")
+            continue
         e, y_hat = eval_on_batch(T, x, model=model, optim_h=optim_h)
         losses.append(e)
 
@@ -421,6 +426,7 @@ def eval(dl, T, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
 
 def run_experiment(
     *,
+    dataset_name: str = "cifar10",
     num_layers: int = 3,
     internal_state_dim: tuple[int, int, int] = (8, 4, 4),
     kernel_size: int = 7,
@@ -442,7 +448,7 @@ def run_experiment(
     if checkpoint_dir is not None:
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    dataset = get_vision_dataloaders(dataset_name="cifar10", batch_size=batch_size, should_normalize=False)
+    dataset = get_vision_dataloaders(dataset_name=dataset_name, batch_size=batch_size, should_normalize=False)
 
     input_dim = internal_state_dim
     output_dim = dataset.train_dataset[0][0].shape
@@ -467,15 +473,15 @@ def run_experiment(
         pxu.Mask(pxnn.LayerParam)(model),
     )
 
-    if len(dataset.train_dataset) % batch_size != 0 or len(dataset.test_dataset) % batch_size != 0:
-        raise ValueError("The dataset size must be divisible by the batch size.")
+    # if len(dataset.train_dataset) % batch_size != 0 or len(dataset.test_dataset) % batch_size != 0:
+    #     raise ValueError("The dataset size must be divisible by the batch size.")
 
     print("Training...")
 
     test_losses = []
     for epoch in range(epochs):
-        train(dataset.train_dataloader, T=T, model=model, optim_w=optim_w, optim_h=optim_h)
-        mse_loss = eval(dataset.test_dataloader, T=T, model=model, optim_h=optim_h)
+        train(dataset.train_dataloader, T=T, model=model, optim_w=optim_w, optim_h=optim_h, batch_size=batch_size)
+        mse_loss = eval(dataset.test_dataloader, T=T, model=model, optim_h=optim_h, batch_size=batch_size)
         test_losses.append(mse_loss)
         print(f"Epoch {epoch + 1}/{epochs} - Test Loss: {mse_loss:.4f}")
 
@@ -490,7 +496,7 @@ def run_experiment(
             predictor,
             dataset.test_dataset,
             dataset.image_restore,
-            checkpoint_dir / "images",
+            checkpoint_dir / dataset_name / "images",
         )
 
     return min(test_losses)

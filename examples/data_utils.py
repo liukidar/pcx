@@ -11,8 +11,40 @@ import torchvision.transforms as transforms
 from PIL import Image
 
 
+class CelebAAdapter(torchvision.datasets.CelebA):
+    """Unfortunately, CelebA was shortsightedly published on GDrive
+    that has an always exhausted daily limit on the number of automated downloads.
+    Thus, you will have to download the dataset manually from here:
+    https://drive.google.com/drive/folders/0B7EVK8r0v71pWEZsZE9oNnFzTm8?resourcekey=0-5BR16BdXnb8hVj6CNHKzLg
+    You need files:
+    - Img/img_align_celeba.zip
+    - Anno/list_attr_celeba.txt
+    - Anno/identity_CelebA.txt
+    - Anno/list_bbox_celeba.txt
+    - Anno/list_landmarks_align_celeba.txt
+    - Eval/list_eval_partition.txt
+
+    Create a folder ~/tmp/celeba/celeba (yes, twice) and put all the files mentioned above in that directory without any additional directories.
+    Unzip img_align_celeba.zip in the same directory. You may delete img_align_celeba.zip now if you want to save space.
+    """
+
+    def __init__(self, *args, train: bool = True, transform=None, **kwargs):
+        # CelebA image size is 178 width and 218 height. Quite strange, huh? Let's make it 200x200.
+        transform = transforms.Compose(
+            [
+                # Crop 10 pixels from the top and 8 pixels from the bottom
+                lambda x: x.crop((0, 10, 178, 210)),
+                # Increase width to 200
+                lambda x: x.resize((200, 200), Image.LANCZOS),
+                transform if transform is not None else lambda x: x,
+            ]
+        )
+        super().__init__(*args, split="train" if train else "test", transform=transform, **kwargs)
+
+
 VISION_DATASETS = {
     "cifar10": torchvision.datasets.CIFAR10,
+    "celeba": CelebAAdapter,
     "fasion_mnist": torchvision.datasets.FashionMNIST,
 }
 
@@ -94,7 +126,7 @@ class VisionData:
 
 
 def get_vision_dataloaders(
-    *, dataset_name: str, batch_size: int, should_normalize: bool = True
+    *, dataset_name: str, batch_size: int, should_normalize: bool = False
 ) -> tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
     if dataset_name not in VISION_DATASETS:
         raise ValueError(f"Dataset {dataset_name} not found in {VISION_DATASETS.keys()}")
@@ -108,12 +140,16 @@ def get_vision_dataloaders(
         train=True,
     )
 
-    d = train_dataset.data / 255.0
-    assert d.shape[3] == 3  # Channel last
-    norm_mean = d.mean(axis=(0, 1, 2))
-    norm_std = d.std(axis=(0, 1, 2))
-    assert norm_mean.shape == (3,)
-    assert norm_std.shape == (3,)
+    norm_mean = np.zeros(3)
+    norm_std = np.ones(3)
+
+    if should_normalize:
+        d = train_dataset.data / 255.0
+        assert d.shape[3] == 3  # Channel last
+        norm_mean = d.mean(axis=(0, 1, 2))
+        norm_std = d.std(axis=(0, 1, 2))
+        assert norm_mean.shape == (3,)
+        assert norm_std.shape == (3,)
 
     t = transforms.Compose(
         [
@@ -132,7 +168,7 @@ def get_vision_dataloaders(
         x = x * 255.0
         return np.asarray(x, dtype=np.uint8)
 
-    train_dataset = torchvision.datasets.CIFAR10(
+    train_dataset = ds_cls(
         save_path,
         transform=t,
         download=True,
@@ -146,7 +182,7 @@ def get_vision_dataloaders(
         num_workers=4,
     )
 
-    test_dataset = torchvision.datasets.CIFAR10(
+    test_dataset = ds_cls(
         save_path,
         transform=t,
         download=True,
@@ -187,3 +223,4 @@ def reconstruct_image(image_ids: list[int], predictor, dataset, image_restore, o
 if __name__ == "__main__":
     data = get_vision_dataloaders(dataset_name="cifar10", batch_size=32)
     print(data.train_dataset[0][0].shape)
+    reconstruct_image([0, 1, 2], lambda x: x, data.test_dataset, data.image_restore, Path("test"))
