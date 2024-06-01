@@ -5,10 +5,10 @@ import random
 from collections import namedtuple
 
 import numpy as np
+import torch
 import torchvision
 from torchvision import datasets, transforms
-import torch
-
+from torch.utils.data import DataLoader
 
 Dataset = namedtuple("Dataset", ["train_loader", "val_loader", "test_loader"])
 
@@ -112,11 +112,45 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.2
         sampler=torch.utils.data.sampler.SubsetRandomSampler(random_val_indices))
 
     test_set = ds(root='./data', download=True, train=False, transform=transform)
-    # small change: here we load the entire test set into a single batch in order to speed up evaluation
     test_loader = TorchDataloader(
-        test_set, batch_size=len(test_set), shuffle=False, num_workers=16)
+        test_set, batch_size=batch_size, shuffle=False, num_workers=16)
 
     return Dataset(train_loader=train_loader, val_loader=val_loader, test_loader=test_loader)
+
+# Function to creat an equivalent data_loader with only different batch size
+def create_new_test_loader_with_batch_size(test_loader, new_batch_size):
+    """
+    Create a new DataLoader based on the attributes of the passed test_loader
+    with a different batch size.
+
+    Parameters:
+    - test_loader: The original DataLoader
+    - new_batch_size: The desired batch size for the new DataLoader
+
+    Returns:
+    - new_test_loader: A new DataLoader with the specified batch size
+    """
+    # Extract the dataset from the original DataLoader
+    dataset = test_loader.dataset
+
+    # Create a new DataLoader with the new batch size
+    new_test_loader = DataLoader(
+        dataset,
+        batch_size=new_batch_size,
+        shuffle=False,  # Typically, test_loader should not shuffle data
+        num_workers=test_loader.num_workers,
+        collate_fn=test_loader.collate_fn,
+        pin_memory=test_loader.pin_memory,
+        drop_last=test_loader.drop_last,
+        timeout=test_loader.timeout,
+        worker_init_fn=test_loader.worker_init_fn,
+        multiprocessing_context=test_loader.multiprocessing_context,
+        generator=test_loader.generator,
+        prefetch_factor=test_loader.prefetch_factor,
+        persistent_workers=test_loader.persistent_workers
+    )
+
+    return new_test_loader
 
 
 class Progress:
