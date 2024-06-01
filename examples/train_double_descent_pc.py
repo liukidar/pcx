@@ -172,8 +172,13 @@ def energy(x, *, model: TwoLayerNN):
 @pxf.jit(static_argnums=0)
 def train_on_batch(T: int, x: jax.Array, y: jax.Array, *, model: TwoLayerNN, optim_w: pxu.Optim, optim_h: pxu.Optim):
     model.train()
+
+    # init step
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
         forward(x, y, model=model)
+
+    # reinitialise the optimiser state between different batches (NOTE: this is just educational and not needed here because the SGD we use is not-stateful due to lack of momentum)
+    optim_h.init(pxu.Mask(pxc.VodeParam)(model))
 
     for _ in range(T):
         with pxu.step(model, clear_params=pxc.VodeParam.Cache):
