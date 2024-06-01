@@ -4,8 +4,8 @@
 # ./run_double_descent.sh -n 0.2 -s train_double_descent_pc.py
 
 # Default values for parameters
-epochs_list=(100 200 400)
-batch_sizes=(128 256 512)
+epochs_list=(500 1000)
+batch_sizes=(128)
 learning_rates=(0.01 0.02 0.05)
 noise_level=0.0
 script_name="train_double_descent_bp.py"

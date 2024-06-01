@@ -4,7 +4,7 @@ import time
 import os
 import argparse
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 # 3rd party
@@ -269,7 +269,7 @@ class Training:
         for model in self._all_models:  # different sized models
 
             # Initialize the model with the previous model's weights if it exists
-            model.init_weights(self._prev_model)  # need for 2layer NN
+            model.init_weights(self._prev_model)
 
             # Initialize the optimizer
             with pxu.step(model):

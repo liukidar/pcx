@@ -276,7 +276,7 @@ class Training:
         for model in self._all_models:  # different sized models
             
             # Initialize the model with the previous model's weights if it exists
-            model.init_weights(self._prev_model)  # need for 2layer NN
+            model.init_weights(self._prev_model)
 
             # Initialize the model and optimizers
             with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
