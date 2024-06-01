@@ -112,8 +112,9 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.2
         sampler=torch.utils.data.sampler.SubsetRandomSampler(random_val_indices))
 
     test_set = ds(root='./data', download=True, train=False, transform=transform)
+    # small change: here we load the entire test set into a single batch in order to speed up evaluation
     test_loader = TorchDataloader(
-        test_set, batch_size=batch_size, shuffle=False, num_workers=16)
+        test_set, batch_size=len(test_set), shuffle=False, num_workers=16)
 
     return Dataset(train_loader=train_loader, val_loader=val_loader, test_loader=test_loader)
 
