@@ -476,14 +476,28 @@ def run_experiment(
     # if len(dataset.train_dataset) % batch_size != 0 or len(dataset.test_dataset) % batch_size != 0:
     #     raise ValueError("The dataset size must be divisible by the batch size.")
 
+    model_save_dir: Path | None = checkpoint_dir / dataset_name / "best_model" if checkpoint_dir is not None else None
+    model_saved: bool = False
+    if model_save_dir is not None:
+        model_save_dir.mkdir(parents=True, exist_ok=True)
+
     print("Training...")
 
-    test_losses = []
+    best_loss: float | None = None
+    test_losses: list[float] = []
     for epoch in range(epochs):
         train(dataset.train_dataloader, T=T, model=model, optim_w=optim_w, optim_h=optim_h, batch_size=batch_size)
         mse_loss = eval(dataset.test_dataloader, T=T, model=model, optim_h=optim_h, batch_size=batch_size)
         test_losses.append(mse_loss)
+        if epochs > 1 and model_save_dir is not None and (best_loss is None or mse_loss <= best_loss):
+            best_loss = mse_loss
+            pxu.save_params(model, str(model_save_dir / "model"))
+            model_saved = True
         print(f"Epoch {epoch + 1}/{epochs} - Test Loss: {mse_loss:.4f}")
+
+    if model_saved:
+        pxu.load_params(model, str(model_save_dir / "model"))
+        logging.info(f"Loaded best model with test loss: {best_loss:.4f}")
 
     def predictor(images):
         model.clear_params(pxc.VodeParam)
