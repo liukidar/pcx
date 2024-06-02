@@ -23,8 +23,10 @@ def main(run_info: stune.RunInfo):
         T=run_info["hp/T"],
         optim_x_lr=run_info["hp/optim/x/lr"],
         optim_x_momentum=run_info["hp/optim/x/momentum"],
+        optim_w_name=run_info["hp/optim/w/name"],
         optim_w_lr=run_info["hp/optim/w/lr"],
         optim_w_wd=run_info["hp/optim/w/wd"],
+        optim_w_momentum=run_info["hp/optim/w/momentum"],
     )
 
     return best_loss

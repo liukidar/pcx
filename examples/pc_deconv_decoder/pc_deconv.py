@@ -437,10 +437,12 @@ def run_experiment(
     T: int = 20,
     optim_x_lr: float = 0.012339577360613845,
     optim_x_momentum: float = 0.1,
+    optim_w_name: str = "adamw",
     optim_w_lr: float = 0.0007642161267055484,
     optim_w_wd: float = 3.511389190873198e-05,
     optim_w_b1: float = 0.9,
     optim_w_b2: float = 0.999,
+    optim_w_momentum: float = 0.1,
     num_sample_images: int = 10,
     checkpoint_dir: Path | None = None,
 ) -> float:
@@ -468,10 +470,17 @@ def run_experiment(
         forward(jnp.zeros((batch_size, *output_dim)), model=model)
 
     optim_h = pxu.Optim(optax.sgd(learning_rate=optim_x_lr, momentum=optim_x_momentum))
-    optim_w = pxu.Optim(
-        optax.adamw(learning_rate=optim_w_lr, weight_decay=optim_w_wd, b1=optim_w_b1, b2=optim_w_b2),
-        pxu.Mask(pxnn.LayerParam)(model),
-    )
+    if optim_w_name == "adamw":
+        optim_w = pxu.Optim(
+            optax.adamw(learning_rate=optim_w_lr, weight_decay=optim_w_wd, b1=optim_w_b1, b2=optim_w_b2),
+            pxu.Mask(pxnn.LayerParam)(model),
+        )
+    elif optim_w_name == "sgd":
+        optim_w = pxu.Optim(
+            optax.sgd(learning_rate=optim_w_lr, momentum=optim_w_momentum), pxu.Mask(pxnn.LayerParam)(model)
+        )
+    else:
+        raise ValueError(f"Unknown optimizer name: {optim_w_name}")
 
     # if len(dataset.train_dataset) % batch_size != 0 or len(dataset.test_dataset) % batch_size != 0:
     #     raise ValueError("The dataset size must be divisible by the batch size.")

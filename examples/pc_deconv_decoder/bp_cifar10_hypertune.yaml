@@ -15,11 +15,16 @@ hp:
     epochs: 30
     optim:
         w:
+            name: adamw
             lr:
                 sample_type: float
-                sample_space: [[3e-5, 1e-3], null, true]
+                sample_space: [[3e-5, 1e-1], null, true]
                 default: 0.0007958728757424726
             wd:
                 sample_type: float
                 sample_space: [[1e-5, 1e-2], null, true]
                 default: 0.0008931102704862562
+            # momentum:
+            #     sample_type: float
+            #     sample_space: [[0.0, 1.0], 0.05]
+            #     default: 0.1

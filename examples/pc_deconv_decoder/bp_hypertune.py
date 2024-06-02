@@ -14,8 +14,10 @@ def main(run_info: stune.RunInfo):
         output_act_fn=run_info["hp/output_act_fn"],
         batch_size=run_info["hp/batch_size"],
         epochs=run_info["hp/epochs"],
+        optim_w_name=run_info["hp/optim/w/name"],
         optim_w_lr=run_info["hp/optim/w/lr"],
         optim_w_wd=run_info["hp/optim/w/wd"],
+        optim_w_momentum=run_info["hp/optim/w/momentum"],
     )
 
     return best_loss
