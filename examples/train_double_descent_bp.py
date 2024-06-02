@@ -187,7 +187,7 @@ def eval_on_batch(x: jax.Array, y: jax.Array, *, model: TwoLayerNN):
     model.eval()
 
     with pxu.step(model):
-        e, y_ = loss(x, jax.nn.one_hot(y, 10), model=model)
+        e, y_ = loss(x, y, model=model)
         y_ = y_.argmax(axis=-1)
 
     return (y_ == y).mean(), y_, e
@@ -198,7 +198,7 @@ def eval(dl, *, model: TwoLayerNN):
     es = []
     ys_ = []
     for x, y in dl:
-        a, y_, e = eval_on_batch(x, y, model=model)
+        a, y_, e = eval_on_batch(x, jax.nn.one_hot(y, 10), model=model)
         acc.append(a)
         es.append(e)
         ys_.append(y_)

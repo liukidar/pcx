@@ -193,7 +193,7 @@ def train_on_batch(T: int, x: jax.Array, y: jax.Array, *, model: TwoLayerNN, opt
 def eval_on_batch(x: jax.Array, y: jax.Array, *, model: TwoLayerNN):
     model.eval()
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-        y_ = forward(x, jax.nn.one_hot(y, 10), model=model).argmax(axis=-1)
+        y_ = forward(x, y, model=model).argmax(axis=-1)
         e = model.vodes[-1].energy()
     return (y_ == y).mean(), y_, e.mean()
 
@@ -208,7 +208,7 @@ def eval(dl, *, model: TwoLayerNN):
     es = []
     ys_ = []
     for x, y in dl:
-        a, y_, e = eval_on_batch(x, y, model=model)
+        a, y_, e = eval_on_batch(x, jax.nn.one_hot(y, 10), model=model)
         acc.append(a)
         es.append(e)
         ys_.append(y_)
