@@ -195,7 +195,11 @@ def eval_on_batch(x: jax.Array, y: jax.Array, *, model: TwoLayerNN):
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
         y_ = forward(x, y, model=model).argmax(axis=-1)
         e = model.vodes[-1].energy()
-    return (y_ == y).mean(), y_, e.mean()
+
+    # Convert y from one-hot encoding to class indices
+    y_indices = y.argmax(axis=-1)
+    
+    return (y_ == y_indices).mean(), y_, e.mean()
 
 def train(dl, T, *, model: TwoLayerNN, optim_w: pxu.Optim, optim_h: pxu.Optim, progress: Progress):
     for x, y in dl:

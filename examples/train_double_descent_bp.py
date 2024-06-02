@@ -190,7 +190,10 @@ def eval_on_batch(x: jax.Array, y: jax.Array, *, model: TwoLayerNN):
         e, y_ = loss(x, y, model=model)
         y_ = y_.argmax(axis=-1)
 
-    return (y_ == y).mean(), y_, e
+    # Convert y from one-hot encoding to class indices
+    y_indices = y.argmax(axis=-1)
+    
+    return (y_ == y_indices).mean(), y_, e.mean()
 
 
 def eval(dl, *, model: TwoLayerNN):
