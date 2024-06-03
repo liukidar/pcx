@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Default values for parameters
-epochs_list=(500)
-batch_sizes=(128)
-w_learning_rates=(0.01)  
-h_learning_rates=(0.01 0.03 0.05 0.1) # List of state learning rates
-h_momentum_list=(0.1 0.3 0.5 0.7 0.9) # List of state optimizer momentum values
+epochs_list=(200)
+batch_sizes=(256)
+w_learning_rates=(0.05)
+h_learning_rates=(0.01 0.03 0.05 0.1) # state learning rates
+h_momentum_list=(0.1 0.3 0.5 0.7 0.9) # state optimizer momentum values
 
 noise_level=0.0
 script_name="train_double_descent_pc.py"

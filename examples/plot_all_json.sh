@@ -1,9 +1,11 @@
 #!/bin/bash
 
 # Directory containing the JSON files
-json_dir="/users-2/amine/pcax24/examples/data/results_pc/two_layer_nn/CrossEntropyLoss"
+#json_dir="/users-2/amine/pcax24/examples/data/results_pc/two_layer_nn/CrossEntropyLoss" # uncomment for pc
+json_dir="/users-2/amine/pcax24/examples/data/results_bp/two_layer_nn/CrossEntropyLoss" # uncomment for bp
 # Directory to save the plots
-output_dir="/users-2/amine/pcax24/examples/plots_pc"
+#output_dir="/users-2/amine/pcax24/examples/plots_pc" # uncomment for pc
+output_dir="/users-2/amine/pcax24/examples/plots_bp" # uncomment for bp
 # Plotter script
 plotter_script="/users-2/amine/pcax24/examples/plotters/two_layer_plotter.py"
 

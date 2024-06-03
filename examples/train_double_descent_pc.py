@@ -9,7 +9,6 @@ os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 # 3rd party
 import numpy as np
-import matplotlib.pyplot as plt
 
 # own
 from helpers import get_dataloaders, Progress
