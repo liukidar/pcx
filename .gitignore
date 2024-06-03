@@ -143,3 +143,10 @@ dmypy.json
 # Ignore all numpy files
 *.npz
 *.npy
+
+# Ignore image and pdf files like .png, .jpg, .jpeg, .gif, .pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
