@@ -36,6 +36,7 @@ scikit-learn = "1.*"
 matplotlib = "3.*"
 seaborn = "0.*"
 jupyter = "1.*"
+gdown = "^5.2.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "23.*"
@@ -45,6 +46,7 @@ tox = "4.*"
 isort = "5.*"
 flake8 = "7.*"
 pytest-cov = "5.*"
+flax = "^0.8.3"
 
 [tool.pytest.ini_options]
 addopts = "--cov=pcax"
