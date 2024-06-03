@@ -4,7 +4,7 @@ import time
 import os
 import argparse
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 # 3rd party
@@ -183,11 +183,11 @@ def train_on_batch(T: int, x: jax.Array, y: jax.Array, *, model: TwoLayerNN, opt
     for _ in range(T):
         with pxu.step(model, clear_params=pxc.VodeParam.Cache):
             _, g = pxf.value_and_grad(pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]), has_aux=True)(energy)(x, model=model)
-        optim_h.step(model, g["model"], True)
+            optim_h.step(model, g["model"], True)
 
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
         _, g = pxf.value_and_grad(pxu.Mask(pxnn.LayerParam, [False, True]), has_aux=True)(energy)(x, model=model)
-    optim_w.step(model, g["model"])
+        optim_w.step(model, g["model"])
 
 @pxf.jit()
 def eval_on_batch(x: jax.Array, y: jax.Array, *, model: TwoLayerNN):
@@ -221,18 +221,21 @@ def eval(dl, *, model: TwoLayerNN):
 ###################################### end of model related code ##########################################
 
 class Training:
-    def __init__(self, model, dataset, num_params, epochs, batch_size, learning_rate, noise_level, prev_model=None, num_models=None):
+    def __init__(self, model, dataset, num_params, epochs, batch_size, w_learning_rate, 
+                 h_learning_rate, h_momentum, noise_level, prev_model=None, num_models=None):
         self._train_loader = dataset.train_loader
         self._subset_size = len(dataset.train_loader.sampler)
         self._val_loader = dataset.val_loader
         self._test_loader = dataset.test_loader
         self.num_classes = len(np.unique(dataset.train_loader.dataset.targets))
-        self.input_dim = self._train_loader.dataset[0][0].shape[0]        
+        self.input_dim = self._train_loader.dataset[0][0].shape[0]
         self._interpolation_threshold = self.num_classes * len(dataset.train_loader.sampler)
         self._all_models = []
         self._epochs = epochs
         self._batch_size = batch_size
-        self._learning_rate = learning_rate
+        self._w_learning_rate = w_learning_rate
+        self._h_learning_rate = h_learning_rate
+        self._h_momentum = h_momentum
         self._noise_level = noise_level
         self.all_train_losses = {}
         self.all_val_losses = {}
@@ -247,12 +250,13 @@ class Training:
 
         # in this loop we create all models with different hidden layer sizes
         for p in num_params:
-            self._all_models.append(TwoLayerNN(input_dim=self.input_dim, hidden_dim=p, output_dim=self.num_classes, 
+            self._all_models.append(TwoLayerNN(input_dim=self.input_dim, hidden_dim=p, output_dim=self.num_classes,
                                                subset_size=self._subset_size, act_fn=jax.nn.relu))
+
 
     def save(self):
         path = os.path.join("data", "results_pc", self._model_name, self._loss_name)
-        file_name = os.path.join(path, f"epochs_{self._epochs}_bs_{self._batch_size}_lr_{self._learning_rate}_noise_{self._noise_level}.json")
+        file_name = os.path.join(path, f"epochs_{self._epochs}_bs_{self._batch_size}_wlr_{self._w_learning_rate}_hlr_{self._h_learning_rate}_hm_{self._h_momentum}_noise_{self._noise_level}.json")
         if not os.path.exists(path):
             os.makedirs(path)
         content = {}
@@ -267,6 +271,7 @@ class Training:
                     content[loss_key][model_key] = old_content[loss_key][model_key]
         with open(file_name, "w") as fd:
             json.dump(content, fd, indent=4, sort_keys=True)
+
 
     def start(self):
         try:
@@ -285,8 +290,8 @@ class Training:
             # Initialize the model and optimizers
             with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
                 forward(jax.numpy.zeros((self._batch_size, self.input_dim)), None, model=model)
-                optim_h = pxu.Optim(optax.sgd(0.1), pxu.Mask(pxc.VodeParam)(model))
-                optim_w = pxu.Optim(optax.sgd(self._learning_rate, momentum=0.95), pxu.Mask(pxnn.LayerParam)(model))
+                optim_h = pxu.Optim(optax.sgd(self._h_learning_rate, momentum=self._h_momentum), pxu.Mask(pxc.VodeParam)(model))
+                optim_w = pxu.Optim(optax.sgd(self._w_learning_rate, momentum=0.95), pxu.Mask(pxnn.LayerParam)(model))
             
             progress.update_model()
 
@@ -295,11 +300,11 @@ class Training:
             for e in range(self._epochs):
                 model.epoch_step()
                 # train the model
-                train(dataset.train_loader, T=10, model=model, optim_w=optim_w, optim_h=optim_h, progress=progress)
+                train(self._train_loader, T=10, model=model, optim_w=optim_w, optim_h=optim_h, progress=progress)
                 
                 # evaluate the model and get accuracies and losses
-                a_train, ys_train, e_train = eval(dataset.train_loader, model=model)
-                a_val, ys_val, e_val = eval(dataset.val_loader, model=model)
+                a_train, ys_train, e_train = eval(self._train_loader, model=model)
+                a_val, ys_val, e_val = eval(self._val_loader, model=model)
 
                 train_losses.append(e_train)
                 val_losses.append(e_val)
@@ -310,7 +315,7 @@ class Training:
                 if train_losses[-1] == 0.0 and model.num_parameters() < self._interpolation_threshold:
                     break
 
-            a_test, ys_test, e_test = eval(dataset.test_loader, model=model)
+            a_test, ys_test, e_test = eval(self._test_loader, model=model)
 
             progress.finished_model(model.num_parameters(), e_test, a_test)
 
@@ -326,7 +331,7 @@ class Training:
                 "models_pc", 
                 self._model_name, 
                 self._loss_name, 
-                f"epochs_{self._epochs}_bs_{self._batch_size}_lr_{self._learning_rate}_noise_{self._noise_level}"
+                f"epochs_{self._epochs}_bs_{self._batch_size}_wlr_{self._w_learning_rate}_hlr_{self._h_learning_rate}_hm_{self._h_momentum}_noise_{self._noise_level}"
             )            
             if not os.path.exists(path):
                 os.makedirs(path)
@@ -344,7 +349,9 @@ if __name__ == "__main__":
     parser.add_argument("--config", type=str, help="config file for training", required=True, dest="config")
     parser.add_argument("--epochs", type=int, help="The number of epochs to train, if not given, the value in the config file is taken", dest="epochs")
     parser.add_argument("--batch_size", type=int, help="The batch size for training", dest="batch_size", default=128)
-    parser.add_argument("--learning_rate", type=float, help="The SGD learning rate", dest="learning_rate", default=0.01)
+    parser.add_argument("--w_learning_rate", type=float, help="The weight learning rate", dest="w_learning_rate", default=0.01)
+    parser.add_argument("--h_momentum", type=float, help="The momentum for the state optimizer", dest="h_momentum", default=0.9)
+    parser.add_argument("--h_learning_rate", type=float, help="The state learning rate", dest="h_learning_rate", default=0.01)
     parser.add_argument("--noise_level", type=float, help="The noise level for label noise", dest="noise_level", default=0.2)
 
     args = parser.parse_args()
@@ -355,7 +362,9 @@ if __name__ == "__main__":
     dataset_name = "mnist"
     model_name = "two_layer_nn"
     batch_size = args.batch_size
-    learning_rate = args.learning_rate
+    w_learning_rate = args.w_learning_rate
+    h_learning_rate = args.h_learning_rate
+    h_momentum = args.h_momentum
     noise_level = args.noise_level
     train_subset_size = config["train_subset_size"][model_name.lower()]
     epochs = args.epochs if args.epochs else config["epochs"]
@@ -368,6 +377,7 @@ if __name__ == "__main__":
     model = get_model_by_name(model_name)
     dataset = get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level)
 
-    training = Training(model, dataset, num_params, epochs, batch_size, learning_rate, noise_level, prev_model=previous_model, num_models=num_models)
+    training = Training(model, dataset, num_params, epochs, batch_size, w_learning_rate, 
+                        h_learning_rate, h_momentum ,noise_level, prev_model=previous_model, num_models=num_models)
     training.start()
     training.save()
