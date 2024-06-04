@@ -29,8 +29,13 @@ sys.path.pop(0)
 # 1 - 0.0069 diverged
 # 2 - 0.0069
 # 3 - 0.0069
-RKG.seed(0)
-seed_everything(0)
+
+
+def seed_pcax_and_everything(seed: int | None = None):
+    if seed is None:
+        seed = 0
+    RKG.seed(seed)
+    seed_everything(seed)
 
 
 logging.basicConfig(level=logging.INFO)
@@ -445,7 +450,10 @@ def run_experiment(
     optim_w_momentum: float = 0.1,
     num_sample_images: int = 10,
     checkpoint_dir: Path | None = None,
+    seed: int | None = None,
 ) -> float:
+    seed_pcax_and_everything(seed)
+
     # Channel first: (batch, channel, height, width)
     if checkpoint_dir is not None:
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
