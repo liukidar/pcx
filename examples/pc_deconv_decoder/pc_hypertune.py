@@ -6,7 +6,7 @@ import stune
 from pc_deconv import run_experiment
 
 
-def main(run_info: stune.RunInfo):
+def main(run_info: stune.RunInfo, checkpoint_dir: Path | None = None):
     best_loss = run_experiment(
         dataset_name=run_info["dataset_name"],
         num_layers=run_info["hp/num_layers"],
@@ -27,6 +27,7 @@ def main(run_info: stune.RunInfo):
         optim_w_lr=run_info["hp/optim/w/lr"],
         optim_w_wd=run_info["hp/optim/w/wd"],
         optim_w_momentum=run_info["hp/optim/w/momentum"],
+        checkpoint_dir=checkpoint_dir,
     )
 
     return best_loss
@@ -35,7 +36,7 @@ def main(run_info: stune.RunInfo):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="pc_hypertune.yaml", nargs="?", type=str, help="Configuration file")
-    parser.add_argument("--checkpoint_dir", default="results/pc_hp", type=Path, help="Directory to save checkpoints")
+    parser.add_argument("--checkpoint_dir", default=None, type=Path, help="Directory to save checkpoints")
     args = parser.parse_args()
 
-    main(stune.RunInfo(stune.load_config(args.config)))
+    main(stune.RunInfo(stune.load_config(args.config)), args.checkpoint_dir)

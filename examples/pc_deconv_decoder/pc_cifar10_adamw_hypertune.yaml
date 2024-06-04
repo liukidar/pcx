@@ -21,23 +21,20 @@ hp:
         x:
             lr:
                 sample_type: float
-                sample_space: [[1e-2, 1], null, true]
+                sample_space: [[1e-2, 5e-1], null, true]
                 default: 0.012339577360613845
             momentum:
                 sample_type: float
-                sample_space: [[0.0, 1.0], 0.05]
+                sample_space: [[0.0, 0.95], 0.05]
                 default: 0.1
         w:
             name: adamw
             lr:
                 sample_type: float
-                sample_space: [[3e-5, 1e-1], null, true]
+                sample_space: [[3e-5, 1e-3], null, true]
                 default: 0.0007642161267055484
             wd:
                 sample_type: float
                 sample_space: [[1e-5, 1e-2], null, true]
                 default: 3.511389190873198e-05
-            # momentum:
-            #     sample_type: float
-            #     sample_space: [[0.0, 1.0], 0.05]
-            #     default: 0.1
+            momentum: 0.0

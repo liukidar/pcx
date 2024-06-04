@@ -1,0 +1,34 @@
+direction: minimize
+gpus_per_task: 0.125
+dataset_name: celeba
+hp:
+    num_layers: 3
+    internal_state_dim: 25
+    internal_state_channels: 8
+    kernel_size: 7
+    act_fn: hard_tanh
+    output_act_fn: null
+    batch_size: 500
+    epochs: 10
+    T: 20
+    optim:
+        x:
+            lr:
+                sample_type: float
+                sample_space: [[1e-2, 5e-1], null, true]
+                default: 0.10487361996326594
+            momentum:
+                sample_type: float
+                sample_space: [[0.0, 0.95], 0.05]
+                default: 0.5
+        w:
+            name: adamw
+            lr:
+                sample_type: float
+                sample_space: [[3e-5, 1e-3], null, true]
+                default: 0.0008595714365989762
+            wd:
+                sample_type: float
+                sample_space: [[1e-5, 1e-2], null, true]
+                default: 1.413385606475217e-05
+            momentum: 0.0

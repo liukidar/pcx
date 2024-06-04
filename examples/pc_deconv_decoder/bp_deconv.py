@@ -245,6 +245,9 @@ def run_experiment(
     for epoch in range(epochs):
         train(dataset.train_dataloader, model=model, optim_w=optim_w, batch_size=batch_size)
         mse_loss = eval(dataset.test_dataloader, model=model, batch_size=batch_size)
+        if np.isnan(mse_loss):
+            logging.warning("Model diverged. Stopping training.")
+            break
         test_losses.append(mse_loss)
         if epochs > 1 and model_save_dir is not None and (best_loss is None or mse_loss <= best_loss):
             best_loss = mse_loss
@@ -271,7 +274,7 @@ def run_experiment(
             checkpoint_dir / dataset_name / "images",
         )
 
-    return min(test_losses)
+    return min(test_losses) if test_losses else np.nan
 
 
 if __name__ == "__main__":
