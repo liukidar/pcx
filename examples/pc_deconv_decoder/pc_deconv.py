@@ -29,8 +29,13 @@ sys.path.pop(0)
 # 1 - 0.0069 diverged
 # 2 - 0.0069
 # 3 - 0.0069
-RKG.seed(0)
-seed_everything(0)
+
+
+def seed_pcax_and_everything(seed: int | None = None):
+    if seed is None:
+        seed = 0
+    RKG.seed(seed)
+    seed_everything(seed)
 
 
 logging.basicConfig(level=logging.INFO)
@@ -321,7 +326,7 @@ def energy(example: jax.Array, *, model: PCDeconvDecoder) -> jax.Array:
 
 
 @pxf.jit(static_argnums=0)
-def train_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim):
+def train_on_batch_pc(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim):
     model.train()
 
     inference_step = pxf.value_and_grad(
@@ -349,6 +354,30 @@ def train_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
         _, g = learning_step(examples, model=model)
     optim_w.step(model, g["model"])
+
+
+@pxf.jit(static_argnums=0)
+def train_on_batch_ipc(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim):
+    model.train()
+
+    step = pxf.value_and_grad(
+        pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True) | pxu.m(pxnn.LayerParam), [False, True]), has_aux=True
+    )(energy)
+
+    # Init step
+    with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
+        forward(examples, model=model)
+
+    optim_h.init(pxu.Mask(pxc.VodeParam)(model))
+
+    # Inference steps
+    for _ in range(T):
+        with pxu.step(model, clear_params=pxc.VodeParam.Cache):
+            _, g = step(examples, model=model)
+
+        optim_h.step(model, g["model"], scale_by_batch_size=True)
+        optim_w.step(model, g["model"])
+    optim_h.clear()
 
 
 @pxf.jit(static_argnums=0)
@@ -403,12 +432,17 @@ def eval_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_
     return mse_loss, pred
 
 
-def train(dl, T, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim, batch_size: int):
+def train(
+    dl, T, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim, batch_size: int, use_ipc: bool = False
+):
     for x, y in dl:
         if x.shape[0] != batch_size:
             logging.warning(f"Skipping batch of size {x.shape[0]} that's not equal to the batch size {batch_size}.")
             continue
-        train_on_batch(T, x, model=model, optim_w=optim_w, optim_h=optim_h)
+        if use_ipc:
+            train_on_batch_ipc(T, x, model=model, optim_w=optim_w, optim_h=optim_h)
+        else:
+            train_on_batch_pc(T, x, model=model, optim_w=optim_w, optim_h=optim_h)
 
 
 def eval(dl, T, *, model: PCDeconvDecoder, optim_h: pxu.Optim, batch_size: int):
@@ -435,15 +469,21 @@ def run_experiment(
     batch_size: int = 200,
     epochs: int = 30,
     T: int = 20,
+    use_ipc: bool = False,
     optim_x_lr: float = 0.012339577360613845,
     optim_x_momentum: float = 0.1,
+    optim_w_name: str = "adamw",
     optim_w_lr: float = 0.0007642161267055484,
     optim_w_wd: float = 3.511389190873198e-05,
     optim_w_b1: float = 0.9,
     optim_w_b2: float = 0.999,
+    optim_w_momentum: float = 0.1,
     num_sample_images: int = 10,
     checkpoint_dir: Path | None = None,
+    seed: int | None = None,
 ) -> float:
+    seed_pcax_and_everything(seed)
+
     # Channel first: (batch, channel, height, width)
     if checkpoint_dir is not None:
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -468,10 +508,17 @@ def run_experiment(
         forward(jnp.zeros((batch_size, *output_dim)), model=model)
 
     optim_h = pxu.Optim(optax.sgd(learning_rate=optim_x_lr, momentum=optim_x_momentum))
-    optim_w = pxu.Optim(
-        optax.adamw(learning_rate=optim_w_lr, weight_decay=optim_w_wd, b1=optim_w_b1, b2=optim_w_b2),
-        pxu.Mask(pxnn.LayerParam)(model),
-    )
+    if optim_w_name == "adamw":
+        optim_w = pxu.Optim(
+            optax.adamw(learning_rate=optim_w_lr, weight_decay=optim_w_wd, b1=optim_w_b1, b2=optim_w_b2),
+            pxu.Mask(pxnn.LayerParam)(model),
+        )
+    elif optim_w_name == "sgd":
+        optim_w = pxu.Optim(
+            optax.sgd(learning_rate=optim_w_lr, momentum=optim_w_momentum), pxu.Mask(pxnn.LayerParam)(model)
+        )
+    else:
+        raise ValueError(f"Unknown optimizer name: {optim_w_name}")
 
     # if len(dataset.train_dataset) % batch_size != 0 or len(dataset.test_dataset) % batch_size != 0:
     #     raise ValueError("The dataset size must be divisible by the batch size.")
@@ -486,8 +533,19 @@ def run_experiment(
     best_loss: float | None = None
     test_losses: list[float] = []
     for epoch in range(epochs):
-        train(dataset.train_dataloader, T=T, model=model, optim_w=optim_w, optim_h=optim_h, batch_size=batch_size)
+        train(
+            dataset.train_dataloader,
+            T=T,
+            model=model,
+            optim_w=optim_w,
+            optim_h=optim_h,
+            batch_size=batch_size,
+            use_ipc=use_ipc,
+        )
         mse_loss = eval(dataset.test_dataloader, T=T, model=model, optim_h=optim_h, batch_size=batch_size)
+        if np.isnan(mse_loss):
+            logging.warning("Model diverged. Stopping training.")
+            break
         test_losses.append(mse_loss)
         if epochs > 1 and model_save_dir is not None and (best_loss is None or mse_loss <= best_loss):
             best_loss = mse_loss
@@ -513,7 +571,7 @@ def run_experiment(
             checkpoint_dir / dataset_name / "images",
         )
 
-    return min(test_losses)
+    return min(test_losses) if test_losses else np.nan
 
 
 if __name__ == "__main__":

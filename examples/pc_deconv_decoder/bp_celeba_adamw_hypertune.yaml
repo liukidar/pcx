@@ -11,10 +11,11 @@ hp:
         sample_space: [relu, leaky_relu, gelu, tanh, hard_tanh]
         default: hard_tanh
     output_act_fn: null
-    batch_size: 200
-    epochs: 5
+    batch_size: 500
+    epochs: 10
     optim:
         w:
+            name: adamw
             lr:
                 sample_type: float
                 sample_space: [[3e-5, 1e-3], null, true]
@@ -23,3 +24,4 @@ hp:
                 sample_type: float
                 sample_space: [[1e-5, 1e-2], null, true]
                 default: 0.002139801504043278
+            momentum: 0.0

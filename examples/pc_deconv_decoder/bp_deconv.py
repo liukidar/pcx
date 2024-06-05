@@ -29,8 +29,13 @@ sys.path.pop(0)
 # 1 - 0.0058
 # 2 - 0.0067
 # 3 - 0.0057
-RKG.seed(3)
-seed_everything(3)
+
+
+def seed_pcax_and_everything(seed: int | None = None):
+    if seed is None:
+        seed = 3
+    RKG.seed(seed)
+    seed_everything(seed)
 
 
 logging.basicConfig(level=logging.INFO)
@@ -91,6 +96,30 @@ class BPDeconvDecoder(pxc.EnergyModule):
             ),  # (3, 32, 32)
             self.output_act_fn,
         ]
+
+        # Half the features
+        # self.layers = [
+        #     pxnn.Conv2d(
+        #         3, 3, kernel_size=(kernel_size, kernel_size), stride=(2, 2), padding=conv_padding
+        #     ),  # (3, 16, 16)
+        #     self.act_fn,
+        #     pxnn.Conv2d(3, 4, kernel_size=(kernel_size, kernel_size), stride=(2, 2), padding=conv_padding),  # (4, 8, 8)
+        #     self.act_fn,
+        #     pxnn.Conv2d(4, 4, kernel_size=(kernel_size, kernel_size), stride=(2, 2), padding=conv_padding),  # (4, 4, 4)
+        #     self.act_fn,
+        #     ConvTranspose(
+        #         2, 4, 4, kernel_size=(kernel_size, kernel_size), stride=(2, 2), **conv_transpose_paddings[0]
+        #     ),  # (4, 8, 8)
+        #     self.act_fn,
+        #     ConvTranspose(
+        #         2, 4, 3, kernel_size=(kernel_size, kernel_size), stride=(2, 2), **conv_transpose_paddings[1]
+        #     ),  # (3, 16, 16)
+        #     self.act_fn,
+        #     ConvTranspose(
+        #         2, 3, 3, kernel_size=(kernel_size, kernel_size), stride=(2, 2), **conv_transpose_paddings[2]
+        #     ),  # (3, 32, 32)
+        #     self.output_act_fn,
+        # ]
 
     def __call__(self, x):
         for i, layer in enumerate(self.layers):
@@ -194,13 +223,18 @@ def run_experiment(
     output_act_fn: str | None = None,
     batch_size: int = 200,
     epochs: int = 30,
+    optim_w_name: str = "adamw",
     optim_w_lr: float = 0.0007958728757424726,
     optim_w_wd: float = 0.0008931102704862562,
     optim_w_b1: float = 0.9,
     optim_w_b2: float = 0.999,
+    optim_w_momentum: float = 0.1,
     num_sample_images: int = 10,
     checkpoint_dir: Path | None = None,
+    seed: int | None = None,
 ) -> float:
+    seed_pcax_and_everything(seed)
+
     if checkpoint_dir is not None:
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
@@ -217,10 +251,18 @@ def run_experiment(
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
         forward(jnp.zeros((batch_size, *output_dim)), model=model)
 
-    optim_w = pxu.Optim(
-        optax.adamw(learning_rate=optim_w_lr, weight_decay=optim_w_wd, b1=optim_w_b1, b2=optim_w_b2),
-        pxu.Mask(pxnn.LayerParam)(model),
-    )
+    if optim_w_name == "adamw":
+        optim_w = pxu.Optim(
+            optax.adamw(learning_rate=optim_w_lr, weight_decay=optim_w_wd, b1=optim_w_b1, b2=optim_w_b2),
+            pxu.Mask(pxnn.LayerParam)(model),
+        )
+    elif optim_w_name == "sgd":
+        optim_w = pxu.Optim(
+            optax.sgd(learning_rate=optim_w_lr, momentum=optim_w_momentum),
+            pxu.Mask(pxnn.LayerParam)(model),
+        )
+    else:
+        raise ValueError(f"Unknown optimizer name: {optim_w_name}")
 
     # if len(dataset.train_dataset) % batch_size != 0 or len(dataset.test_dataset) % batch_size != 0:
     #     raise ValueError("The dataset size must be divisible by the batch size.")
@@ -235,6 +277,9 @@ def run_experiment(
     for epoch in range(epochs):
         train(dataset.train_dataloader, model=model, optim_w=optim_w, batch_size=batch_size)
         mse_loss = eval(dataset.test_dataloader, model=model, batch_size=batch_size)
+        if np.isnan(mse_loss):
+            logging.warning("Model diverged. Stopping training.")
+            break
         test_losses.append(mse_loss)
         if epochs > 1 and model_save_dir is not None and (best_loss is None or mse_loss <= best_loss):
             best_loss = mse_loss
@@ -261,7 +306,7 @@ def run_experiment(
             checkpoint_dir / dataset_name / "images",
         )
 
-    return min(test_losses)
+    return min(test_losses) if test_losses else np.nan
 
 
 if __name__ == "__main__":
