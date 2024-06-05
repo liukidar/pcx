@@ -9,14 +9,14 @@ hp:
     act_fn: hard_tanh
     output_act_fn: null
     batch_size: 500
-    epochs: 10
+    epochs: 5
     T: 20
-    use_ipc: false
+    use_ipc: true
     optim:
         x:
             lr:
                 sample_type: float
-                sample_space: [[1e-2, 5e-1], null, true]
+                sample_space: [[1e-2, 1.0], null, true]
                 default: 0.10487361996326594
             momentum:
                 sample_type: float
@@ -30,6 +30,6 @@ hp:
                 default: 0.0008595714365989762
             wd:
                 sample_type: float
-                sample_space: [[1e-5, 1e-2], null, true]
+                sample_space: [[1e-5, 1e-1], null, true]
                 default: 1.413385606475217e-05
             momentum: 0.0

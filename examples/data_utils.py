@@ -51,7 +51,7 @@ VISION_DATASETS = {
 
 def seed_everything(seed: int):
     np.random.seed(seed)
-    torch.manual_seed(0)
+    torch.manual_seed(seed)
     random.seed(seed)
 
 
@@ -161,7 +161,7 @@ def get_vision_dataloaders(
 
     def image_restore(x: jnp.ndarray) -> np.ndarray:
         # Channel first: (batch, channel, height, width)
-        assert x.shape[1] == 3
+        assert x.shape[1] in (1, 3), f"Expected 1 or 3 channels, got {x.shape[1]}"
         if should_normalize:
             x = x * norm_std[None, :, None, None] + norm_mean[None, :, None, None]
         x = x.clip(0.0, 1.0)
@@ -210,13 +210,15 @@ def reconstruct_image(image_ids: list[int], predictor, dataset, image_restore, o
     output_dir.mkdir(exist_ok=True, parents=True)
     input = np.stack([dataset[i][0] for i in image_ids])
     images = image_restore(input)
+    batch_size, channels, height, width = images.shape
+    assert channels in (1, 3), f"Expected 1 or 3 channels, got {channels}"
     preds = predictor(input)
     pred_imgs = image_restore(preds)
     sep_width = 3
-    sep = np.zeros((images.shape[1], images.shape[2], sep_width), dtype=np.uint8)
+    sep = np.zeros((channels, height, sep_width), dtype=np.uint8)
     for image_id, orig_img, pred_img in zip(image_ids, images, pred_imgs):
         two_images = np.concatenate((orig_img, sep, pred_img), axis=2)
-        image = Image.fromarray(two_images.transpose(1, 2, 0))
+        image = Image.fromarray(np.squeeze(two_images.transpose(1, 2, 0)), mode="RGB" if channels == 3 else "L")
         image.save(output_dir / f"image_{image_id}.png")
 
 

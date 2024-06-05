@@ -97,6 +97,30 @@ class BPDeconvDecoder(pxc.EnergyModule):
             self.output_act_fn,
         ]
 
+        # Half the features
+        # self.layers = [
+        #     pxnn.Conv2d(
+        #         3, 3, kernel_size=(kernel_size, kernel_size), stride=(2, 2), padding=conv_padding
+        #     ),  # (3, 16, 16)
+        #     self.act_fn,
+        #     pxnn.Conv2d(3, 4, kernel_size=(kernel_size, kernel_size), stride=(2, 2), padding=conv_padding),  # (4, 8, 8)
+        #     self.act_fn,
+        #     pxnn.Conv2d(4, 4, kernel_size=(kernel_size, kernel_size), stride=(2, 2), padding=conv_padding),  # (4, 4, 4)
+        #     self.act_fn,
+        #     ConvTranspose(
+        #         2, 4, 4, kernel_size=(kernel_size, kernel_size), stride=(2, 2), **conv_transpose_paddings[0]
+        #     ),  # (4, 8, 8)
+        #     self.act_fn,
+        #     ConvTranspose(
+        #         2, 4, 3, kernel_size=(kernel_size, kernel_size), stride=(2, 2), **conv_transpose_paddings[1]
+        #     ),  # (3, 16, 16)
+        #     self.act_fn,
+        #     ConvTranspose(
+        #         2, 3, 3, kernel_size=(kernel_size, kernel_size), stride=(2, 2), **conv_transpose_paddings[2]
+        #     ),  # (3, 32, 32)
+        #     self.output_act_fn,
+        # ]
+
     def __call__(self, x):
         for i, layer in enumerate(self.layers):
             x = layer(x)

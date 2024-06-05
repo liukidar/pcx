@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+import json
 
 import stune
 import numpy as np
@@ -22,6 +23,7 @@ def main(run_info: stune.RunInfo, checkpoint_dir: Path | None = None, seed: int 
         batch_size=run_info["hp/batch_size"],
         epochs=run_info["hp/epochs"],
         T=run_info["hp/T"],
+        use_ipc=run_info["hp/use_ipc"],
         optim_x_lr=run_info["hp/optim/x/lr"],
         optim_x_momentum=run_info["hp/optim/x/momentum"],
         optim_w_name=run_info["hp/optim/w/name"],
@@ -52,9 +54,20 @@ if __name__ == "__main__":
             print(f"Running for seed {seed}")
             res = main(config, args.checkpoint_dir, seed)
             if not np.isnan(res):
-                results[seed] = res
-        print(results)
+                results[seed] = float(res)
+        print(json.dumps(results, indent=4))
         if results:
             best_seed = min(results, key=results.get)
-            print(f"Best seed {best_seed}: {results[best_seed]}")
-            print(f"Average loss: {np.mean(list(results.values()))}")
+            v = np.array(list(results.values()))
+            top5 = np.sort(v)[:5]
+            stats = {
+                "best_seed": best_seed,
+                "best_loss": results[best_seed],
+                "avg5": np.mean(top5),
+                "std5": np.std(top5),
+                "avg": np.mean(v),
+                "std": np.std(v),
+            }
+            print(json.dumps(stats, indent=4))
+        else:
+            print("No results")

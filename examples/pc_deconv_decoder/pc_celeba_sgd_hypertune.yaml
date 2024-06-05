@@ -11,6 +11,7 @@ hp:
     batch_size: 500
     epochs: 10
     T: 20
+    use_ipc: false
     optim:
         x:
             lr:
