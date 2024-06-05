@@ -1,11 +1,11 @@
 program: train_mnist.py
 project: pcax
-name: mnist
+name: mnist_final_fid
 method: bayes
 
 metric:
-  goal: maximize
-  name: is
+  goal: minimize
+  name: fid
 
 parameters:
   batch_size:
@@ -19,7 +19,7 @@ parameters:
   h_var:
     values: [1.0, 0.3, 0.01, 0.001]
   gamma:
-    values: [0.0, 0.0001]
+    values: [0.0]
   lr_p:
     distribution: log_uniform_values
     min: 0.0001
@@ -27,9 +27,11 @@ parameters:
   decay_p:
     values: [0.0, 0.1, 0.01, 0.001, 0.0001]
   input_var:
-    values: [1, 0.3, 0.1, 0.03, 0.01]
+    distribution: log_uniform_values
+    min: 0.03
+    max: 1.0
   activation:
-    values: ["relu", "silu", "tanh"]
+    values: ["relu", "silu", "tanh", "l-relu", "h-tanh"]
     
   
 early_terminate:

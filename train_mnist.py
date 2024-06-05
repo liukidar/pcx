@@ -117,9 +117,12 @@ def train_on_batch(
     # Init step
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
         forward(x, y, model=model)
-    
+    # optim_h.init(pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True))(model))
+
     # Inference steps
     pxf.scan(h_step, xs=jax.numpy.arange(T))(x, model=model, optim_h=optim_h)
+
+    # optim_h.clear()
 
     # Learning step
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
@@ -264,6 +267,7 @@ def main(args):
     
     px.RKG.seed(0)
     torch.manual_seed(0)
+    np.random.seed(0)
 
     is_wandb = args.is_wandb
     verbose = args.is_verbose    
@@ -315,7 +319,7 @@ def main(args):
         input_dim=latent_dim,
         hidden_dim=hidden_dim,
         output_dim=784,
-        nm_layers=4,
+        nm_layers=5,
         act_fn=activation,
         input_var = input_var
     )
@@ -333,7 +337,7 @@ def main(args):
         model.vodes[-1].h.frozen = True
     
     nm_epochs = 100
-    T = 250
+    T = 1000
     T_eval = 10000
 
     best_is = 0
@@ -413,7 +417,7 @@ if __name__ == "__main__":
         fromfile_prefix_chars='@'
     )
 
-    parser.add_argument('--batch-size', type=int, default=150, choices=[150, 300, 600, 900],
+    parser.add_argument('--batch-size', type=int, default=900, choices=[150, 300, 600, 900],
         help='batch size')
     parser.add_argument('--lr-h', type=float, default=0.01, 
         help='learning rate of neurons')
@@ -429,7 +433,7 @@ if __name__ == "__main__":
         help='decay of parameters')
     parser.add_argument('--input-var', type=float, default=1.0,
         help='variance of input layers from energy')
-    parser.add_argument('--activation', type=str, default='relu', choices=['relu', 'tanh', 'silu'],
+    parser.add_argument('--activation', type=str, default='relu', choices=['relu', 'tanh', 'silu', 'l-relu', 'h-tanh'],
         help='activation function')    
     parser.add_argument('--is-wandb', type=lambda x: (str(x).lower() == 'true'), default=False,
         help='activation function')    

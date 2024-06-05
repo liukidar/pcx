@@ -6,7 +6,7 @@
 #SBATCH --time=11:00:00
 #SBATCH --partition=short
 # set name of job
-#SBATCH --job-name=mnist_pcax
+#SBATCH --job-name=vae_mnist
 # qos
 #SBATCH --qos=standard
 #SBATCH --account=ndcn-computational-neuroscience
@@ -19,12 +19,12 @@
 
 
 module load Anaconda3
-source activate $DATA/envs/pcax
+source activate $DATA/mcpc
 
-for IDX in `seq 4`; do
-	GPU_ID=$((IDX % 4))
+for IDX in `seq 1`; do
+	GPU_ID=$((0))
 	echo $GPU_ID
-	CUDA_VISIBLE_DEVICES=$GPU_ID wandb agent --project pcax --entity oliviers-gaspard  t7yes4vz --count 100 &
+	CUDA_VISIBLE_DEVICES=$GPU_ID wandb agent --project vae --entity oliviers-gaspard  e12m8ery --count 500 &
 done   
 
 # wait for all processes to finish                        

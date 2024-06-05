@@ -69,8 +69,7 @@ class Model(pxc.EnergyModule):
                 ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",)},
                 tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros(n.shape.get())},
                 )
-            ]
-        
+                ]
         self.out_vode_act_fn = px.static(jax.nn.tanh)
 
         self.vodes[-1].h.frozen = True
@@ -92,7 +91,6 @@ def forward(x, y, *, model: Model):
 def energy(x, *, model: Model):
     y_ = model(x, None)
     return jax.lax.pmean(model.energy().sum(), "batch"), y_
-
 
 @pxf.jit(static_argnums=0)
 def train_on_batch(
@@ -266,13 +264,13 @@ def main(args):
         for key, value in wandb.config.items():
             setattr(args, key, value)
         wandb.config.update(args)
+    
+    px.RKG.seed(args.seed)
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+
     is_wandb = args.is_wandb
-    verbose = args.is_verbose
-    
-    px.RKG.seed(0)
-    torch.manual_seed(0)
-    np.random.seed(0)
-    
+    verbose = args.is_verbose    
     batch_size = args.batch_size
     lr = args.lr_h
     momentum = args.momentum
@@ -282,8 +280,9 @@ def main(args):
     weight_decay = args.decay_p
     input_var = args.input_var
     activation = args.activation
-    latent_dim = 2
+    latent_dim = 30
     hidden_dim = 256
+
 
     if activation == "relu":
         activation = jax.nn.relu
@@ -298,7 +297,6 @@ def main(args):
     else:
         raise NotImplementedError
 
-
     # Define the transformation to scale pixels to the range [-1, 1]
     transform = transforms.Compose([
         transforms.ToTensor(),            # Convert the image to a PyTorch tensor
@@ -309,14 +307,11 @@ def main(args):
     train_dl = DataLoader(train_dataset, batch_size=train_dataset.__len__(), shuffle=True)
     data, label = list(train_dl)[0]
     nm_elements = len(data)
-    X = (label.numpy() % 2)[:batch_size * (nm_elements // batch_size)]
-    X = jax.nn.one_hot(X, 2)
+    X = np.zeros((batch_size * (nm_elements // batch_size), latent_dim))
     y = data.numpy()[:batch_size * (nm_elements // batch_size)]
     nm_elements_test =  1024
     X_test = np.zeros((batch_size * (nm_elements_test // batch_size), latent_dim))
-    X_test[:nm_elements_test//2, 0] = 1
-    X_test[nm_elements_test//2:, 1] = 1
-    y_test = np.zeros((batch_size * (nm_elements_test // batch_size), 784)) # is not usedtrain_dl = list(zip(X.reshape(-1, batch_size, latent_dim), y.reshape(-1, batch_size, 784)))
+    y_test = np.zeros((batch_size * (nm_elements_test // batch_size), 784)) # is not used
     train_dl = list(zip(X.reshape(-1, batch_size, latent_dim), y.reshape(-1, batch_size, 784)))
     test_dl = tuple(zip(X_test.reshape(-1, batch_size, latent_dim), y_test.reshape(-1, batch_size, 784)))
     
@@ -365,7 +360,6 @@ def main(args):
             fids.append(fid)
             iss.append(is_)
             energies.append(energy)
-
     is_, fid, imgs = eval(test_dl, test_dataset, T_eval, model=model, optim_h=optim_h_eval)
     if verbose:
         print(f"Epoch {e+1}/{nm_epochs} - Inception score: {is_ :.2f}, FID score: {fid :.2f}, Energy: {energy :.2f}")
@@ -378,20 +372,13 @@ def main(args):
     iss.append(is_)
     energies.append(energy)
 
-    
-
-    images_reshaped = best_imgs.reshape(-1, 28, 28)
+    # imgs generated
     fig, axes = plt.subplots(10, 10, figsize=(10,10))
+    images_reshaped = best_imgs.reshape(-1, 28, 28)
     axes = axes.ravel()
-
-    for i in np.arange(0, 50):
-        axes[i].imshow(images_reshaped[i], cmap='gray')
+    for i in np.arange(0, 100):
+        axes[i].imshow(images_reshaped[i], cmap='gray', vmin=0, vmax=1)
         axes[i].axis('off')
-
-    for i in np.arange(0, 50):
-        axes[i+50].imshow(images_reshaped[-50 + i], cmap='gray')
-        axes[i+50].axis('off')
-
     plt.subplots_adjust(wspace=0.5)
     plt.tight_layout()
     plot_filename = f"plot_{uuid.uuid4().hex}.png"
@@ -416,10 +403,10 @@ def main(args):
     if is_wandb:
         wandb.log({"plot": wandb.Image(plot_filename)})
         os.remove(plot_filename)
+
     if verbose:
        plt.show() 
-
-
+    
     if is_wandb:
         wandb.finish()
 
@@ -430,6 +417,8 @@ if __name__ == "__main__":
         fromfile_prefix_chars='@'
     )
 
+    parser.add_argument('--seed', type=int, default=0,
+        help='seed')
     parser.add_argument('--batch-size', type=int, default=900, choices=[150, 300, 600, 900],
         help='batch size')
     parser.add_argument('--lr-h', type=float, default=0.01, 

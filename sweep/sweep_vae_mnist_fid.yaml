@@ -1,0 +1,34 @@
+program: vae_mnist_seed.py
+project: vae
+name: mnist_fid
+method: grid
+
+metric:
+  goal: minimize
+  name: fid
+
+parameters:
+  batch_size:
+    values: [150]
+  lr_p:
+    values: [0.0005688033422898258]
+  decay_p:
+    values: [0.01]
+  activation:
+    values: ["silu"]
+  seed:
+    values: [0, 1, 2, 3, 4]
+
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --is-wandb
+- "true" 
+- --is-verbose
+- "false" 
+
+
+# 1wk06zgf
+# wandb agent --project vae --entity oliviers-gaspard  1wk06zgf --count 5

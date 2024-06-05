@@ -1,35 +1,26 @@
-program: train_mnist_conditional.py
-project: pcax
-name: mnist_conditional_final
+program: vae_mnist.py
+project: vae
+# name: mnist
+name: mnist_fid
 method: bayes
 
+# metric:
+#   goal: maximize
+#   name: is
+
 metric:
-  goal: maximize
-  name: is
+  goal: minimize
+  name: fid
 
 parameters:
   batch_size:
     values: [150, 300, 600, 900]
-  lr_h:
-    distribution: log_uniform_values
-    min: 0.0001
-    max: 0.05
-  momentum:
-    values: [0.0, 0.9]
-  h_var:
-    values: [1.0, 0.3, 0.01, 0.001]
-  gamma:
-    values: [0.0]
   lr_p:
     distribution: log_uniform_values
     min: 0.0001
     max: 0.1
   decay_p:
     values: [0.0, 0.1, 0.01, 0.001, 0.0001]
-  input_var:
-    distribution: log_uniform_values
-    min: 0.03
-    max: 1.0
   activation:
     values: ["relu", "silu", "tanh", "l-relu", "h-tanh"]
     

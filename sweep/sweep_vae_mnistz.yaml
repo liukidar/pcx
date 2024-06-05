@@ -1,0 +1,38 @@
+program: vae_mnist.py
+project: vae
+name: mnist_fid
+method: bayes
+
+metric:
+  goal: minimize
+  name: fid
+
+parameters:
+  batch_size:
+    values: [150]
+  lr_p:
+    distribution: log_uniform_values
+    min: 0.0001
+    max: 0.001
+  decay_p:
+    values: [0.01]
+  activation:
+    values: ["silu"]
+    
+  
+early_terminate:
+  type: hyperband
+  min_iter: 10
+
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --is-wandb
+- "true" 
+- --is-verbose
+- "false" 
+
+
+#dgqmvr52

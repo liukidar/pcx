@@ -1,0 +1,44 @@
+program: train_mnist_seed.py
+project: pcax
+name: mnist_inception
+method: grid
+
+metric:
+  goal: maximize
+  name: is
+
+parameters:
+  batch_size:
+    values: [900]
+  lr_h:
+    values: [0.034863867585672025]
+  momentum:
+    values: [0.9]
+  h_var:
+    values: [1]
+  gamma:
+    values: [0.0]
+  lr_p:
+    values: [0.008222805108227801]
+  decay_p:
+    values: [0.001]
+  input_var:
+    values: [0.3502196408978148]
+  activation:
+    values: ["relu"]
+  seed:
+    values: [0,1,2,3,4]
+    
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --is-wandb
+- "true" 
+- --is-verbose
+- "false" 
+
+
+# 1wk06zgf
+# wandb agent --project pcax --entity oliviers-gaspard  1wk06zgf --count 5
