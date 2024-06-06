@@ -1,7 +1,9 @@
 #!/bin/bash
 
+# example usage: ./multirun_seeds_double_descent.sh -n 0.2 -s train_double_descent_pc_5runs.py
+
 # Default values for parameters
-epochs_list=(5)
+epochs_list=(200)
 batch_sizes=(256)
 w_learning_rates=(0.05)
 h_learning_rates=(0.01)
