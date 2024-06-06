@@ -41,9 +41,9 @@ def get_model_by_name(model_name):
     raise ValueError(f"Model {model_name} not found")
 
 
-# Model definition
-class TwoLayerNN(pxc.EnergyModule):
-    def __init__(self, input_dim: int, hidden_dim: int, output_dim: int, subset_size: int, act_fn: Callable[[jax.Array], jax.Array]) -> None:
+class TwoLayerNN(px.Module):
+    def __init__(
+        self, input_dim: int, hidden_dim: int, output_dim: int, subset_size: int, act_fn: Callable[[jax.Array], jax.Array]) -> None:
         super().__init__()
         self._train_step = 0
         self._val_step = 0
@@ -53,18 +53,12 @@ class TwoLayerNN(pxc.EnergyModule):
         self._dim_output = output_dim
         self._subset_size = subset_size
 
-
         self.act_fn = px.static(act_fn)
+
         self.layers = [
             pxnn.Linear(input_dim, hidden_dim),
             pxnn.Linear(hidden_dim, output_dim)
         ]
-        
-        self.vodes = [
-            pxc.Vode((hidden_dim,)),
-            pxc.Vode((output_dim,), pxc.ce_energy)
-        ]
-        self.vodes[-1].h.frozen = True
 
     @staticmethod
     def name():
@@ -150,62 +144,57 @@ class TwoLayerNN(pxc.EnergyModule):
             print("Are the biases the same?", jnp.all(hidden_b == previous_b))
             """
 
-    def __call__(self, x, y):
-        for v, l in zip(self.vodes[:-1], self.layers[:-1]):
-            x = v(self.act_fn(l(x)))
-        x = self.vodes[-1](self.layers[-1](x))
-        if y is not None:
-            self.vodes[-1].set("h", y)
-        return self.vodes[-1].get("u")
+    def __call__(self, x):
+        for layer in self.layers[:-1]:
+            x = self.act_fn(layer(x))
+
+        x = self.layers[-1](x)
+
+        return x
+
+def ce_loss(output, one_hot_label):
+    return -one_hot_label * jax.nn.log_softmax(output)
 
 
-# Training and evaluation functions
-@pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=(0, 0), out_axes=0)
-def forward(x, y, *, model: TwoLayerNN):
-    return model(x, y)
+@pxf.vmap({"model": None}, in_axes=0, out_axes=0)
+def forward(x, *, model: TwoLayerNN):
+    return model(x)
 
-@pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=(0,), out_axes=(None, 0), axis_name="batch")
-def energy(x, *, model: TwoLayerNN):
-    y_ = model(x, None)
-    return jax.lax.pmean(model.energy().sum(), "batch"), y_
 
-@pxf.jit(static_argnums=0)
-def train_on_batch(T: int, x: jax.Array, y: jax.Array, *, model: TwoLayerNN, optim_w: pxu.Optim, optim_h: pxu.Optim):
+@pxf.vmap({"model": None}, in_axes=(0, 0), out_axes=(None, 0), axis_name="batch")
+def loss(x, y, *, model: TwoLayerNN):
+    y_ = model(x)
+    return jax.lax.pmean(ce_loss(y_, y).sum(), "batch"), y_
+
+
+@pxf.jit()
+def train_on_batch(x: jax.Array, y: jax.Array, *, model: TwoLayerNN, optim_w: pxu.Optim):
     model.train()
 
-    # init step
-    with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-        forward(x, y, model=model)
+    with pxu.step(model):
+        (e, y_), g = pxf.value_and_grad(pxu.Mask(pxnn.LayerParam, [False, True]), has_aux=True)(loss)(x, y, model=model)
+    optim_w.step(model, g["model"])
 
-    # reinitialise the optimiser state between different batches (NOTE: this is just educational and not needed here because the SGD we use is not-stateful due to lack of momentum)
-    optim_h.init(pxu.Mask(pxc.VodeParam)(model))
 
-    for _ in range(T):
-        with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-            _, g = pxf.value_and_grad(pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]), has_aux=True)(energy)(x, model=model)
-            optim_h.step(model, g["model"], True)
+def train(dl, *, model: TwoLayerNN, optim_w: pxu.Optim, progress: Progress):
+    for x, y in dl:
+        progress.update_batch()
+        train_on_batch(x, jax.nn.one_hot(y, 10), model=model, optim_w=optim_w)
 
-    with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-        _, g = pxf.value_and_grad(pxu.Mask(pxnn.LayerParam, [False, True]), has_aux=True)(energy)(x, model=model)
-        optim_w.step(model, g["model"])
 
 @pxf.jit()
 def eval_on_batch(x: jax.Array, y: jax.Array, *, model: TwoLayerNN):
     model.eval()
-    with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-        y_ = forward(x, y, model=model).argmax(axis=-1)
-        e = model.vodes[-1].energy()
+
+    with pxu.step(model):
+        e, y_ = loss(x, y, model=model)
+        y_ = y_.argmax(axis=-1)
 
     # Convert y from one-hot encoding to class indices
     y_indices = y.argmax(axis=-1)
     
     return (y_ == y_indices).mean(), y_, e.mean()
 
-def train(dl, T, *, model: TwoLayerNN, optim_w: pxu.Optim, optim_h: pxu.Optim, progress: Progress):
-    for x, y in dl:
-        progress.update_batch()
-        #print(f"x shape: {x.shape}, y shape: {y.shape}")  # Debugging line
-        train_on_batch(T, x, jax.nn.one_hot(y, 10), model=model, optim_w=optim_w, optim_h=optim_h)
 
 def eval(dl, *, model: TwoLayerNN):
     acc = []
@@ -216,26 +205,24 @@ def eval(dl, *, model: TwoLayerNN):
         acc.append(a)
         es.append(e)
         ys_.append(y_)
+
     return float(np.mean(acc)), np.concatenate(ys_), float(np.mean(es))
 
 ###################################### end of model related code ##########################################
 
 class Training:
-    def __init__(self, model, dataset, num_params, epochs, batch_size, w_learning_rate, 
-                 h_learning_rate, h_momentum, noise_level, seed, prev_model=None, num_models=None):
+    def __init__(self, model, dataset, num_params, epochs, batch_size, w_learning_rate, noise_level, seed=42, prev_model=None, num_models=None):
         self._train_loader = dataset.train_loader
         self._subset_size = len(dataset.train_loader.sampler)
         self._val_loader = dataset.val_loader
         self._test_loader = dataset.test_loader
         self.num_classes = len(np.unique(dataset.train_loader.dataset.targets))
-        self.input_dim = self._train_loader.dataset[0][0].shape[0]
+        self.input_dim = self._train_loader.dataset[0][0].shape[0]        
         self._interpolation_threshold = self.num_classes * len(dataset.train_loader.sampler)
         self._all_models = []
         self._epochs = epochs
         self._batch_size = batch_size
         self._w_learning_rate = w_learning_rate
-        self._h_learning_rate = h_learning_rate
-        self._h_momentum = h_momentum
         self._noise_level = noise_level
         self._seed = seed
         self.all_train_losses = {}
@@ -249,20 +236,24 @@ class Training:
         if num_models is not None:
             num_params = num_params[:num_models]
 
+        # Set the seed for reproducibility
+        np.random.seed(seed)
+        jax.random.PRNGKey(seed)
+
+        # in this loop we create all models with different hidden layer sizes
         for p in num_params:
-            self._all_models.append(TwoLayerNN(input_dim=self.input_dim, hidden_dim=p, output_dim=self.num_classes,
+            self._all_models.append(TwoLayerNN(input_dim=self.input_dim, hidden_dim=p, output_dim=self.num_classes, 
                                                subset_size=self._subset_size, act_fn=jax.nn.relu))
 
     def save(self):
-        path = os.path.join("data", "results_pc_5runs", self._model_name, self._loss_name)
-        file_name = os.path.join(path, f"epochs_{self._epochs}_bs_{self._batch_size}_wlr_{self._w_learning_rate}_hlr_{self._h_learning_rate}_hm_{self._h_momentum}_noise_{self._noise_level}_seed_{self._seed}.json")
+        path = os.path.join("data", "results_bp_5runs", self._model_name, self._loss_name)
+        file_name = os.path.join(path, f"epochs_{self._epochs}_bs_{self._batch_size}_wlr_{self._w_learning_rate}_noise_{self._noise_level}_seed_{self._seed}.json")
         if not os.path.exists(path):
             os.makedirs(path)
-        content = {
-            "Train losses": self.all_train_losses,
-            "Val losses": self.all_val_losses,
-            "Test losses": self.all_test_losses
-        }
+        content = {}
+        content["Train losses"] = self.all_train_losses
+        content["Val losses"] = self.all_val_losses
+        content["Test losses"] = self.all_test_losses
         if os.path.exists(file_name):
             with open(file_name, "r") as fd:
                 old_content = json.load(fd)
@@ -281,21 +272,25 @@ class Training:
         progress = Progress(len(self._all_models), self._epochs, len(self._train_loader), run_from_term)
         progress.init_print(len(self._all_models), self._model_name, self._dataset_name)
 
-        for model in self._all_models:
+        for model in self._all_models:  # different sized models
+
+            # Initialize the model with the previous model's weights if it exists
             model.init_weights(self._prev_model)
 
-            with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-                forward(jax.numpy.zeros((self._batch_size, self.input_dim)), None, model=model)
-                optim_h = pxu.Optim(optax.sgd(self._h_learning_rate, momentum=self._h_momentum), pxu.Mask(pxc.VodeParam)(model))
+            # Initialize the optimizer
+            with pxu.step(model):
                 optim_w = pxu.Optim(optax.sgd(self._w_learning_rate, momentum=0.95), pxu.Mask(pxnn.LayerParam)(model))
-            
+
             progress.update_model()
 
             train_losses = []
             val_losses = []
             for e in range(self._epochs):
                 model.epoch_step()
-                train(self._train_loader, T=10, model=model, optim_w=optim_w, optim_h=optim_h, progress=progress)
+                # train the model
+                train(self._train_loader, model=model, optim_w=optim_w, progress=progress)
+                
+                # evaluate the model and get accuracies and losses
                 a_train, ys_train, e_train = eval(self._train_loader, model=model)
                 a_val, ys_val, e_val = eval(self._val_loader, model=model)
 
@@ -304,25 +299,28 @@ class Training:
 
                 progress.update_epoch(train_losses[-1], val_losses[-1])
 
+                # TODO: only for two layer nn?
                 if train_losses[-1] == 0.0 and model.num_parameters() < self._interpolation_threshold:
                     break
 
             a_test, ys_test, e_test = eval(self._test_loader, model=model)
+
             progress.finished_model(model.num_parameters(), e_test, a_test)
 
             model_name = str(model.num_parameters())
             self.all_test_losses[model_name] = e_test
             self.all_train_losses[model_name] = train_losses
             self.all_val_losses[model_name] = val_losses
-            self._prev_model = model
+            self._prev_model = model            
 
+            # Explicitly create the path variable with additional parameters
             path = os.path.join(
                 "data", 
-                "models_pc_5runs", 
+                "models_bp_5runs", 
                 self._model_name, 
                 self._loss_name, 
-                f"epochs_{self._epochs}_bs_{self._batch_size}_wlr_{self._w_learning_rate}_hlr_{self._h_learning_rate}_hm_{self._h_momentum}_noise_{self._noise_level}_seed_{self._seed}"
-            )
+                f"epochs_{self._epochs}_bs_{self._batch_size}_wlr_{self._w_learning_rate}_noise_{self._noise_level}_seed_{self._seed}"
+            )            
             if not os.path.exists(path):
                 os.makedirs(path)
             file_name = os.path.join(path, model_name)
@@ -338,18 +336,15 @@ if __name__ == "__main__":
     parser.add_argument("--config", type=str, help="config file for training", required=True, dest="config")
     parser.add_argument("--epochs", type=int, help="The number of epochs to train, if not given, the value in the config file is taken", dest="epochs")
     parser.add_argument("--batch_size", type=int, help="The batch size for training", dest="batch_size", default=128)
-    parser.add_argument("--w_learning_rate", type=float, help="The weight learning rate", dest="w_learning_rate", default=0.01)
+    parser.add_argument("--w_learning_rate", type=float, help="The SGD learning rate", dest="w_learning_rate", default=0.01)
+    # just dummies and will not be used, present so same bashh script can be used
     parser.add_argument("--h_momentum", type=float, help="The momentum for the state optimizer", dest="h_momentum", default=0.9)
     parser.add_argument("--h_learning_rate", type=float, help="The state learning rate", dest="h_learning_rate", default=0.01)
+    
     parser.add_argument("--noise_level", type=float, help="The noise level for label noise", dest="noise_level", default=0.2)
     parser.add_argument("--seed", type=int, help="Random seed for reproducibility", default=42, dest="seed")
 
     args = parser.parse_args()
-
-    # Set the seed for reproducibility
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    jax.random.PRNGKey(args.seed)
 
     with open(args.config, "r") as fd:
         config = json.load(fd)
@@ -358,9 +353,8 @@ if __name__ == "__main__":
     model_name = "two_layer_nn"
     batch_size = args.batch_size
     w_learning_rate = args.w_learning_rate
-    h_learning_rate = args.h_learning_rate
-    h_momentum = args.h_momentum
     noise_level = args.noise_level
+    seed = args.seed
     train_subset_size = config["train_subset_size"][model_name.lower()]
     epochs = args.epochs if args.epochs else config["epochs"]
     num_params = config["num_params"][model_name]
@@ -372,8 +366,7 @@ if __name__ == "__main__":
     model = get_model_by_name(model_name)
     dataset = get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level)
 
-    training = Training(model, dataset, num_params, epochs, batch_size, w_learning_rate, 
-                        h_learning_rate, h_momentum, noise_level, seed=args.seed, prev_model=previous_model, num_models=num_models)
+    training = Training(model, dataset, num_params, epochs, batch_size, w_learning_rate, noise_level, seed, prev_model=previous_model, num_models=num_models)
     training.start()
     training.save()
     

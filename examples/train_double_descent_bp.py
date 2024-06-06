@@ -3,13 +3,13 @@ import json
 import time
 import os
 import argparse
+import random
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 # 3rd party
 import numpy as np
-import matplotlib.pyplot as plt
 
 # own
 from helpers import get_dataloaders, Progress
