@@ -211,7 +211,7 @@ def eval(dl, *, model: TwoLayerNN):
 ###################################### end of model related code ##########################################
 
 class Training:
-    def __init__(self, model, dataset, num_params, epochs, batch_size, learning_rate, noise_level, prev_model=None, num_models=None):
+    def __init__(self, model, dataset, num_params, epochs, batch_size, w_learning_rate, noise_level, prev_model=None, num_models=None):
         self._train_loader = dataset.train_loader
         self._subset_size = len(dataset.train_loader.sampler)
         self._val_loader = dataset.val_loader
@@ -222,7 +222,7 @@ class Training:
         self._all_models = []
         self._epochs = epochs
         self._batch_size = batch_size
-        self._learning_rate = learning_rate
+        self._w_learning_rate = w_learning_rate
         self._noise_level = noise_level
         self.all_train_losses = {}
         self.all_val_losses = {}
@@ -243,7 +243,7 @@ class Training:
 
     def save(self):
         path = os.path.join("data", "results_bp", self._model_name, self._loss_name)
-        file_name = os.path.join(path, f"epochs_{self._epochs}_bs_{self._batch_size}_lr_{self._learning_rate}_noise_{self._noise_level}.json")
+        file_name = os.path.join(path, f"epochs_{self._epochs}_bs_{self._batch_size}_wlr_{self._w_learning_rate}_noise_{self._noise_level}.json")
         if not os.path.exists(path):
             os.makedirs(path)
         content = {}
@@ -276,7 +276,7 @@ class Training:
 
             # Initialize the optimizer
             with pxu.step(model):
-                optim_w = pxu.Optim(optax.sgd(self._learning_rate, momentum=0.95), pxu.Mask(pxnn.LayerParam)(model))
+                optim_w = pxu.Optim(optax.sgd(self._w_learning_rate, momentum=0.95), pxu.Mask(pxnn.LayerParam)(model))
 
             progress.update_model()
 
@@ -316,7 +316,7 @@ class Training:
                 "models_bp", 
                 self._model_name, 
                 self._loss_name, 
-                f"epochs_{self._epochs}_bs_{self._batch_size}_lr_{self._learning_rate}_noise_{self._noise_level}"
+                f"epochs_{self._epochs}_bs_{self._batch_size}_wlr_{self._w_learning_rate}_noise_{self._noise_level}"
             )            
             if not os.path.exists(path):
                 os.makedirs(path)
@@ -334,7 +334,7 @@ if __name__ == "__main__":
     parser.add_argument("--config", type=str, help="config file for training", required=True, dest="config")
     parser.add_argument("--epochs", type=int, help="The number of epochs to train, if not given, the value in the config file is taken", dest="epochs")
     parser.add_argument("--batch_size", type=int, help="The batch size for training", dest="batch_size", default=128)
-    parser.add_argument("--learning_rate", type=float, help="The SGD learning rate", dest="learning_rate", default=0.01)
+    parser.add_argument("--w_learning_rate", type=float, help="The SGD learning rate", dest="w_learning_rate", default=0.01)
     parser.add_argument("--noise_level", type=float, help="The noise level for label noise", dest="noise_level", default=0.2)
 
     args = parser.parse_args()
@@ -345,7 +345,7 @@ if __name__ == "__main__":
     dataset_name = "mnist"
     model_name = "two_layer_nn"
     batch_size = args.batch_size
-    learning_rate = args.learning_rate
+    w_learning_rate = args.w_learning_rate
     noise_level = args.noise_level
     train_subset_size = config["train_subset_size"][model_name.lower()]
     epochs = args.epochs if args.epochs else config["epochs"]
@@ -358,6 +358,6 @@ if __name__ == "__main__":
     model = get_model_by_name(model_name)
     dataset = get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level)
 
-    training = Training(model, dataset, num_params, epochs, batch_size, learning_rate, noise_level, prev_model=previous_model, num_models=num_models)
+    training = Training(model, dataset, num_params, epochs, batch_size, w_learning_rate, noise_level, prev_model=previous_model, num_models=num_models)
     training.start()
     training.save()
