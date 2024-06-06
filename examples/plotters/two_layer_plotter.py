@@ -17,7 +17,7 @@ def plot_double_descent(result, file_prefix, label_color, background_color, tran
     final_train_losses = [v[-1] for v in train_losses.values()]
     final_val_losses = [v[-1] for v in val_losses.values()]
     test_losses = list(result["Test losses"].values())
-    test_losses = list(OrderedDict(sorted(result["Test losses"].items(
+    test_losses = list(OrderedDict(sorted(result["Test losses"].items(j
     ), key=lambda t: int(t[0].split("_")[-1]))).values())
     fig, ax = plt.subplots(figsize=(4.5, 3))
     ax.set_facecolor(background_color)
