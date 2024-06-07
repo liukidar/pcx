@@ -1,15 +1,15 @@
 direction: minimize
 gpus_per_task: 0.125
-dataset_name: celeba
+dataset_name: fashion_mnist
 hp:
-    num_layers: 3
-    internal_state_dim: 25
-    internal_state_channels: 8
-    kernel_size: 7
-    act_fn: hard_tanh
+    layer_dims: [64, 128, 128, 784]
+    act_fn:
+        sample_type: categorical
+        sample_space: [relu, leaky_relu, gelu, tanh, hard_tanh]
+        default: hard_tanh
     output_act_fn: null
-    batch_size: 500
-    epochs: 5
+    batch_size: 200
+    epochs: 30
     T: 20
     use_ipc: false
     optim:
@@ -17,19 +17,19 @@ hp:
             lr:
                 sample_type: float
                 sample_space: [[1e-2, 5e-1], null, true]
-                default: 0.2510951818044995
+                default: 0.011910178174048628
             momentum:
                 sample_type: float
                 sample_space: [[0.0, 0.95], 0.05]
-                default: 0.35
+                default: 0.45
         w:
             name: adamw
             lr:
                 sample_type: float
                 sample_space: [[3e-5, 1e-3], null, true]
-                default: 0.00043196265173594926
+                default: 0.0005149979608369072
             wd:
                 sample_type: float
                 sample_space: [[1e-5, 1e-2], null, true]
-                default: 5.01832572878327e-05
+                default: 7.382135878282121e-05
             momentum: 0.0

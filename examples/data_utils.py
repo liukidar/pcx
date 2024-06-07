@@ -45,7 +45,8 @@ class CelebAAdapter(torchvision.datasets.CelebA):
 VISION_DATASETS = {
     "cifar10": torchvision.datasets.CIFAR10,
     "celeba": CelebAAdapter,
-    "fasion_mnist": torchvision.datasets.FashionMNIST,
+    "fashion_mnist": torchvision.datasets.FashionMNIST,
+    "mnist": torchvision.datasets.MNIST,
 }
 
 
