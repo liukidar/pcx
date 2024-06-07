@@ -2,6 +2,8 @@ import numpy as np
 from scipy.special import expit as sigmoid
 import igraph as ig
 import random
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 def set_random_seed(seed):
@@ -211,3 +213,10 @@ def simulate_linear_sem_cyclic(W, n, sem_type, noise_scale=None, max_iter=1000, 
     
     return X
 
+def plot_adjacency_matrix(adj_matrix, title="Adjacency Matrix"):
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(adj_matrix, cmap='viridis', cbar=True)
+    plt.title(title)
+    plt.xlabel('Node')
+    plt.ylabel('Node')
+    plt.show()
