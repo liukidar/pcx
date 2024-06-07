@@ -12,7 +12,7 @@ hp:
         default: hard_tanh
     output_act_fn: null
     batch_size: 500
-    epochs: 10
+    epochs: 5
     optim:
         w:
             name: adamw
