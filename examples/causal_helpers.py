@@ -8,15 +8,60 @@ def set_random_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
 
+
 # Function to load the adjacency matrix
 def load_adjacency_matrix(file_name):
     adj_matrix = np.load(file_name)
     print(f"Adjacency matrix loaded from {file_name}")
     return adj_matrix
 
+
 def is_dag(W):
     G = ig.Graph.Weighted_Adjacency(W.tolist())
     return G.is_dag()
+
+
+def simulate_dag(d, s0, graph_type):
+    """Simulate random DAG with some expected number of edges.
+
+    Args:
+        d (int): num of nodes
+        s0 (int): expected num of edges
+        graph_type (str): ER, SF, BP
+
+    Returns:
+        B (np.ndarray): [d, d] binary adj matrix of DAG
+    """
+    def _random_permutation(M):
+        # np.random.permutation permutes first axis only
+        P = np.random.permutation(np.eye(M.shape[0]))
+        return P.T @ M @ P
+
+    def _random_acyclic_orientation(B_und):
+        return np.tril(_random_permutation(B_und), k=-1)
+
+    def _graph_to_adjmat(G):
+        return np.array(G.get_adjacency().data)
+
+    if graph_type == 'ER':
+        # Erdos-Renyi
+        G_und = ig.Graph.Erdos_Renyi(n=d, m=s0)
+        B_und = _graph_to_adjmat(G_und)
+        B = _random_acyclic_orientation(B_und)
+    elif graph_type == 'SF':
+        # Scale-free, Barabasi-Albert
+        G = ig.Graph.Barabasi(n=d, m=int(round(s0 / d)), directed=True)
+        B = _graph_to_adjmat(G)
+    elif graph_type == 'BP':
+        # Bipartite, Sec 4.1 of (Gu, Fu, Zhou, 2018)
+        top = int(0.2 * d)
+        G = ig.Graph.Random_Bipartite(top, d - top, m=s0, directed=True, neimode=ig.OUT)
+        B = _graph_to_adjmat(G)
+    else:
+        raise ValueError('unknown graph type')
+    B_perm = _random_permutation(B)
+    assert ig.Graph.Adjacency(B_perm.tolist()).is_dag()
+    return B_perm
 
 
 def simulate_parameter(B, w_ranges=((-2.0, -0.5), (0.5, 2.0))):
