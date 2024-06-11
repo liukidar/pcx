@@ -3,6 +3,7 @@ import time
 import datetime
 import random
 from collections import namedtuple
+from typing import NamedTuple
 
 import numpy as np
 import torch
@@ -103,6 +104,22 @@ def add_label_noise(dataset, noise_level=0.2):
     dataset.targets = torch.tensor(targets)
     return dataset
 
+# Function to filter the first 10 classes of EMNIST Letters and adjust targets to 0-9
+def filter_first_10_classes(dataset):
+    valid_classes = list(range(1, 11))  # classes 1 to 10
+    mask = torch.isin(dataset.targets, torch.tensor(valid_classes))
+    dataset.targets = dataset.targets[mask] - 1  # Adjust targets to range 0-9, so as to match MNIST and KMNIST
+    dataset.data = dataset.data[mask]
+    return dataset
+
+# Custom Dataset class to include additional attributes
+class CustomDataset(NamedTuple):
+    train_loader: TorchDataloader
+    val_loader: TorchDataloader
+    test_loader: TorchDataloader
+    classes: list
+    class_to_idx: dict
+
 # Function to get the dataloaders
 def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.2):
     if dataset_name.lower() == "mnist":
@@ -140,17 +157,14 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.2
     else:
         raise NotImplementedError(f"Dataset {dataset_name} isn't available")
 
-    # train    
+    # Train set
     if dataset_name.lower() == "emnist":
         train_set = ds(root='./data', split='letters', download=True, train=True, transform=transform)
+        train_set = filter_first_10_classes(train_set)
     else:
         train_set = ds(root='./data', download=True, train=True, transform=transform)
-    # test
-    if dataset_name.lower() == "emnist":
-        test_set = ds(root='./data', split='letters', download=True, train=False, transform=transform)
-    else:
-        test_set = ds(root='./data', download=True, train=False, transform=transform)
 
+    train_set = add_label_noise(train_set, noise_level=noise_level)
 
     val_subset_size = int(0.2 * train_subset_size)
     random_train_indices = np.random.choice(len(train_set), size=train_subset_size, replace=False)
@@ -165,10 +179,27 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.2
         train_set, batch_size=batch_size, num_workers=16,
         sampler=torch.utils.data.sampler.SubsetRandomSampler(random_val_indices))
 
+    # Test set
+    if dataset_name.lower() == "emnist":
+        test_set = ds(root='./data', split='letters', download=True, train=False, transform=transform)
+        test_set = filter_first_10_classes(test_set)
+    else:
+        test_set = ds(root='./data', download=True, train=False, transform=transform)
+
     test_loader = TorchDataloader(
         test_set, batch_size=batch_size, shuffle=False, num_workers=16)
 
-    return Dataset(train_loader=train_loader, val_loader=val_loader, test_loader=test_loader)
+    # Create the custom dataset
+    custom_dataset = CustomDataset(
+        train_loader=train_loader,
+        val_loader=val_loader,
+        test_loader=test_loader,
+        classes=train_set.classes,
+        class_to_idx=train_set.class_to_idx
+    )
+
+    return custom_dataset
+
 
 # Function to creat an equivalent data_loader with only different batch size
 def create_new_test_loader_with_batch_size(test_loader, new_batch_size):
