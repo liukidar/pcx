@@ -2,14 +2,16 @@ import numpy as np
 from scipy.special import expit as sigmoid
 import igraph as ig
 import random
+import jax
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 
 def set_random_seed(seed):
+    # Set the seed for reproducibility    
     random.seed(seed)
     np.random.seed(seed)
-
+    jax.random.PRNGKey(seed)
 
 # Function to load the adjacency matrix
 def load_adjacency_matrix(file_name):

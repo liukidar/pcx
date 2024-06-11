@@ -12,6 +12,34 @@ from torch.utils.data import DataLoader
 
 Dataset = namedtuple("Dataset", ["train_loader", "val_loader", "test_loader"])
 
+# Function to calculate the mean and std of a dataset
+def calculate_mean_std(dataset):
+    loader = DataLoader(dataset, batch_size=len(dataset), shuffle=False, num_workers=2)
+    data = next(iter(loader))[0]
+    mean = data.mean()
+    std = data.std()
+    return mean.item(), std.item()
+
+# Example usage:
+"""
+# Get the mean and std for EMNIST (letters) and KMNIST
+emnist_dataset = datasets.EMNIST(root='./data', split='letters', train=True, download=True, transform=transforms.ToTensor())
+kmnist_dataset = datasets.KMNIST(root='./data', train=True, download=True, transform=transforms.ToTensor())
+mnist_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transforms.ToTensor())
+fmnist_dataset = datasets.FashionMNIST(root='./data', train=True, download=True, transform=transforms.ToTensor())
+
+emnist_mean, emnist_std = calculate_mean_std(emnist_dataset)
+kmnist_mean, kmnist_std = calculate_mean_std(kmnist_dataset)
+mnist_mean, mnist_std = calculate_mean_std(mnist_dataset)
+fmnist_mean, fmnist_std = calculate_mean_std(fmnist_dataset)
+
+print(f"EMNIST Mean: {emnist_mean}, Std: {emnist_std}")
+print(f"KMNIST Mean: {kmnist_mean}, Std: {kmnist_std}")
+print(f"MNIST Mean: {mnist_mean}, Std: {mnist_std}")
+print(f"FMNIST Mean: {fmnist_mean}, Std: {fmnist_std}")
+"""
+
+
 # This is a simple collate function that stacks numpy arrays used to interface
 # the PyTorch dataloader with JAX. In the future we hope to provide custom dataloaders
 # that are independent of PyTorch.
@@ -82,22 +110,47 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.2
 
         transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,)), # MNIST mean and std for normalization via the formula (x - mean) / std
+            transforms.Normalize((0.1307,), (0.3081,)), # MNIST mean and std for normalization
             transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
         ])
-    elif dataset_name.lower() == "fashionmnist":
+    elif dataset_name.lower() == "fmnist":
         ds = datasets.FashionMNIST
 
         transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.2860,), (0.3530,)), # FashionMNIST mean and std for normalization via the formula (x - mean) / std
+            transforms.Normalize((0.2860,), (0.3530,)), # FashionMNIST mean and std for normalization
+            transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
+        ])
+    elif dataset_name.lower() == "emnist":
+        ds = datasets.EMNIST
+
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.1722,), (0.3309,)), # EMNIST letters mean and std for normalization
+            transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
+        ])
+    elif dataset_name.lower() == "kmnist":
+        ds = datasets.KMNIST
+
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.1918,), (0.3483,)), # KMNIST mean and std for normalization
             transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
         ])
     else:
         raise NotImplementedError(f"Dataset {dataset_name} isn't available")
 
-    train_set = ds(root='./data', download=True, train=True, transform=transform)
-    train_set = add_label_noise(train_set, noise_level=noise_level)
+    # train    
+    if dataset_name.lower() == "emnist":
+        train_set = ds(root='./data', split='letters', download=True, train=True, transform=transform)
+    else:
+        train_set = ds(root='./data', download=True, train=True, transform=transform)
+    # test
+    if dataset_name.lower() == "emnist":
+        test_set = ds(root='./data', split='letters', download=True, train=False, transform=transform)
+    else:
+        test_set = ds(root='./data', download=True, train=False, transform=transform)
+
 
     val_subset_size = int(0.2 * train_subset_size)
     random_train_indices = np.random.choice(len(train_set), size=train_subset_size, replace=False)
@@ -107,11 +160,11 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.2
     train_loader = TorchDataloader(
         train_set, batch_size=batch_size, num_workers=16,
         sampler=torch.utils.data.sampler.SubsetRandomSampler(random_train_indices))
+
     val_loader = TorchDataloader(
         train_set, batch_size=batch_size, num_workers=16,
         sampler=torch.utils.data.sampler.SubsetRandomSampler(random_val_indices))
 
-    test_set = ds(root='./data', download=True, train=False, transform=transform)
     test_loader = TorchDataloader(
         test_set, batch_size=batch_size, shuffle=False, num_workers=16)
 
