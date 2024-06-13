@@ -3,12 +3,14 @@ import math
 from pathlib import Path
 import logging
 import sys
+import argparse
 
 # Core dependencies
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+from omegaconf import OmegaConf
 
 # pcax
 import pcax as px
@@ -21,7 +23,7 @@ from pcax import RKG
 from conv_transpose_layer import ConvTranspose
 
 sys.path.insert(0, "../")
-from data_utils import get_vision_dataloaders, reconstruct_image, seed_everything  # noqa: E402
+from data_utils import get_vision_dataloaders, reconstruct_image, seed_everything, get_config_value  # noqa: E402
 
 sys.path.pop(0)
 
@@ -460,24 +462,23 @@ def eval(dl, T, *, model: PCDeconvDecoder, optim_h: pxu.Optim, batch_size: int):
 
 def run_experiment(
     *,
-    dataset_name: str = "cifar10",
-    num_layers: int = 3,
-    internal_state_dim: tuple[int, int, int] = (8, 4, 4),
-    kernel_size: int = 7,
-    act_fn: str | None = "tanh",
-    output_act_fn: str | None = None,
-    batch_size: int = 200,
-    epochs: int = 30,
-    T: int = 20,
-    use_ipc: bool = False,
-    optim_x_lr: float = 0.012339577360613845,
-    optim_x_momentum: float = 0.1,
-    optim_w_name: str = "adamw",
-    optim_w_lr: float = 0.0007642161267055484,
-    optim_w_wd: float = 3.511389190873198e-05,
-    optim_w_b1: float = 0.9,
-    optim_w_b2: float = 0.999,
-    optim_w_momentum: float = 0.1,
+    dataset_name: str,
+    num_layers: int,
+    internal_state_dim: int,
+    internal_state_channels: int,
+    kernel_size: int,
+    act_fn: str | None,
+    output_act_fn: str | None,
+    batch_size: int,
+    epochs: int,
+    T: int,
+    use_ipc: bool,
+    optim_x_lr: float,
+    optim_x_momentum: float,
+    optim_w_name: str,
+    optim_w_lr: float,
+    optim_w_wd: float,
+    optim_w_momentum: float,
     num_sample_images: int = 10,
     checkpoint_dir: Path | None = None,
     seed: int | None = None,
@@ -490,7 +491,7 @@ def run_experiment(
 
     dataset = get_vision_dataloaders(dataset_name=dataset_name, batch_size=batch_size, should_normalize=False)
 
-    input_dim = internal_state_dim
+    input_dim = (internal_state_channels, internal_state_dim, internal_state_dim)
     output_dim = dataset.train_dataset[0][0].shape
 
     model = PCDeconvDecoder(
@@ -510,7 +511,7 @@ def run_experiment(
     optim_h = pxu.Optim(optax.sgd(learning_rate=optim_x_lr, momentum=optim_x_momentum))
     if optim_w_name == "adamw":
         optim_w = pxu.Optim(
-            optax.adamw(learning_rate=optim_w_lr, weight_decay=optim_w_wd, b1=optim_w_b1, b2=optim_w_b2),
+            optax.adamw(learning_rate=optim_w_lr, weight_decay=optim_w_wd),
             pxu.Mask(pxnn.LayerParam)(model),
         )
     elif optim_w_name == "sgd":
@@ -575,4 +576,32 @@ def run_experiment(
 
 
 if __name__ == "__main__":
-    run_experiment(checkpoint_dir=Path("results/pc_deconv"))
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config", type=str, default="pc_cifar10_adamw_hypertune.yaml", help="Path to the config file."
+    )
+
+    args = parser.parse_args()
+    config = OmegaConf.load(args.config)
+
+    run_experiment(
+        dataset_name=get_config_value(config, "dataset_name"),
+        seed=get_config_value(config, "seed", required=False),
+        num_layers=get_config_value(config, "hp/num_layers"),
+        internal_state_dim=get_config_value(config, "hp/internal_state_dim"),
+        internal_state_channels=get_config_value(config, "hp/internal_state_channels"),
+        kernel_size=get_config_value(config, "hp/kernel_size"),
+        act_fn=get_config_value(config, "hp/act_fn"),
+        output_act_fn=get_config_value(config, "hp/output_act_fn"),
+        batch_size=get_config_value(config, "hp/batch_size"),
+        epochs=get_config_value(config, "hp/epochs"),
+        T=get_config_value(config, "hp/T"),
+        use_ipc=get_config_value(config, "hp/use_ipc"),
+        optim_x_lr=get_config_value(config, "hp/optim/x/lr"),
+        optim_x_momentum=get_config_value(config, "hp/optim/x/momentum"),
+        optim_w_name=get_config_value(config, "hp/optim/w/name"),
+        optim_w_lr=get_config_value(config, "hp/optim/w/lr"),
+        optim_w_wd=get_config_value(config, "hp/optim/w/wd"),
+        optim_w_momentum=get_config_value(config, "hp/optim/w/momentum"),
+        checkpoint_dir=Path("results/pc_deconv"),
+    )
