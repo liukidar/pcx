@@ -10,8 +10,14 @@ import torch
 import torchvision
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Dataset
+import jax
 import jax.numpy as jnp
 
+def set_random_seed(seed):
+    # Set the seed for reproducibility    
+    random.seed(seed)
+    np.random.seed(seed)
+    jax.random.PRNGKey(seed)
 
 # Function to calculate the mean and std of a dataset
 def calculate_mean_std(dataset):
