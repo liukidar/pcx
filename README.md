@@ -20,6 +20,7 @@ PCX is a Python JAX-based library designed to develop highly configurable predic
 This project uses [poetry](https://python-poetry.org/) to make sure the environment is 100% reproducible. If you are not familiar with `poetry`, now is a good time to skim through the docs.
 
 In a nutshell:
+
 1. If you need to add a Python package to the environment, use `poetry add package`. Avoid `pip install`!
 2. If you want to update a version of an existing package, run `poetry update package`. It will update the package to the latest available version that fits the constraints.
 3. **DO NOT** update the package versions in the `pyproject.toml` file manually. Surprisingly, `pyproject.toml` **DOES NOT** specify the versions that will be installed, `poetry.lock` does. So, first check the package version in `poetry.lock`.
@@ -55,6 +56,7 @@ You can check that you're running inside a container by running `hostname`. If i
 When running a Jupyter Notebook it will prompt you to select an environment. Select Python Environments -> Python 3.10 (any of them, as they are the same).
 
 **Important notes**:
+
 1. You are not supposed to modify the `docker/Dockerfile` unless you perfectly know what you are doing and why.
 1. You are not supposed to run the docker container directly. The Dev Containers extension will do this for you. If you think you need to `docker run -it` then something is really wrong.
 1. Use `poetry` to add a python package to the environment: `poetry add --group dev [package]`. The `--group dev` part should be omitted if this package is needed for the core `pcx` code. Try not to install packages with `pip`.
@@ -62,6 +64,7 @@ When running a Jupyter Notebook it will prompt you to select an environment. Sel
 1. Sometimes Pylance fails to start because it depends on the Python extension that starts later. In this case, just reload the window by running the `Developer: Reload window` command.
 
 **PyTorch with GPU support**: By default, the image will install a CPU-only PyTorch. If you need GPU support with PyTorch, do the following:
+
 1. Open the project in a container using DevContainers as described above.
 1. Replace ALL occurrences of `source = "torch-cpu"` with `source = "torch-gpu"` in the [pyproject.toml](./pyproject.toml) file.
 1. Run `poetry lock --no-update` to re-generate the `poetry.lock` file. Note that you should do it while running inside the container.
@@ -106,37 +109,6 @@ pip install -e /path/to/this/repo/ --config-settings editable_mode=strict
 
 Go to `/docs/README.md` to learn how to get them.
 
-## Contribute
+## Contributing
 
-Please use a new branch to contribute. Once you are done writing the feature, please open a Pull Request. A few github actions will be triggered: Formatting, Linting, Type Checking and Testing. These steps ensure that the library maintains a certain level of quality and fascilitate collaboration.
-
--   Formatting: We use `black` to format the code. Check out [pyproject.toml](pyproject.toml) for the arguments. This ensures that all files from all authors are coherently formatted.
--   Linting: This checks the code for style quality using `flake8` and `isort`. `flake8` complains about style errors, as for example variable names that are too generic or there exist unused imports. `isort` complains if the imports within each block are not alphabetically ordered. For linting arguments check [setup.cfg](setup.cfg).
--   Type Checking: This checks if type hints match the types that are actually passed through the code using `mypy`. This isnt infallable but it helps a lot making the typing more explicit. If you can't find a solution to satisfy `mypy` you can mark that line with a `# type: ignore` comment and `mypy` will ignore errors in this line. For arguments check [pyproject.toml](pyproject.toml).
--   Testing: All code in the library should be explicitly tested. We use `pytest` to do that. Please add tests for any feature you implement.
-
-The GHA only check that everything is in order, but does not alter the code for you. Please, do the formatting, testing etc locally. You can use the logs of the GHA to see where it is failing. Once all the GHA pass, request Luca as a reviewer for your PR. Once he approves, you should use the `Squash and Merge` functionalty to merge your feature on the main branch. `Squash and Merge` means that all your little commits on the feature branch will be bundles into one big commit and keep the commit tree tidy.
-
-Please add comments and docstrings to your changes.
-
-One warning: We cannot test GPU features on GHA. Please do this locally as well, even though it might not result in an error in the GHA.
-
-### VSCode
-
-This might be useful when using vscode:
-Add this to you `settings.json`:
-
-```json
-{
-    "python.linting.flake8Enabled": true,
-    "python.linting.mypyEnabled": true,
-    "python.formatting.provider": "black",
-    "python.formatting.blackArgs": ["--line-length 120"]
-}
-```
-
-It will continuously check your code using flake8 and mypy and set the formatting to black. As the linting is expensive, creating pre-commit hooks would be nicer though.
-
-### Skip Github Actions
-
-If you want to skip github actions on a single commit (e.g. an intermediate commit or comment that does not need to be checked), you can start your commit message with `[skip ci]`.
+If you want to contribute to the project, please read [CONTRIBUTING.md](CONTRIBUTING.md)
