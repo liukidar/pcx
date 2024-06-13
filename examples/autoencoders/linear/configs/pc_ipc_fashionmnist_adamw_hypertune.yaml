@@ -1,42 +1,36 @@
 direction: minimize
-gpus_per_task: 0.125
-dataset_name: cifar10
-seed: 0
+gpus_per_task: 1
+dataset_name: fashion_mnist
+seed: 6
 hp:
-    num_layers: 3
-    internal_state_dim: 4
-    internal_state_channels: 8
-    kernel_size:
-        sample_type: categorical
-        sample_space: [3, 4, 5, 7]
-        default: 4
+    layer_dims: [64, 128, 128, 784]
     act_fn:
         sample_type: categorical
         sample_space: [relu, leaky_relu, gelu, tanh, hard_tanh]
-        default: hard_tanh
+        default: gelu
     output_act_fn: null
     batch_size: 200
     epochs: 30
     T: 20
-    use_ipc: false
+    use_ipc: true
     optim:
         x:
             lr:
                 sample_type: float
-                sample_space: [[1e-2, 5e-1], null, true]
-                default: 0.016660532913375187
+                sample_space: [[1e-2, 1.0], null, true]
+                default: 0.8817404084814103
             momentum:
                 sample_type: float
                 sample_space: [[0.0, 0.95], 0.05]
-                default: 0.05
+                default: 0.6
         w:
             name: adamw
             lr:
                 sample_type: float
                 sample_space: [[3e-5, 1e-3], null, true]
-                default: 0.000897883696520861
+                default: 5.5069228142951346e-05
             wd:
                 sample_type: float
-                sample_space: [[1e-5, 1e-2], null, true]
-                default: 0.00992856858997552
+                sample_space: [[1e-5, 1e-1], null, true]
+                default: 0.001899184326397372
             momentum: 0.0
