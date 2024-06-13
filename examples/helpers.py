@@ -2,6 +2,7 @@ import os
 import time
 import datetime
 import random
+import pickle
 from typing import NamedTuple
 
 import numpy as np
@@ -9,6 +10,8 @@ import torch
 import torchvision
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Dataset
+import jax.numpy as jnp
+
 
 # Function to calculate the mean and std of a dataset
 def calculate_mean_std(dataset):
@@ -109,6 +112,10 @@ def filter_first_10_classes(dataset):
     dataset.data = dataset.data[mask]
     return dataset
 
+# Define transform functions at the top level
+def flatten_image(x):
+    return x.view(-1).numpy()
+
 # Custom Dataset class to include additional attributes
 class CustomDataset(NamedTuple):
     train_loader: TorchDataloader
@@ -155,7 +162,7 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.0
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,)), # MNIST mean and std for normalization
-            transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
+            transforms.Lambda(flatten_image)  # Flatten the image to a vector
         ])
     elif dataset_name.lower() == "fmnist":
         ds = datasets.FashionMNIST
@@ -163,7 +170,7 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.0
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.2860,), (0.3530,)), # FashionMNIST mean and std for normalization
-            transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
+            transforms.Lambda(flatten_image)  # Flatten the image to a vector
         ])
     elif dataset_name.lower() == "emnist":
         ds = datasets.EMNIST
@@ -171,7 +178,7 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.0
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.1722,), (0.3309,)), # EMNIST letters mean and std for normalization
-            transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
+            transforms.Lambda(flatten_image)  # Flatten the image to a vector
         ])
     elif dataset_name.lower() == "kmnist":
         ds = datasets.KMNIST
@@ -179,14 +186,14 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.0
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.1918,), (0.3483,)), # KMNIST mean and std for normalization
-            transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
+            transforms.Lambda(flatten_image)  # Flatten the image to a vector
         ])
     # NOTE: notMNIST dataset is not available for training, only for testing
     elif dataset_name.lower() == "notmnist":
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.4248,), (0.4585,)),  # notMNIST mean and std for normalization
-            transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
+            transforms.Lambda(flatten_image)  # Flatten the image to a vector
         ])
         
         # Load the notMNIST dataset using the custom dataset class
@@ -408,3 +415,28 @@ class Progress:
             " " * (available_width - progress_width) + "]"
         current_progress_string += progress_bar
         print(current_progress_string, end="\r")
+
+
+class DatasetProcessorData:
+    def __init__(self, dataset_name, T_inf, new_batch_size):
+        self.dataset_name = dataset_name
+        self.T_inf = T_inf
+        self.new_batch_size = new_batch_size
+
+        self.X_test_jax = None
+        self.ys_test_jax = None
+        self.logits_test_jax = None
+        self.max_softmax_values = None
+        self.e_pre = None
+        self.e_post = None
+        self.p_pre = None
+        self.p_post = None
+        self.NLL_pre = None
+        self.likelihood_pre = None
+        self.NLL_post = None
+        self.likelihood_post = None
+
+    @staticmethod
+    def load_data(file_path):
+        with open(file_path, 'rb') as f:
+            return pickle.load(f)
