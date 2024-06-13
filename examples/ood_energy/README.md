@@ -1,12 +1,6 @@
 # Properties of Predictive Coding Networks: Experiment Replication
 
-OK <<<<<<< temp-branch
--   PCAX comes with examples that showcase how to implement different architectures using the library.
--   Examples also include hypertuning code, search spaces, and the best parameters, which makes it easy to experiment and reproduce the results from the paper.
--   Both PC and BP versions of architectures are provided for performance and implementation comparison.
-=======
 This repository contains the code to replicate the experiments described in Section 5.3 on Properties of Predictive Coding (PC) networks. 
-OK >>>>>>> main
 
 ## Overview
 
