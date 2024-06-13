@@ -122,10 +122,9 @@ def main():
 
 
 if __name__ == "__main__":
-    # PCAX_PATH = "path/to/pcax_no_install"
     RUN_IN_DOCKER = False
-    PCAX_PATH = "/home/cornelius/Projects/pcax_no_install"
-    DATA_PATH = "/mnt/large/data"
-    LOG_PATH = "/mnt/large/logs/PC-Benchmark"
-    ARTIFACT_PATH = "/mnt/large/artifacts/PC-Benchmark"
+    PCAX_PATH = "path/to/pcx"
+    DATA_PATH = "/path/to/data"
+    LOG_PATH = "/path/to/logs"
+    ARTIFACT_PATH = "/path/to/artifacts"
     main()
