@@ -1,0 +1,34 @@
+defaults:
+    - data: two_moons
+
+optim:
+    num_epochs: 8
+    h:
+        optimizer: sgd
+        T: 1
+    w:
+        optimizer: adamw # sgd, adamw
+        momentum: 0.9
+        lr: 0.01
+
+experiment:
+    ##### LR scaling
+    h_dims: [8, 16, 24, 32, 48, 64, 128, 256, 512, 1024, 2048, 4096]
+    h_lr_steps: [1, 3]
+    h_lr_scalars: [1.e-5, 1.e-4, 1.e-3, 1.e-2, 1.e-1] # fashionmnist needs lower learning rates
+    # h_lr_steps: [0.1] BP
+    # h_lr_scalers: [.1] BP
+    seeds: 3 # 10 for two_moons, 10 for two_circles, 3 for mnist
+
+model:
+    definition: BP
+    init_h: forward
+    init_h_sd: 0.1
+    constant_layer_size: False # this overwrites num_classes and resize to make all layers of equal size
+    activation: leaky_relu
+    init_w: "default"
+
+run:
+    n_parallel: 1
+    reload_data: False # whether to reload data before each trial
+    jit: True
