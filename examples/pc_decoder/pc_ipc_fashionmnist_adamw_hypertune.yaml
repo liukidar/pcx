@@ -1,6 +1,7 @@
 direction: minimize
 gpus_per_task: 0.125
 dataset_name: fashion_mnist
+seed: 6
 hp:
     layer_dims: [64, 128, 128, 784]
     act_fn:

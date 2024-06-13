@@ -37,6 +37,8 @@ matplotlib = "3.*"
 seaborn = "0.*"
 jupyter = "1.*"
 gdown = "^5.2.0"
+tinyimagenet = "^0.9.9"
+omegaconf = "^2.3.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "23.*"
