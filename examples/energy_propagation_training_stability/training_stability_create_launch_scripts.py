@@ -64,10 +64,24 @@ momentums_per_optimizer_w = {"sgd": [0.0, 0.9], "adamw": [0.9]}
 
 hidden_dims_constant_scaling = {
     False: list2str([32, 64, 128, 256, 512, 1024, 2048, 4096]),
-    True: list2str([int(14**2), int(18**2), int(23**2), int(28**2), int(33**2), int(38**2), int(42**2), int(48**2)]),
+    True: list2str(
+        [
+            int(14**2),
+            int(18**2),
+            int(23**2),
+            int(28**2),
+            int(33**2),
+            int(38**2),
+            int(42**2),
+            int(48**2),
+        ]
+    ),
 }
 
-datasets_constant_scaling = {False: ["fashion_mnist", "two_moons"], True: ["fashion_mnist"]}
+datasets_constant_scaling = {
+    False: ["fashion_mnist", "two_moons"],
+    True: ["fashion_mnist"],
+}
 
 
 def main():
@@ -90,11 +104,17 @@ def main():
                         "optim.h.T": T_per_method[method],
                         "experiment.h_lr_steps": h_lr_steps_per_method[method],
                         "experiment.h_lr_scalars": h_lr_steps_per_method[method],
-                        "experiment.h_dims": hidden_dims_constant_scaling[CONSTANT_LAYER_SIZE],
+                        "experiment.h_dims": hidden_dims_constant_scaling[
+                            CONSTANT_LAYER_SIZE
+                        ],
                         "optim.w.momentum": momentum,
                     }
                     if CONSTANT_LAYER_SIZE:
-                        pars |= {"model.constant_layer_size": True, "data.resize.enabled": True, "run.reload_data": True}
+                        pars |= {
+                            "model.constant_layer_size": True,
+                            "data.resize.enabled": True,
+                            "run.reload_data": True,
+                        }
                     conditions.append(pars)
 
     commands = []
@@ -112,7 +132,11 @@ def main():
         commands.append(cmd)
 
     # save to file: training_stability.sh. start with #!/bin/bash
-    filename = "training_stability.sh" if not CONSTANT_LAYER_SIZE else "training_stability_ablation.sh"
+    filename = (
+        "training_stability.sh"
+        if not CONSTANT_LAYER_SIZE
+        else "training_stability_ablation.sh"
+    )
     with open(filename, "w") as f:
         f.write("#!/bin/bash\n")
         for cmd in commands:
@@ -127,8 +151,8 @@ if __name__ == "__main__":
     # PCAX_PATH = "path/to/pcax_no_install"
     RUN_IN_DOCKER = False
     CONSTANT_LAYER_SIZE = True
-    PCAX_PATH = "/home/cornelius/Projects/pcax_no_install"
-    DATA_PATH = "/mnt/large/data"
-    LOG_PATH = "/mnt/large/logs/PC-Benchmark"
-    ARTIFACT_PATH = "/mnt/large/artifacts/PC-Benchmark"
+    PCAX_PATH = "path/to/pcx"
+    DATA_PATH = "/path/to/data"
+    LOG_PATH = "/path/to/logs"
+    ARTIFACT_PATH = "/path/to/artifacts"
     main()
