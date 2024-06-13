@@ -4,6 +4,18 @@
 
 pcax is a Python JAX-based library designed to develop highly configurable predictive coding networks. It is strictly forbidden to share any piece of code without permission.
 
+## Environment Configuration with `poetry`
+
+This project uses [poetry](https://python-poetry.org/) to make sure the environment is 100% reproducible. If you are not familiar with `poetry`, now is a good time to skim through the docs.
+
+In a nutshell:
+1. If you need to add a Python package to the environment, use `poetry add package`. Avoid `pip install`!
+2. If you want to update a version of an existing package, run `poetry update package`. It will update the package to the latest available version that fits the constraints.
+3. **DO NOT** update the package versions in the `pyproject.toml` file manually. Surprisingly, `pyproject.toml` **DOES NOT** specify the versions that will be installed, `poetry.lock` does. So, first check the package version in `poetry.lock`.
+4. **DO NOT** update the package versions in the `poetry.lock` file manually. Use `poetry update package` instead. `poetry.lock` **HAS** to be generated and signed automatically.
+5. If `pyproject.toml` and `poetry.lock` have diverged for some reason (for example, you've merged another branch and resolved conflicts in `poetry.lock`), use `poetry lock --no-update` to fix the `poetry.lock` file.
+6. **DO NOT** commit changes to `pyproject.toml` without running `poetry lock --no-update` to synchronize the `poetry.lock` file. If you commit `pyproject.toml` that is not in sync with `poetry.lock` this will break the automatic environment configuration for everyone.
+
 ## Environment in Docker with Dev Containers
 
 Run your development environment in a docker container. This is the most straightforward option to work with `pcax`, as the development environment is pre-configured for you.
@@ -11,11 +23,6 @@ Run your development environment in a docker container. This is the most straigh
 The `Dockerfile` is located in `pcax/docker`, with the `run.sh` script that builds and runs it. You can play with the `Dockerfile` directly if you know what you are doing or if you don't use VSCode. If you want a fully automated environment setup, then forget about the `pcax/docker` directory and read on.
 
 **Warning**: This image should run on CUDA 12.2 or later, but not earlier. Make sure that your `nvidia-smi` reports CUDA >=12.2. If not, update the base `nvidia/cuda` image and the fix at the bottom in the `docker/Dockerfile` to use the same version of CUDA as your host does.
-
-**PyTorch with GPU support**: By default, the image will install a CPU-only PyTorch. If you need GPU support with PyTorch, do the following:
-1. Replace ALL occurrences of `source = "torch-cpu"` with `source = "torch-gpu"` in the [pyproject.toml](./pyproject.toml) file.
-1. Remove the [poetry.lock](./poetry.lock) file, it will be regenerated.
-1. Follow the instructions below. It will take 20 minutes more to install only during the first launch. Note that JAX always comes with GPU support.
 
 Requirements:
 
@@ -27,10 +34,12 @@ Requirements:
 6. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) in VSCode.
 7. Optionally, [read how to develop inside container with VS Code](https://code.visualstudio.com/docs/devcontainers/containers).
 
-Once everything is done, open this project in VS Code and execute the `Dev Containers: Reopen in Container` command (Ctrl/Cmd+Shift+P). This will build the docker image and open the project inside that docker image. Building the docker image for the first time may take around 20 minutes, depending on your internet speed. If you want install torch with GPU support, it will take 20 more minutes during the first launch.
+Once everything is done, open this project in VS Code and execute the `Dev Containers: Reopen in Container` command (Ctrl/Cmd+Shift+P). This will build the docker image and open the project inside that docker image. Building the docker image for the first time may take around 15-30 minutes, depending on your internet speed.
 
 You can always exit the container by running the `Dev Containers: Reopen folder locally` command.
 You can rebuild the container by running the `Dev Containers: Rebuild Container` command.
+
+You can check that you're running inside a container by running `hostname`. If it outputs meaningless 12 characters, then you are inside a container. If it outputs the name of your machine, you are not in a container.
 
 When running a Jupyter Notebook it will prompt you to select an environment. Select Python Environments -> Python 3.10 (any of them, as they are the same).
 
@@ -41,12 +50,18 @@ When running a Jupyter Notebook it will prompt you to select an environment. Sel
 1. Please update your docker to >>20.10.9. [This image is known not to work with docker <= 20.10.9](https://stackoverflow.com/questions/71941032/why-i-cannot-run-apt-update-inside-a-fresh-ubuntu22-04). It failes with the following message: `E: Problem executing scripts APT::Update::Post-Invoke 'rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb /var/cache/apt/*.bin || true'`.
 1. Sometimes Pylance fails to start because it depends on the Python extension that starts later. In this case, just reload the window by running the `Developer: Reload window` command.
 
+**PyTorch with GPU support**: By default, the image will install a CPU-only PyTorch. If you need GPU support with PyTorch, do the following:
+1. Open the project in a container using DevContainers as described above.
+1. Replace ALL occurrences of `source = "torch-cpu"` with `source = "torch-gpu"` in the [pyproject.toml](./pyproject.toml) file.
+1. Run `poetry lock --no-update` to re-generate the `poetry.lock` file. Note that you should do it while running inside the container.
+1. Run `poetry install`. Make sure you run it inside the container. It will take up to 20 minutes.
+
 ## Install
 
 First, create an environment with Python 3.10 or newer and [install JAX](https://github.com/google/jax#installation) in the correct version for your accelerator device. For cuda >= 12.0, the command is
 
 ```shell
-pip install -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+pip install -U "jax[cuda12]"
 ```
 
 For CPU only:

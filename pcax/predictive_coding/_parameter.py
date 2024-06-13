@@ -25,7 +25,7 @@ from ..core._parameter import Param, ParamDict, ParamCache
 
 class VodeParam(Param):
     class Cache(ParamDict, ParamCache):
-        def __init__(self, params: Dict[str, jax.Array] = {}):
+        def __init__(self, params: Dict[str, jax.Array] = None):
             super().__init__(params)
 
     def __init__(
