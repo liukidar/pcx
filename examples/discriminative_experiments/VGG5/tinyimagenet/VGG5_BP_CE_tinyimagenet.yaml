@@ -1,0 +1,10 @@
+
+hp:
+  act_fn: hard_tanh
+  batch_size: 128
+  epochs: 50
+  optim:
+    w:
+      lr: 8.709909364802776e-05
+      wd: 2.0892453778883236e-05
+

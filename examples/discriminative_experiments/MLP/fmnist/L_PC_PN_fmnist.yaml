@@ -1,0 +1,17 @@
+
+hp:
+  T: 8
+  act_fn: gelu
+  batch_size: 128
+  beta: 0.75
+  beta_factor: 1.0
+  beta_ir: 0.02
+  epochs: 25
+  optim:
+    w:
+      lr: 0.0002837116035294869
+      wd: 0.00047804186978942176
+    x:
+      lr: 0.012152308689680013
+      momentum: 0.55
+
