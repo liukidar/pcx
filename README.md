@@ -1,8 +1,8 @@
-# PCAX
+# PCX
 
 ## Introduction
 
-pcax is a Python JAX-based library designed to develop highly configurable predictive coding networks. It is strictly forbidden to share any piece of code without permission.
+PCX is a Python JAX-based library designed to develop highly configurable predictive coding networks. It is strictly forbidden to share any piece of code without permission.
 
 ## Environment Configuration with `poetry`
 
@@ -18,9 +18,9 @@ In a nutshell:
 
 ## Environment in Docker with Dev Containers
 
-Run your development environment in a docker container. This is the most straightforward option to work with `pcax`, as the development environment is pre-configured for you.
+Run your development environment in a docker container. This is the most straightforward option to work with `pcx`, as the development environment is pre-configured for you.
 
-The `Dockerfile` is located in `pcax/docker`, with the `run.sh` script that builds and runs it. You can play with the `Dockerfile` directly if you know what you are doing or if you don't use VSCode. If you want a fully automated environment setup, then forget about the `pcax/docker` directory and read on.
+The `Dockerfile` is located in `pcx/docker`, with the `run.sh` script that builds and runs it. You can play with the `Dockerfile` directly if you know what you are doing or if you don't use VSCode. If you want a fully automated environment setup, then forget about the `pcx/docker` directory and read on.
 
 **Warning**: This image should run on CUDA 12.2 or later, but not earlier. Make sure that your `nvidia-smi` reports CUDA >=12.2. If not, update the base `nvidia/cuda` image and the fix at the bottom in the `docker/Dockerfile` to use the same version of CUDA as your host does.
 
@@ -46,7 +46,7 @@ When running a Jupyter Notebook it will prompt you to select an environment. Sel
 **Important notes**:
 1. You are not supposed to modify the `docker/Dockerfile` unless you perfectly know what you are doing and why.
 1. You are not supposed to run the docker container directly. The Dev Containers extension will do this for you. If you think you need to `docker run -it` then something is really wrong.
-1. Use `poetry` to add a python package to the environment: `poetry add --group dev [package]`. The `--group dev` part should be omitted if this package is needed for the core `pcax` code. Try not to install packages with `pip`.
+1. Use `poetry` to add a python package to the environment: `poetry add --group dev [package]`. The `--group dev` part should be omitted if this package is needed for the core `pcx` code. Try not to install packages with `pip`.
 1. Please update your docker to >>20.10.9. [This image is known not to work with docker <= 20.10.9](https://stackoverflow.com/questions/71941032/why-i-cannot-run-apt-update-inside-a-fresh-ubuntu22-04). It failes with the following message: `E: Problem executing scripts APT::Update::Post-Invoke 'rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb /var/cache/apt/*.bin || true'`.
 1. Sometimes Pylance fails to start because it depends on the Python extension that starts later. In this case, just reload the window by running the `Developer: Reload window` command.
 
