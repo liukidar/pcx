@@ -6,6 +6,17 @@ pcax is a Python JAX-based library designed to develop highly configurable predi
 
 ## Environment Configuration with `poetry`
 
+**TL;DR** (no docker install, see the next section for docker install):
+
+1. Install [conda](https://www.anaconda.com/).
+1. Install [poetry](https://python-poetry.org/).
+1. `poetry config virtualenvs.create false`.
+1. Create a conda environment with python>=3.11: `conda create -n pcax python=3.11`.
+1. Activate the environment: `conda activate pcax`.
+1. `cd` into the root pcax folder.
+1. `poetry install --no-root`.
+
+
 This project uses [poetry](https://python-poetry.org/) to make sure the environment is 100% reproducible. If you are not familiar with `poetry`, now is a good time to skim through the docs.
 
 In a nutshell:

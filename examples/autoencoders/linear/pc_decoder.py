@@ -1,5 +1,4 @@
-from typing import Callable, Union, Sequence
-import math
+from typing import Callable
 from pathlib import Path
 import logging
 import sys
@@ -20,22 +19,15 @@ import pcax.utils as pxu
 import pcax.functional as pxf
 from pcax import RKG
 
-from conv_transpose_layer import ConvTranspose
-
-sys.path.insert(0, "../")
+sys.path.insert(0, "../../")
 from data_utils import get_vision_dataloaders, reconstruct_image, seed_everything, get_config_value  # noqa: E402
 
 sys.path.pop(0)
 
-# 0 - 0.0068
-# 1 - 0.0069 diverged
-# 2 - 0.0069
-# 3 - 0.0069
-
 
 def seed_pcax_and_everything(seed: int | None = None):
     if seed is None:
-        seed = 0
+        seed = 4
     RKG.seed(seed)
     seed_everything(seed)
 
@@ -55,163 +47,42 @@ ACTIVATION_FUNCS = {
 }
 
 
-class PCDeconvDecoder(pxc.EnergyModule):
+class PCDecoder(pxc.EnergyModule):
     def __init__(
         self,
         *,
-        num_layers: int,
-        input_dim: tuple[int, int, int],
-        output_dim: tuple[int, int, int],
-        out_channels_per_layer: list[int] | None = None,
-        kernel_size: Union[int, Sequence[int]],
+        layer_dims: list[int],
         act_fn: Callable[[jax.Array], jax.Array],
         output_act_fn: Callable[[jax.Array], jax.Array] = lambda x: x,
-        channel_last: bool = True,
     ):
         super().__init__()
         self.act_fn = px.static(act_fn)
         self.output_act_fn = px.static(output_act_fn)
-        self.channel_last = px.static(channel_last)
-
-        input_spatial_dim: np.array
-        output_spatial_dim: np.array
-        input_channels: int
-        output_channels: int
-        if self.channel_last.get():
-            input_spatial_dim = np.array(input_dim[:-1])
-            output_spatial_dim = np.array(output_dim[:-1])
-            input_channels = input_dim[-1]
-            output_channels = output_dim[-1]
-        else:
-            input_spatial_dim = np.array(input_dim[1:])
-            output_spatial_dim = np.array(output_dim[1:])
-            input_channels = input_dim[0]
-            output_channels = output_dim[0]
-
-        input_dim = (input_channels, *input_spatial_dim)
-        output_dim = (output_channels, *output_spatial_dim)
-
-        spatial_scale = output_spatial_dim / input_spatial_dim
-        if np.any(spatial_scale % 1 != 0):
-            raise ValueError(
-                "scale=(output_dim/input_dim) must be an integer "
-                f"input_dim: {input_dim}, output_dim: {output_dim}, scale: {spatial_scale}"
-            )
-
-        step_scale = spatial_scale ** (1 / num_layers)
-        if np.any(step_scale % 1 != 0):
-            raise ValueError(
-                "The scale=(output_dim/input_dim) must be a power of the stride number: scale = stride^num_layers. "
-                f"Scale: {spatial_scale}, num_layers: {num_layers}, stride: {step_scale}"
-            )
-        step_scale = step_scale.astype(np.int32)
-
-        if out_channels_per_layer:
-            if len(out_channels_per_layer) != num_layers:
-                raise ValueError(
-                    "out_channels_per_layer must be equal to the number of layers. "
-                    f"num_layers: {num_layers}, channels_per_layer: {out_channels_per_layer}"
-                )
-            if out_channels_per_layer[-1] != output_channels:
-                raise ValueError(
-                    "The number of channels in the last layer must be equal to the number of output channels. "
-                    f"output_channels: {output_channels}, channels_per_layer[-1]: {out_channels_per_layer[-1]}"
-                )
-        else:
-            channel_diff = output_channels - input_channels
-            if channel_diff >= 0:
-                raise ValueError(
-                    "The number of input channels must be greater than the number of output channels. "
-                    f"input_channels: {input_channels}, output_channels: {output_channels}"
-                )
-            step_channel_diff = channel_diff // num_layers
-            out_channels_per_layer = [
-                (input_channels + i * step_channel_diff) if i < num_layers else output_channels
-                for i in range(1, num_layers + 1)
-            ]
-
-        input_dims: list[tuple[int, int, int]] = [input_dim]
-        output_dims: list[tuple[int, int, int]] = []
-        for i in range(num_layers):
-            inp = input_dims[i]
-            output_dims.append(
-                (
-                    out_channels_per_layer[i],
-                    inp[1] * step_scale[0],
-                    inp[2] * step_scale[1],
-                )
-            )
-            if i < num_layers - 1:
-                input_dims.append(output_dims[-1])
-        assert len(input_dims) == len(output_dims)
-        assert output_dims[-1] == output_dim
-
-        logging.info(f"Shape transform: {input_dim} -> {' -> '.join(str(dim) for dim in output_dims)}")
-
-        if isinstance(kernel_size, int):
-            kernel_size = (kernel_size, kernel_size)
 
         self.layers = []
-
-        for layer_input, layer_output in zip(input_dims, output_dims):
-            paddings = [
-                _calculate_padding_and_output_padding(
-                    input_dim=layer_input[i + 1],
-                    output_dim=layer_output[i + 1],
-                    stride=step_scale[i],
-                    kernel_size=kernel_size[i],
-                )
-                for i in range(2)
-            ]
-
-            padding, output_padding = zip(*paddings)
-
-            expected_output = tuple(
-                step_scale[i] * (layer_input[i + 1] - 1) + kernel_size[i] - 2 * padding[i] + output_padding[i]
-                for i in range(2)
-            )
-            assert expected_output == tuple(layer_output[1:])
-
-            self.layers.append(
-                ConvTranspose(
-                    num_spatial_dims=2,
-                    in_channels=layer_input[0],
-                    out_channels=layer_output[0],
-                    kernel_size=kernel_size,
-                    stride=(step_scale[0], step_scale[1]),
-                    padding=padding,
-                    output_padding=output_padding,
-                )
-            )
+        for layer_input, layer_output in zip(layer_dims[:-1], layer_dims[1:]):
+            self.layers.append(pxnn.Linear(layer_input, layer_output))
 
         self.vodes = [
-            # pxc.Vode(
-            #     (bottleneck_dim,),
-            #     energy_fn=pxc.zero_energy,
-            #     ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",)},
-            #     tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros(n.shape.get())},
-            # ),
-            # pxc.Vode(
-            #     input_dim,
-            #     ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",), STATUS_FORWARD: ("h -> u",)},
-            #     tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros_like(v)},
-            # ),
             pxc.Vode(
-                input_dim,
+                (layer_dims[0],),
                 energy_fn=pxc.zero_energy,
                 ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",)},
-                tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros(n.shape)},
+                tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros(n.shape.get())},
             )
         ]
-        for layer_output in output_dims:
+        for layer_output in layer_dims[1:]:
             self.vodes.append(
                 pxc.Vode(
-                    layer_output,
+                    (layer_output,),
                     ruleset={pxc.STATUS.INIT: ("h, u <- u:to_zero",), STATUS_FORWARD: ("h -> u",)},
                     tforms={"to_zero": lambda n, k, v, rkg: jnp.zeros_like(v)},
                 )
             )
+
         self.vodes[-1].h.frozen = True
+
+        logging.info(f"Shape transform: {layer_dims}")
 
     def __call__(self, example: jax.Array | None = None, internal_state: jax.Array | None = None) -> jax.Array:
         # The defined ruleset for the first node is to set the hidden state to zero,
@@ -244,13 +115,9 @@ class PCDeconvDecoder(pxc.EnergyModule):
             # )
 
         if example is not None:
-            if self.channel_last.get():
-                example = example.transpose(2, 0, 1)
             self.vodes[-1].set("h", example)
 
         pred = self.vodes[-1].get("u")
-        if self.channel_last.get():
-            pred = pred.transpose(1, 2, 0)
 
         assert example is None or pred.shape == example.shape
         # jax.debug.print(
@@ -277,8 +144,6 @@ class PCDeconvDecoder(pxc.EnergyModule):
             act_fn = self.act_fn if i < len(self.layers) - 1 else self.output_act_fn
             x = act_fn(layer(x))
 
-        if self.channel_last.get():
-            x = x.transpose(1, 2, 0)
         return x
 
     @property
@@ -286,49 +151,24 @@ class PCDeconvDecoder(pxc.EnergyModule):
         return self.vodes[0].get("h")
 
 
-def _calculate_padding_and_output_padding(
-    *, input_dim: int, output_dim: int, stride: int, kernel_size: int
-) -> tuple[int, int]:
-    """
-    Calculate the padding and output_padding required for a ConvTranspose layer to achieve the desired output dimension.
-
-    Parameters:
-    input_dim (int): The size of the input dimension (height or width).
-    output_dim (int): The desired size of the output dimension (height or width).
-    stride (int): The stride of the convolution.
-    kernel_size (int): The size of the convolution kernel.
-
-    Returns:
-    tuple: The required padding and output_padding to achieve the desired output dimension.
-    """
-    no_padding_output_dim = (input_dim - 1) * stride + kernel_size
-
-    padding = math.ceil(max(no_padding_output_dim - output_dim, 0) / 2)
-    output_padding = max(output_dim - (no_padding_output_dim - 2 * padding), 0)
-
-    assert no_padding_output_dim - 2 * padding + output_padding == output_dim
-
-    return padding, output_padding
-
-
 @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=0)
-def forward(example: jax.Array | None = None, *, model: PCDeconvDecoder) -> jax.Array:
+def forward(example: jax.Array | None = None, *, model: PCDecoder) -> jax.Array:
     return model(example=example)
 
 
 @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=0)
-def generate(internal_state: jax.Array, *, model: PCDeconvDecoder) -> jax.Array:
+def generate(internal_state: jax.Array, *, model: PCDecoder) -> jax.Array:
     return model.generate(internal_state=internal_state)
 
 
 @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=0, out_axes=(None, 0), axis_name="batch")
-def energy(example: jax.Array, *, model: PCDeconvDecoder) -> jax.Array:
+def energy(example: jax.Array, *, model: PCDecoder) -> jax.Array:
     y_ = model(example=example)
     return jax.lax.pmean(model.energy().sum(), "batch"), y_
 
 
 @pxf.jit(static_argnums=0)
-def train_on_batch_pc(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim):
+def train_on_batch_pc(T: int, examples: jax.Array, *, model: PCDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim):
     model.train()
 
     inference_step = pxf.value_and_grad(
@@ -359,7 +199,7 @@ def train_on_batch_pc(T: int, examples: jax.Array, *, model: PCDeconvDecoder, op
 
 
 @pxf.jit(static_argnums=0)
-def train_on_batch_ipc(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim):
+def train_on_batch_ipc(T: int, examples: jax.Array, *, model: PCDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim):
     model.train()
 
     step = pxf.value_and_grad(
@@ -383,7 +223,7 @@ def train_on_batch_ipc(T: int, examples: jax.Array, *, model: PCDeconvDecoder, o
 
 
 @pxf.jit(static_argnums=0)
-def generate_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
+def generate_on_batch(T: int, examples: jax.Array, *, model: PCDecoder, optim_h: pxu.Optim):
     model.eval()
 
     inference_step = pxf.value_and_grad(
@@ -426,7 +266,7 @@ def generate_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, op
 
 
 @pxf.jit(static_argnums=0)
-def eval_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_h: pxu.Optim):
+def eval_on_batch(T: int, examples: jax.Array, *, model: PCDecoder, optim_h: pxu.Optim):
     pred = generate_on_batch(T, examples, model=model, optim_h=optim_h)
 
     mse_loss = jnp.square(pred.flatten() - examples.flatten()).mean()
@@ -434,26 +274,26 @@ def eval_on_batch(T: int, examples: jax.Array, *, model: PCDeconvDecoder, optim_
     return mse_loss, pred
 
 
-def train(
-    dl, T, *, model: PCDeconvDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim, batch_size: int, use_ipc: bool = False
-):
+def train(dl, T, *, model: PCDecoder, optim_w: pxu.Optim, optim_h: pxu.Optim, batch_size: int, use_ipc: bool = False):
     for x, y in dl:
         if x.shape[0] != batch_size:
             logging.warning(f"Skipping batch of size {x.shape[0]} that's not equal to the batch size {batch_size}.")
             continue
+        x = x.reshape(x.shape[0], -1)
         if use_ipc:
             train_on_batch_ipc(T, x, model=model, optim_w=optim_w, optim_h=optim_h)
         else:
             train_on_batch_pc(T, x, model=model, optim_w=optim_w, optim_h=optim_h)
 
 
-def eval(dl, T, *, model: PCDeconvDecoder, optim_h: pxu.Optim, batch_size: int):
+def eval(dl, T, *, model: PCDecoder, optim_h: pxu.Optim, batch_size: int):
     losses = []
 
     for x, y in dl:
         if x.shape[0] != batch_size:
             logging.warning(f"Skipping batch of size {x.shape[0]} that's not equal to the batch size {batch_size}.")
             continue
+        x = x.reshape(x.shape[0], -1)
         e, y_hat = eval_on_batch(T, x, model=model, optim_h=optim_h)
         losses.append(e)
 
@@ -463,10 +303,7 @@ def eval(dl, T, *, model: PCDeconvDecoder, optim_h: pxu.Optim, batch_size: int):
 def run_experiment(
     *,
     dataset_name: str,
-    num_layers: int,
-    internal_state_dim: int,
-    internal_state_channels: int,
-    kernel_size: int,
+    layer_dims: list[int],
     act_fn: str | None,
     output_act_fn: str | None,
     batch_size: int,
@@ -491,22 +328,16 @@ def run_experiment(
 
     dataset = get_vision_dataloaders(dataset_name=dataset_name, batch_size=batch_size, should_normalize=False)
 
-    input_dim = (internal_state_channels, internal_state_dim, internal_state_dim)
-    output_dim = dataset.train_dataset[0][0].shape
+    output_dim = layer_dims[-1]
 
-    model = PCDeconvDecoder(
-        num_layers=num_layers,
-        input_dim=input_dim,
-        output_dim=output_dim,
-        out_channels_per_layer=[8, 5, 3],
-        kernel_size=kernel_size,
+    model = PCDecoder(
+        layer_dims=layer_dims,
         act_fn=ACTIVATION_FUNCS[act_fn],
         output_act_fn=ACTIVATION_FUNCS[output_act_fn],
-        channel_last=False,
     )
 
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-        forward(jnp.zeros((batch_size, *output_dim)), model=model)
+        forward(jnp.zeros((batch_size, output_dim)), model=model)
 
     optim_h = pxu.Optim(optax.sgd(learning_rate=optim_x_lr, momentum=optim_x_momentum))
     if optim_w_name == "adamw":
@@ -559,9 +390,13 @@ def run_experiment(
         logging.info(f"Loaded best model with test loss: {best_loss:.4f}")
 
     def predictor(images):
+        batch_size, channel, height, width = images.shape
+        images = images.reshape(batch_size, -1)
         model.clear_params(pxc.VodeParam)
         model.clear_params(pxc.VodeParam.Cache)
-        return generate_on_batch(T, images, model=model, optim_h=optim_h)
+        pred = generate_on_batch(T, images, model=model, optim_h=optim_h)
+        pred = pred.reshape(batch_size, channel, height, width)
+        return pred
 
     if checkpoint_dir is not None:
         reconstruct_image(
@@ -578,7 +413,7 @@ def run_experiment(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config", type=str, default="pc_cifar10_adamw_hypertune.yaml", help="Path to the config file."
+        "--config", type=str, default="configs/pc_fashionmnist_adamw_hypertune.yaml", help="Path to the config file."
     )
 
     args = parser.parse_args()
@@ -587,10 +422,7 @@ if __name__ == "__main__":
     run_experiment(
         dataset_name=get_config_value(config, "dataset_name"),
         seed=get_config_value(config, "seed", required=False),
-        num_layers=get_config_value(config, "hp/num_layers"),
-        internal_state_dim=get_config_value(config, "hp/internal_state_dim"),
-        internal_state_channels=get_config_value(config, "hp/internal_state_channels"),
-        kernel_size=get_config_value(config, "hp/kernel_size"),
+        layer_dims=get_config_value(config, "hp/layer_dims"),
         act_fn=get_config_value(config, "hp/act_fn"),
         output_act_fn=get_config_value(config, "hp/output_act_fn"),
         batch_size=get_config_value(config, "hp/batch_size"),
@@ -603,5 +435,5 @@ if __name__ == "__main__":
         optim_w_lr=get_config_value(config, "hp/optim/w/lr"),
         optim_w_wd=get_config_value(config, "hp/optim/w/wd"),
         optim_w_momentum=get_config_value(config, "hp/optim/w/momentum"),
-        checkpoint_dir=Path("results/pc_deconv"),
+        checkpoint_dir=Path("results/pc_decoder"),
     )

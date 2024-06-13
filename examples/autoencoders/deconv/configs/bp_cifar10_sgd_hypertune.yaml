@@ -1,5 +1,5 @@
 direction: minimize
-gpus_per_task: 0.125
+gpus_per_task: 1
 dataset_name: cifar10
 seed: 3
 hp:
@@ -16,13 +16,16 @@ hp:
     epochs: 30
     optim:
         w:
-            name: adamw
+            name: sgd
             lr:
                 sample_type: float
-                sample_space: [[3e-5, 1e-3], null, true]
-                default: 0.0007958728757424726
+                sample_space: [[3e-5, 1e-2], null, true]
+                default: 0.08766718769918636
             wd:
                 sample_type: float
                 sample_space: [[1e-5, 1e-2], null, true]
-                default: 0.0008931102704862562
-            momentum: 0.0
+                default: 1.6993564599826816e-05
+            momentum:
+                sample_type: float
+                sample_space: [[0.0, 1.0], 0.05]
+                default: 0.95
