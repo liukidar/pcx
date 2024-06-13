@@ -1,0 +1,10 @@
+best_accuracy: 0.4533253312110901
+hp:
+  act_fn: leaky_relu
+  batch_size: 128
+  epochs: 6
+  optim:
+    w:
+      lr: 9.376894185412171e-05
+      wd: 0.0004684338798515865
+study: ./results/EP_BP_tinyimagenet_best

@@ -1,0 +1,8 @@
+hp:
+  epochs: 6
+  batch_size: 128
+  act_fn: leaky_relu
+  optim:
+    w:
+      lr: 1e-4
+      wd: 1e-4

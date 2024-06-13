@@ -1,0 +1,10 @@
+best_accuracy: 0.8983373641967773
+hp:
+  act_fn: relu
+  batch_size: 128
+  epochs: 6
+  optim:
+    w:
+      lr: 0.0002751176541841286
+      wd: 0.0001717093341589651
+study: ./results/L_BP_SE_fmnist_best

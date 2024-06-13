@@ -1,0 +1,17 @@
+best_accuracy: 0.5707131624221802
+hp:
+  T: 7
+  act_fn: leaky_relu
+  batch_size: 128
+  beta: 1.0
+  beta_factor: 1.0
+  beta_ir: 0.0
+  epochs: 6
+  optim:
+    w:
+      lr: 0.00014796725461384345
+      wd: 0.00015400633791940761
+    x:
+      lr: 0.014971608777949093
+      momentum: 0.35000000000000003
+study: ./results/EP_PCN_SE_cifar100_best
