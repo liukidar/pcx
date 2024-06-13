@@ -1,0 +1,17 @@
+
+hp:
+  T: 12
+  act_fn: hard_tanh
+  batch_size: 128
+  beta: 1.0
+  beta_factor: 1.0
+  beta_ir: 0.0
+  epochs: 50
+  optim:
+    w:
+      lr: 1.2305317634121828e-05
+      wd: 0.009724917538008335
+    x:
+      lr: 0.01489876698349598
+      momentum: 0.7000000000000001
+

@@ -1,0 +1,17 @@
+
+hp:
+  T: 12
+  act_fn: leaky_relu
+  batch_size: 128
+  beta: 1.0
+  beta_factor: 1.0
+  beta_ir: 0.0
+  epochs: 50
+  optim:
+    w:
+      lr: 3.463739857883915e-05
+      wd: 0.0001091209699918462
+    x:
+      lr: 0.9284617774027867
+      momentum: 0.45
+
