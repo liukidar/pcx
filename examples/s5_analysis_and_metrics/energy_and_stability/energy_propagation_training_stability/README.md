@@ -1,6 +1,6 @@
 # Training Stability / Energy Propagation
 
-The code provided here replicates the experiments in Section 5.1 (Error propagation) and 5.2 (Training Stability).
+The code provided here replicates the experiments in Section 5.1: Error propagation and Training Stability.
 
 The two entry points to train models and collect data are:
 
