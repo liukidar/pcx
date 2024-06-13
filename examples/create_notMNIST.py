@@ -51,6 +51,12 @@ def main(data_dir):
     images_np = images.numpy()
     targets_np = targets.numpy().astype(np.uint8).squeeze()
 
+    # Save the numpy arrays
+    np.save(os.path.join(notmnist_dir, 'images.npy'), images_np)
+    np.save(os.path.join(notmnist_dir, 'labels.npy'), targets_np)
+
+    print("Numpy arrays saved successfully.")    
+
     # Define the paths for the ubyte files
     image_file_path = os.path.join(notmnist_dir, 't10k-images-idx3-ubyte')
     label_file_path = os.path.join(notmnist_dir, 't10k-labels-idx1-ubyte')

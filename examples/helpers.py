@@ -2,16 +2,13 @@ import os
 import time
 import datetime
 import random
-from collections import namedtuple
 from typing import NamedTuple
 
 import numpy as np
 import torch
 import torchvision
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
-
-Dataset = namedtuple("Dataset", ["train_loader", "val_loader", "test_loader"])
+from torch.utils.data import DataLoader, Dataset
 
 # Function to calculate the mean and std of a dataset
 def calculate_mean_std(dataset):
@@ -88,7 +85,7 @@ class TorchDataloader(torch.utils.data.DataLoader):
         )
 
 # Function to add noise to the labels in the dataset
-def add_label_noise(dataset, noise_level=0.2):
+def add_label_noise(dataset, noise_level=0.0):
     targets = np.array(dataset.targets)
     num_classes = len(np.unique(targets))
     num_noisy = int(noise_level * len(targets))
@@ -120,8 +117,38 @@ class CustomDataset(NamedTuple):
     classes: list
     class_to_idx: dict
 
+# Custom NotMNIST dataset class
+class NotMNIST(Dataset):
+    def __init__(self, images_path, labels_path, transform=None):
+        self.images = self._load_images(images_path)
+        self.labels = self._load_labels(labels_path)
+        self.transform = transform
+
+        # only keep 8000 samples for now (b/c EMNIST is 8000 samples only in test set)
+        self.images = self.images[:8000]
+        self.labels = self.labels[:8000]
+
+    def _load_images(self, path):
+        with open(path, 'rb') as f:
+            data = np.frombuffer(f.read(), np.uint8, offset=16)
+        return data.reshape(-1, 28, 28).copy()  # Ensure the array is writable
+
+    def _load_labels(self, path):
+        with open(path, 'rb') as f:
+            data = np.frombuffer(f.read(), np.uint8, offset=8)
+        return data.copy()  # Ensure the array is writable
+
+    def __len__(self):
+        return len(self.labels)
+
+    def __getitem__(self, idx):
+        image, label = self.images[idx], self.labels[idx]
+        if self.transform:
+            image = self.transform(image)
+        return image, label
+
 # Function to get the dataloaders
-def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.2):
+def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.0):
     if dataset_name.lower() == "mnist":
         ds = datasets.MNIST
 
@@ -154,6 +181,30 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.2
             transforms.Normalize((0.1918,), (0.3483,)), # KMNIST mean and std for normalization
             transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
         ])
+    # NOTE: notMNIST dataset is not available for training, only for testing
+    elif dataset_name.lower() == "notmnist":
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4248,), (0.4585,)),  # notMNIST mean and std for normalization
+            transforms.Lambda(lambda x: x.view(-1).numpy())  # Flatten the image to a vector
+        ])
+        
+        # Load the notMNIST dataset using the custom dataset class
+        notmnist_dataset = NotMNIST(
+            images_path='./data/notMNIST/raw/t10k-images-idx3-ubyte',
+            labels_path='./data/notMNIST/raw/t10k-labels-idx1-ubyte',
+            transform=transform
+        )
+
+        dataloader = TorchDataloader(notmnist_dataset, batch_size=batch_size, shuffle=True, num_workers=16)
+
+        return CustomDataset(
+            train_loader=dataloader,
+            val_loader=dataloader,
+            test_loader=dataloader,
+            classes=['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'],
+            class_to_idx={'a': 0, 'b': 1, 'c': 2, 'd': 3, 'e': 4, 'f': 5, 'g': 6, 'h': 7, 'i': 8, 'j': 9}
+        )
     else:
         raise NotImplementedError(f"Dataset {dataset_name} isn't available")
 
@@ -161,6 +212,13 @@ def get_dataloaders(dataset_name, train_subset_size, batch_size, noise_level=0.2
     if dataset_name.lower() == "emnist":
         train_set = ds(root='./data', split='letters', download=True, train=True, transform=transform)
         train_set = filter_first_10_classes(train_set)
+        # also remove 'N/A' key from classes and class_to_idx
+        train_set.classes = train_set.classes[1:11] # classes 1 to 10 for EMNIST letters a-j
+        # remove all keys not in classes 1 to 10
+        for key in list(train_set.class_to_idx.keys()):
+            if key not in train_set.classes[1:11]:
+                train_set.class_to_idx.pop(key)
+
     else:
         train_set = ds(root='./data', download=True, train=True, transform=transform)
 
@@ -225,7 +283,7 @@ def create_new_test_loader_with_batch_size(test_loader, new_batch_size):
         num_workers=test_loader.num_workers,
         collate_fn=test_loader.collate_fn,
         pin_memory=test_loader.pin_memory,
-        drop_last=test_loader.drop_last,
+        drop_last=True,
         timeout=test_loader.timeout,
         worker_init_fn=test_loader.worker_init_fn,
         multiprocessing_context=test_loader.multiprocessing_context,
