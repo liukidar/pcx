@@ -111,7 +111,6 @@ def make_compressed_MNIST_files(test_dataset, data_folder):
     test_img_folder = data_folder + "/mnist_test"
     data, label = list(test_loader)[0]
     images = data.view(-1,28,28)
-    images = images/2 + 0.5     # remove normalisation
     os.makedirs(test_img_folder, exist_ok=True)
     for img_idx in tqdm(range(len(images))):
         save_image(images[img_idx], test_img_folder+"/"+str(img_idx)+".png")
@@ -208,7 +207,7 @@ def main(args):
 
     # imgs generated
     fig, axes = plt.subplots(10, 10, figsize=(10,10))
-    images_reshaped = best_imgs.reshape(-1, 28, 28)
+    images_reshaped = imgs.reshape(-1, 28, 28)
     axes = axes.ravel()
     for i in np.arange(0, 100):
         axes[i].imshow(images_reshaped[i], cmap='gray', vmin=0, vmax=1)

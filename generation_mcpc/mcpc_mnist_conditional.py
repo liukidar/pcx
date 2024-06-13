@@ -363,7 +363,7 @@ def main(args):
 
     
 
-    images_reshaped = best_imgs.reshape(-1, 28, 28)
+    images_reshaped = imgs.reshape(-1, 28, 28)
     fig, axes = plt.subplots(10, 10, figsize=(10,10))
     axes = axes.ravel()
     # plot even numbers

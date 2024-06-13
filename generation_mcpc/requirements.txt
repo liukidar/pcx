@@ -1,5 +1,0 @@
-imageio
-opencv-python
-tqdm
-scipy
-scikit-learn

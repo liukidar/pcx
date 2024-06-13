@@ -1,0 +1,12 @@
+imageio
+opencv-python
+tqdm
+scipy
+scikit-learn
+POT
+seaborn
+tueplots
+torch -f https://download.pytorch.org/whl/cpu
+torchvision -f https://download.pytorch.org/whl/cpu
+torchaudio -f https://download.pytorch.org/whl/cpu
+jax[cuda12]

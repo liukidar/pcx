@@ -357,7 +357,7 @@ def main(args):
 
     # Plot generated images `imgs`
     fig, axes = plt.subplots(10, 10, figsize=(10,10))
-    images_reshaped = best_imgs.reshape(-1, 28, 28)
+    images_reshaped = imgs.reshape(-1, 28, 28)
     axes = axes.ravel()
     for i in np.arange(0, 100):
         axes[i].imshow(images_reshaped[i], cmap='gray', vmin=0, vmax=1)

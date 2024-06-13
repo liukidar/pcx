@@ -6,7 +6,11 @@ To setup your environment for the experiments please follow the installation gui
 using:
 
 ```
-pip install -r requirements.txt
+conda create -n pcx python=3.10
+conda activate pcx
+pip install -U "jax[cuda12]"
+pip install -r requirements/requirements.txt
+pip install -r mcpc_requirements.txt
 ```
 
 ## Usage
