@@ -8,6 +8,7 @@ import numpy as np
 import jax.numpy as jnp
 import torchvision
 import torchvision.transforms as transforms
+from tinyimagenet import TinyImageNet
 from PIL import Image
 
 
@@ -24,7 +25,8 @@ class CelebAAdapter(torchvision.datasets.CelebA):
     - Anno/list_landmarks_align_celeba.txt
     - Eval/list_eval_partition.txt
 
-    Create a folder ~/tmp/celeba/celeba (yes, twice) and put all the files mentioned above in that directory without any additional directories.
+    Create a folder ~/tmp/celeba/celeba (yes, twice) and put all the files mentioned above
+    in that directory without any additional directories.
     Unzip img_align_celeba.zip in the same directory. You may delete img_align_celeba.zip now if you want to save space.
     """
 
@@ -42,11 +44,28 @@ class CelebAAdapter(torchvision.datasets.CelebA):
         super().__init__(*args, split="train" if train else "test", transform=transform, **kwargs)
 
 
+class TinyImageNetWrapper(TinyImageNet):
+
+    is_normalized: bool = True
+
+    def __init__(self, *args, train: bool = True, download: bool = True, transform=None, **kwargs):
+        transform = transforms.Compose(
+            [
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomCrop(56),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=TinyImageNet.mean, std=TinyImageNet.std),
+            ]
+        )
+        super().__init__(*args, split="train" if train else "test", transform=transform, **kwargs)
+
+
 VISION_DATASETS = {
     "cifar10": torchvision.datasets.CIFAR10,
     "celeba": CelebAAdapter,
     "fashion_mnist": torchvision.datasets.FashionMNIST,
     "mnist": torchvision.datasets.MNIST,
+    "tinyimagenet": TinyImageNetWrapper,
 }
 
 
@@ -144,13 +163,16 @@ def get_vision_dataloaders(
     norm_mean = np.zeros(3)
     norm_std = np.ones(3)
 
-    if should_normalize:
+    if should_normalize and not getattr(train_dataset, "is_normalized", False):
         d = train_dataset.data / 255.0
-        assert d.shape[3] == 3  # Channel last
+        if len(d.shape) == 3:
+            d = d[..., None]
+        print(d.shape)
+        assert d.shape[3] in (1, 3)  # Channel last
         norm_mean = d.mean(axis=(0, 1, 2))
         norm_std = d.std(axis=(0, 1, 2))
-        assert norm_mean.shape == (3,)
-        assert norm_std.shape == (3,)
+        assert norm_mean.shape in ((1,), (3,))
+        assert norm_std.shape in ((1,), (3,))
 
     t = transforms.Compose(
         [
@@ -223,7 +245,27 @@ def reconstruct_image(image_ids: list[int], predictor, dataset, image_restore, o
         image.save(output_dir / f"image_{image_id}.png")
 
 
+def get_config_value(config: dict, key: str, *, required: bool = True):
+    from collections.abc import Mapping
+
+    keys = key.split("/")
+    v = config
+    for k in keys:
+        if k not in v:
+            if not required:
+                return None
+            raise ValueError(f"Key {key} not found in the config file.")
+        v = v[k]
+    if isinstance(v, Mapping):
+        v = v.get("default")
+        if v is None:
+            if not required:
+                return None
+            raise ValueError(f"Key {key} must have a default value.")
+    return v
+
+
 if __name__ == "__main__":
-    data = get_vision_dataloaders(dataset_name="cifar10", batch_size=32)
+    data = get_vision_dataloaders(dataset_name="tinyimagenet", batch_size=32)
     print(data.train_dataset[0][0].shape)
     reconstruct_image([0, 1, 2], lambda x: x, data.test_dataset, data.image_restore, Path("test"))
