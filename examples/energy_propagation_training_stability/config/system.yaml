@@ -1,0 +1,17 @@
+YOURCOMPUTER:
+    PROJECT_DIR: "/path/to/code"
+    DATA_DIR: "/path/to/data/"
+    LOG_DIR: "/path/to/logs/"
+    ARTIFACTS_DIR: "/path/to/artifacts/"
+    USE_GPU: True # Not in use
+    NUM_WORKERS: 2 # Not in use
+    NETWORK: online # Not in use
+
+DOCKER:
+    PROJECT_DIR: "/home/benchmark"
+    DATA_DIR: "/data/"
+    LOG_DIR: "/logs/"
+    ARTIFACTS_DIR: "/artifacts/"
+    USE_GPU: True
+    NUM_WORKERS: 24
+    NETWORK: online
