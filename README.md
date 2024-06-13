@@ -2,7 +2,7 @@
 
 ## Introduction
 
-PCX is a Python JAX-based library designed to develop highly configurable predictive coding networks. It is strictly forbidden to share any piece of code without permission.
+PCX is a Python JAX-based library designed to develop highly configurable predictive coding networks. Please refer to the tutorial notebooks in the examples folder to get started.
 
 ## Environment Configuration with `poetry`
 
@@ -11,7 +11,7 @@ PCX is a Python JAX-based library designed to develop highly configurable predic
 1. Install [conda](https://www.anaconda.com/).
 1. Install [poetry](https://python-poetry.org/).
 1. `poetry config virtualenvs.create false`.
-1. Create a conda environment with python>=3.11: `conda create -n pcax python=3.11`.
+1. Create a conda environment with python>=3.10: `conda create -n pcax python=3.10`.
 1. Activate the environment: `conda activate pcax`.
 1. `cd` into the root pcax folder.
 1. `poetry install --no-root`.
@@ -70,7 +70,7 @@ When running a Jupyter Notebook it will prompt you to select an environment. Sel
 1. Run `poetry lock --no-update` to re-generate the `poetry.lock` file. Note that you should do it while running inside the container.
 1. Run `poetry install`. Make sure you run it inside the container. It will take up to 20 minutes.
 
-## Install
+## Alternative installation method: PIP.
 
 First, create an environment with Python 3.10 or newer and [install JAX](https://github.com/google/jax#installation) in the correct version for your accelerator device. For cuda >= 12.0, the command is
 
