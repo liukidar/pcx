@@ -19,7 +19,7 @@ import pcax.utils as pxu
 import pcax.functional as pxf
 from pcax import RKG
 
-sys.path.insert(0, "../")
+sys.path.insert(0, "../../")
 from data_utils import get_vision_dataloaders, reconstruct_image, seed_everything, get_config_value  # noqa: E402
 
 sys.path.pop(0)
@@ -233,7 +233,7 @@ def run_experiment(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config", type=str, default="bp_fashionmnist_adamw_hypertune.yaml", help="Path to the config file."
+        "--config", type=str, default="configs/bp_fashionmnist_adamw_hypertune.yaml", help="Path to the config file."
     )
 
     args = parser.parse_args()

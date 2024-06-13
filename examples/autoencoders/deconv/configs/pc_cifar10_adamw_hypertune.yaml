@@ -1,5 +1,5 @@
 direction: minimize
-gpus_per_task: 0.125
+gpus_per_task: 1
 dataset_name: cifar10
 seed: 0
 hp:
@@ -13,7 +13,7 @@ hp:
     act_fn:
         sample_type: categorical
         sample_space: [relu, leaky_relu, gelu, tanh, hard_tanh]
-        default: tanh
+        default: hard_tanh
     output_act_fn: null
     batch_size: 200
     epochs: 30
@@ -24,22 +24,19 @@ hp:
             lr:
                 sample_type: float
                 sample_space: [[1e-2, 5e-1], null, true]
-                default: 0.3686335775128242
+                default: 0.016660532913375187
             momentum:
                 sample_type: float
                 sample_space: [[0.0, 0.95], 0.05]
-                default: 0.55
+                default: 0.05
         w:
-            name: sgd
+            name: adamw
             lr:
                 sample_type: float
-                sample_space: [[3e-5, 1e-2], null, true]
-                default: 0.0009158349688429868
+                sample_space: [[3e-5, 1e-3], null, true]
+                default: 0.000897883696520861
             wd:
                 sample_type: float
                 sample_space: [[1e-5, 1e-2], null, true]
-                default: 0.005516419568456441
-            momentum:
-                sample_type: float
-                sample_space: [[0.0, 0.95], 0.05]
-                default: 0.45
+                default: 0.00992856858997552
+            momentum: 0.0
