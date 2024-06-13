@@ -155,7 +155,7 @@ def get_dataloaders(batch_size: int):
     ])
 
     train_dataset = TinyImageNet(
-        "~/codes/stune/Exp_new/testti/tinyimagenet/", 
+        "~/tmp/tinyimagenet/", 
         split="train", 
         transform=t
         )
@@ -170,7 +170,7 @@ def get_dataloaders(batch_size: int):
     )
 
     test_dataset = TinyImageNet(
-        "~/codes/stune/Exp_new/testti/tinyimagenet/", 
+        "~/tmp/tinyimagenet/", 
         split="val",
         transform=t_val
         )
