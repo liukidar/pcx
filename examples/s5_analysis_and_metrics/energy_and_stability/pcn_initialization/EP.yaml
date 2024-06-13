@@ -1,0 +1,33 @@
+hp:
+  epochs: 32
+  batch_size: 128
+  beta_factor: 1.0
+  beta: 1.0
+  beta_ir: 0.0
+  act_fn:
+    sample_type: categorical
+    sample_space: [leaky_relu, gelu, hard_tanh]
+    default: leaky_relu
+  optim:
+    x:
+      lr:
+        sample_type: float
+        sample_space: [[1e-2, 5e-1], null, true]
+        default: 1e-1
+      momentum:
+        sample_type: float
+        sample_space: [[0.0, 1.0], 0.05]
+        default: 0.5
+    w:
+      lr:
+        sample_type: float
+        sample_space: [[3e-5, 3e-4], null, true]
+        default: 1e-4
+      wd:
+        sample_type: float
+        sample_space: [[1e-5, 1e-2], null, true]
+        default: 1e-4
+  T: 20
+
+gpus_per_task: 0.5
+direction: maximize
