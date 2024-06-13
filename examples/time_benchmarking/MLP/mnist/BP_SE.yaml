@@ -1,0 +1,10 @@
+best_accuracy: 0.9845753312110901
+hp:
+  act_fn: gelu
+  batch_size: 128
+  epochs: 6
+  optim:
+    w:
+      lr: 0.00027487989229471686
+      wd: 0.0051207238497154115
+study: ./results/L_BP_SE_mnist_best
