@@ -11,6 +11,7 @@ from pc_decoder import run_experiment
 def main(run_info: stune.RunInfo, checkpoint_dir: Path | None = None, seed: int | None = None):
     best_loss = run_experiment(
         dataset_name=run_info["dataset_name"],
+        seed=run_info["seed"] if seed is None else seed,
         layer_dims=run_info["hp/layer_dims"],
         act_fn=run_info["hp/act_fn"],
         output_act_fn=run_info["hp/output_act_fn"],
@@ -25,7 +26,6 @@ def main(run_info: stune.RunInfo, checkpoint_dir: Path | None = None, seed: int 
         optim_w_wd=run_info["hp/optim/w/wd"],
         optim_w_momentum=run_info["hp/optim/w/momentum"],
         checkpoint_dir=checkpoint_dir,
-        seed=seed,
     )
 
     return best_loss

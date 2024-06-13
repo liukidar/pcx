@@ -1,6 +1,7 @@
 direction: minimize
 gpus_per_task: 0.125
 dataset_name: celeba
+seed: 3
 hp:
     kernel_size:
         sample_type: categorical

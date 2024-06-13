@@ -1,6 +1,7 @@
 direction: minimize
 gpus_per_task: 0.125
 dataset_name: cifar10
+seed: 3
 hp:
     kernel_size:
         sample_type: categorical
