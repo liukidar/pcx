@@ -1,0 +1,17 @@
+best_accuracy: 0.3214142620563507
+hp:
+  T: 7
+  act_fn: leaky_relu
+  batch_size: 128
+  beta: 1.0
+  beta_factor: 1.0
+  beta_ir: 0.0
+  epochs: 6
+  optim:
+    w:
+      lr: 4.777137186759985e-05
+      wd: 0.005568395129656513
+    x:
+      lr: 0.013002730454585726
+      momentum: 0.15000000000000002
+study: ./results/EP_PCN_SE_tinyimagenet_best

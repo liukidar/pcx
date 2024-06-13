@@ -1,0 +1,10 @@
+best_accuracy: 0.6515424847602844
+hp:
+  act_fn: gelu
+  batch_size: 128
+  epochs: 6
+  optim:
+    w:
+      lr: 0.0002492820278734172
+      wd: 3.3529077390445286e-05
+study: ./results/VGG_BP_SE_cifar100_best
