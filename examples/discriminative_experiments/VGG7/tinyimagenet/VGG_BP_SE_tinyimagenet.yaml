@@ -1,0 +1,10 @@
+
+hp:
+  act_fn: leaky_relu
+  batch_size: 128
+  epochs: 50
+  optim:
+    w:
+      lr: 0.00015850480323653223
+      wd: 2.0980180272305617e-05
+

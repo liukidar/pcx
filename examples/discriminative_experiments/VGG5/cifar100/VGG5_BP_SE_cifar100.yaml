@@ -1,0 +1,10 @@
+
+hp:
+  act_fn: gelu
+  batch_size: 128
+  epochs: 50
+  optim:
+    w:
+      lr: 0.00019889634426085358
+      wd: 0.00013051747032219178
+
