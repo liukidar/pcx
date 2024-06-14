@@ -2,7 +2,7 @@
 
 An Autoencoder is a model that learns efficient compression of the input data. A BP-based Autoencoder consists of an encoder, that compresses input data into a much smaller bottleneck dimension, and a decoder, that restores an image from the compressed representation. A PC-based autoencoder consists only of the decoder part. Refer to the `C.1 Autoencoder` appendix of the `PCX: Benchmarking Predictive Coding Networks – Made Simple` paper for more details.
 
-Please [refer to this readme for instructions on the environment configuration and stune configuration](../README.md).
+Please [refer to this readme for instructions on the environment configuration and stune configuration](../../README.md).
 
 Available Autoencoder models and datasets in the `examples/autoencoders` folder:
 

@@ -22,7 +22,7 @@ from pcax import RKG
 
 from conv_transpose_layer import ConvTranspose
 
-sys.path.insert(0, "../../")
+sys.path.insert(0, "../../../")
 from data_utils import get_vision_dataloaders, reconstruct_image, seed_everything, get_config_value  # noqa: E402
 
 sys.path.pop(0)
