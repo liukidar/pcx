@@ -1,5 +1,10 @@
 # PCX
 
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/pcx)](https://pypi.org/project/pcx/)
+[![PyPI Status](https://badge.fury.io/py/pcx.svg)](https://badge.fury.io/py/pcx)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/pcx)](https://pepy.tech/project/pcx)
+[![Documentation Status](https://readthedocs.org/projects/pcx/badge/?version=latest)](https://pcx.readthedocs.io/en/latest/?badge=latest)
+
 ## Introduction
 
 PCX is a Python JAX-based library designed to develop highly configurable predictive coding networks. Please refer to the tutorial notebooks in the examples folder to get started.
@@ -15,7 +20,6 @@ PCX is a Python JAX-based library designed to develop highly configurable predic
 1. Activate the environment: `conda activate pcax`.
 1. `cd` into the root pcax folder.
 1. `poetry install --no-root`.
-
 
 This project uses [poetry](https://python-poetry.org/) to make sure the environment is 100% reproducible. If you are not familiar with `poetry`, now is a good time to skim through the docs.
 
