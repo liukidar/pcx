@@ -24,10 +24,10 @@ jobs:
             - name: Cache Poetry virtual environment
               uses: actions/cache@v3
               with:
-              path: ~/.cache/pypoetry
-              key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
-              restore-keys: |
-                  ${{ runner.os }}-poetry-
+                  path: ~/.cache/pypoetry
+                  key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-poetry-
 
             - name: Add Token to Poetry
               run: poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
