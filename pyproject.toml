@@ -1,10 +1,22 @@
 [tool.poetry]
-name = "pcax"
-version = "0.6.0"
-description = "A library for efficient Predictive Coding networks"
+name = "pcx"
+version = "0.6.1"
+description = "A library for efficient Predictive Coding networks."
 authors = ["Luca Pinchetti <luca.pinchetti@cs.ox.ac.uk>"]
-license = "Propriaetary. Confidential. No part of this work can be disclosed or shared without the explicit consent of the authors."
+repository = "https://github.com/liukidar/pcax"
+documentation = "https://pcx.readthedocs.io/en/latest/"
+license = "Proprietary. Confidential. No part of this work can be disclosed or shared without the explicit consent of the authors."
+platforms = ["unix", "linux", "osx", "win32"]
 readme = "README.md"
+keywords = ["predictive coding", "machine learning", "neuroscience"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
 
 [[tool.poetry.source]]
 name = "torch-gpu"
@@ -22,14 +34,14 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-jax = {extras = ["cuda12"], version = "^0.4.28"}
+jax = { extras = ["cuda12"], version = "^0.4.28" }
 optax = "0.*"
 equinox = "0.*"
 
 [tool.poetry.group.examples.dependencies]
 numpy = "1.*"
-torch = {version = "2.*", source = "torch-cpu"}
-torchvision = {version = "0.*", source = "torch-cpu"}
+torch = { version = "2.*", source = "torch-cpu" }
+torchvision = { version = "0.*", source = "torch-cpu" }
 optuna = "3.*"
 tqdm = "4.*"
 scikit-learn = "1.*"
@@ -47,14 +59,12 @@ pytest = "8.*"
 pytest-cov = "5.*"
 sphinx = "7.*"
 nbsphinx = "0.9.*"
-sphinx-book-theme  = "1.1.*"
+sphinx-book-theme = "1.1.*"
 flax = "^0.8.3"
 
 [tool.pytest.ini_options]
 addopts = "--cov=pcax"
-testpaths = [
-    "tests",
-]
+testpaths = ["tests"]
 
 [tool.mypy]
 mypy_path = "pcax"
@@ -72,3 +82,20 @@ no_implicit_reexport = true
 
 [tool.black]
 line-length = 120
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+
+target-version = "py311"
+
+[tool.ruff.lint]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
