@@ -1,7 +1,39 @@
 name: Publish Package
 
- on:
-     release:
-         types: [published]
+on:
+    release:
+        types: [published]
 
- jobs:
+    workflow_dispatch: # TODO remove
+
+jobs:
+    build-n-publish:
+        name: Build and publish to PyPI and TestPyPI
+        runs-on: ubuntu-22.04
+        steps:
+            - uses: actions/checkout@master
+
+            - name: Set up Python 3.11
+              uses: actions/setup-python@v1
+              with:
+                  python-version: 3.11
+
+            - name: Install Poetry
+              run: pipx install poetry==1.8.*
+
+            - name: Cache Poetry virtual environment
+              uses: actions/cache@v3
+              with:
+                  path: ~/.cache/pypoetry
+                  key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-poetry-
+
+            - name: Add Token to Poetry
+              run: poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
+
+            - name: Build
+              run: poetry build
+
+            - name: Publish
+              run: poetry publish
