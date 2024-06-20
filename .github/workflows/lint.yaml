@@ -14,15 +14,15 @@ jobs:
 
         steps:
             - name: Checking out repo
-              uses: actions/checkout@v2
+                uses: actions/checkout@v2
 
             - name: Set up Python
-              uses: actions/setup-python@v2
-              with:
-                  python-version: "3.11"
+                uses: actions/setup-python@v2
+                with:
+                    python-version: "3.11"
 
             - name: Install Poetry
-              run: pipx install poetry==1.8.*
+                run: pipx install poetry==1.8.*
 
             - name: Cache Poetry virtual environment
                 uses: actions/cache@v3
@@ -33,10 +33,10 @@ jobs:
                     ${{ runner.os }}-poetry-
 
             - name: Install dependencies
-              run: poetry install --with dev
+                run: poetry install --with dev
 
             - name: Linting
-              run: poetry run ruff check pcax
+                run: poetry run ruff check pcax
 
             - name: Formatting
-              run: poetry run ruff format pcax
+                run: poetry run ruff format pcax
