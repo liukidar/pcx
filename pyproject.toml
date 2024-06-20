@@ -1,6 +1,7 @@
 [tool.poetry]
 name = "pcx"
 version = "0.6.1"
+packages = [{ include = "pcax" }]
 description = "A library for efficient Predictive Coding networks."
 authors = ["Luca Pinchetti <luca.pinchetti@cs.ox.ac.uk>"]
 repository = "https://github.com/liukidar/pcax"
@@ -16,7 +17,6 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
-
 
 [[tool.poetry.source]]
 name = "torch-gpu"
