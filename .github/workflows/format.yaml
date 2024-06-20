@@ -36,4 +36,4 @@ jobs:
               run: poetry install --with dev
 
             - name: Formatting
-              run: poetry run ruff format pcax
+              run: poetry run ruff format --check pcax
