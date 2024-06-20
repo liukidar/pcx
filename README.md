@@ -1,5 +1,8 @@
 # PCX
 
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/pcx)](https://pypi.org/project/pcx/)
+[![PyPI Status](https://badge.fury.io/py/pcx.svg)](https://badge.fury.io/py/pcx)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/pcx)](https://pepy.tech/project/pcx)
 [![Documentation Status](https://readthedocs.org/projects/pcx/badge/?version=latest)](https://pcx.readthedocs.io/en/latest/?badge=latest)
 
 ## Introduction
