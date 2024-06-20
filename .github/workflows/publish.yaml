@@ -18,6 +18,9 @@ jobs:
               with:
                   python-version: 3.11
 
+            - name: Install Poetry
+              run: pipx install poetry==1.8.*
+
             - name: Add Token to Poetry
               run: poetry config pypi-token.pypi ${{ secrets.PYPI_API_TOKEN }}
 
