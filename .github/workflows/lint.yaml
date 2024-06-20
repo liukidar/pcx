@@ -37,6 +37,3 @@ jobs:
 
             - name: Linting
               run: poetry run ruff check pcax
-
-            - name: Formatting
-              run: poetry run ruff format pcax

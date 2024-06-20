@@ -1,28 +1,39 @@
-# name: Format
+name: Formatting
 
-# on:
-#   push:
-#     branches: [main]
-#   pull_request:
-#     branches: [main]
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
 
-#   workflow_dispatch:
+    workflow_dispatch:
 
-# jobs:
-#   check:
-#     runs-on: ubuntu-20.04
+jobs:
+    check:
+        runs-on: ubuntu-22.04
 
-#     steps:
-#       - name: Checking out repo
-#         uses: actions/checkout@v2
+        steps:
+            - name: Checking out repo
+              uses: actions/checkout@v2
 
-#       - name: Set up Python
-#         uses: actions/setup-python@v2
-#         with:
-#           python-version: "3.10"
+            - name: Set up Python
+              uses: actions/setup-python@v2
+              with:
+                  python-version: "3.11"
 
-#       - name: Install dependencies
-#         run: make venv
+            - name: Install Poetry
+              run: pipx install poetry==1.8.*
 
-#       - name: Formatting
-#         run: make checkformat
+            - name: Cache Poetry virtual environment
+              uses: actions/cache@v3
+              with:
+                  path: ~/.cache/pypoetry
+                  key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-poetry-
+
+            - name: Install dependencies
+              run: poetry install --with dev
+
+            - name: Formatting
+              run: poetry run ruff format pcax
