@@ -28,4 +28,7 @@ jobs:
               run: poetry install --with dev
 
             - name: Linting
-              run: poetry run ruff
+              run: poetry run ruff check pcax
+
+            - name: Formatting
+              run: poetry run ruff format pcax
