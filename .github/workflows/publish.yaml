@@ -1,0 +1,7 @@
+name: Publish Package
+
+ on:
+     release:
+         types: [published]
+
+ jobs:
