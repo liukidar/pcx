@@ -24,6 +24,14 @@ jobs:
             - name: Install Poetry
               run: pipx install poetry==1.8.*
 
+            - name: Cache Poetry virtual environment
+                uses: actions/cache@v3
+                with:
+                path: ~/.cache/pypoetry
+                key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+                restore-keys: |
+                    ${{ runner.os }}-poetry-
+
             - name: Install dependencies
               run: poetry install --with dev
 
