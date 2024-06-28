@@ -1,0 +1,13 @@
+
+hp:
+  act_fn: hard_tanh
+  batch_size: 128
+  epochs: 50
+  dataset: CIFAR100
+  model: VGG7
+  se_flag: false
+  optim:
+    w:
+      lr: 0.00013293220201776088
+      wd: 0.0011361686420755476
+

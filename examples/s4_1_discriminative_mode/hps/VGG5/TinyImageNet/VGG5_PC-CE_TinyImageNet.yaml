@@ -1,0 +1,20 @@
+
+hp:
+  T: 7
+  act_fn: hard_tanh
+  batch_size: 128
+  beta: 1.0
+  beta_factor: 1.0
+  beta_ir: 0.0
+  epochs: 50
+  dataset: TinyImageNet
+  model: VGG5
+  se_flag: false
+  optim:
+    w:
+      lr: 4.463151374486534e-05
+      wd: 0.0014288405442168734
+    x:
+      lr: 0.010044339247287183
+      momentum: 0.05
+

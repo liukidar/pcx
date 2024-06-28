@@ -1,0 +1,20 @@
+
+hp:
+  T: 8
+  act_fn: leaky_relu
+  batch_size: 128
+  beta: 1.0
+  beta_factor: 1.0
+  beta_ir: 0.0
+  epochs: 50
+  dataset: CIFAR100
+  model: VGG5
+  se_flag: true
+  optim:
+    w:
+      lr: 0.00014174838437581804
+      wd: 0.0003653424468419008
+    x:
+      lr: 0.8806842950826396
+      momentum: 0.55
+

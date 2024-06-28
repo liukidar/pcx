@@ -1,0 +1,13 @@
+
+hp:
+  act_fn: gelu
+  batch_size: 128
+  epochs: 50
+  dataset: TinyImageNet
+  model: VGG7
+  se_flag: false
+  optim:
+    w:
+      lr: 0.00029753853687237996
+      wd: 0.0005812616469177122
+

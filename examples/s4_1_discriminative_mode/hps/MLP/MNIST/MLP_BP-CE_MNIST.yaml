@@ -1,0 +1,13 @@
+
+hp:
+  act_fn: hard_tanh
+  batch_size: 128
+  epochs: 25
+  dataset: MNIST
+  model: MLP
+  se_flag: false
+  optim:
+    w:
+      lr: 0.0002809966056688163
+      wd: 0.0014781820367232845
+

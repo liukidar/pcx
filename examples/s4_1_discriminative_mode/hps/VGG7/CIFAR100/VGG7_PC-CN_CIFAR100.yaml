@@ -1,0 +1,20 @@
+
+hp:
+  T: 11
+  act_fn: gelu
+  batch_size: 128
+  beta: 0.15000000000000002
+  beta_factor: 0
+  beta_ir: 0.02
+  dataset: CIFAR100
+  epochs: 50
+  model: VGG7
+  optim:
+    w:
+      lr: 0.0002836859624555198
+      wd: 0.00026954734803245856
+    x:
+      lr: 0.0259850534184893
+      momentum: 0.5
+  se_flag: true
+

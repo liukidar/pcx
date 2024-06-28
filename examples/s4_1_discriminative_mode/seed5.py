@@ -100,7 +100,7 @@ class run:
         best, accuracies, best5, accuracies5 = self._fn(*args, **kwargs)
         
         with open(
-            f"{os.path.splitext(os.path.basename(sys.argv[0]))[0]}_{sys.argv[1]}_accuracy.json",
+            f"{sys.argv[1]}_accuracy.json",
             "w"
         ) as f:
             top5 = numpy.sort(best)[2:]

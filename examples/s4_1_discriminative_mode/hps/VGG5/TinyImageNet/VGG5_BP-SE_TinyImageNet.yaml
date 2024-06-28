@@ -1,0 +1,13 @@
+
+hp:
+  act_fn: leaky_relu
+  batch_size: 128
+  epochs: 50
+  dataset: TinyImageNet
+  model: VGG5
+  se_flag: true
+  optim:
+    w:
+      lr: 9.376894185412171e-05
+      wd: 0.0004684338798515865
+

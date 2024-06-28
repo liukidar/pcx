@@ -1,0 +1,13 @@
+
+hp:
+  act_fn: gelu
+  batch_size: 128
+  epochs: 25
+  dataset: MNIST
+  model: MLP
+  se_flag: true
+  optim:
+    w:
+      lr: 0.00027487989229471686
+      wd: 0.0051207238497154115
+

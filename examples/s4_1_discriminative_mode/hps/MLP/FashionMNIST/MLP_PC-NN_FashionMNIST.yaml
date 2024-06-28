@@ -1,0 +1,20 @@
+
+hp:
+  T: 6
+  act_fn: leaky_relu
+  batch_size: 128
+  beta: 0.9
+  beta_factor: -1.0
+  beta_ir: 0.02
+  epochs: 25
+  dataset: FashionMNIST
+  model: MLP
+  se_flag: true
+  optim:
+    w:
+      lr: 0.00028486330422682293
+      wd: 0.00025199528039895273
+    x:
+      lr: 0.028079645950117624
+      momentum: 0.15000000000000002
+
