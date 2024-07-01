@@ -1,17 +1,49 @@
-# PCX
-
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/pcx)](https://pypi.org/project/pcx/)
-[![PyPI Status](https://badge.fury.io/py/pcx.svg)](https://badge.fury.io/py/pcx)
-[![PyPI - Downloads](https://img.shields.io/pypi/dm/pcx)](https://pepy.tech/project/pcx)
-[![Documentation Status](https://readthedocs.org/projects/pcx/badge/?version=latest)](https://pcx.readthedocs.io/en/latest/?badge=latest)
+# PCX -- Predictive Coding Networks Made Simple
 
 ## Introduction
 
-PCX is a Python JAX-based library designed to develop highly configurable predictive coding networks. Please refer to the tutorial notebooks in the examples folder to get started.
+PCX is a Python JAX-based library designed to develop highly configurable predictive coding networks. Please refer to the tutorial notebooks in the examples folder to get started. PCX can be installed by following one of the listed three methods.
 
-## Environment Configuration with `poetry`
+## Default: Installation via PIP [Method #1].
 
-**TL;DR** (no docker install, see the next section for docker install):
+First, create an environment with Python >= 3.10 and [install JAX](https://github.com/google/jax#installation) in the correct version for your accelerator device. For cuda >= 12.0, the command is
+
+```shell
+pip install -U "jax[cuda12]"
+```
+
+For CPU only:
+
+```shell
+pip install -U "jax[cpu]"
+```
+
+Then you hav two options:
+
+-   Install a stable version
+-   Clone this repository and install the package by linking to the this folder. The installation of this libary only links to this folder and thus dynamically updates with all your changes.
+
+### Install stable version
+
+On the right side of the repository, click on "releases" and download the wheel file. You can install it using
+
+```shell
+pip install path/to/wheel_file.whl
+```
+
+Alternatively you can use the PyPi version by [work in progress...]
+
+### Install dynamically from github
+
+Clone this repository locally and then:
+
+```shell
+pip install -e /path/to/this/repo/ --config-settings editable_mode=strict
+```
+
+## Ensuring Reproducibility: Installation via `poetry` [Method #2]
+
+**TL;DR** This is an alternative installation method that creates a fully configured environment to ensure your results are reproducible (no pip install, see previous section for that; no docker install, see the next section for docker install):
 
 1. Install [conda](https://www.anaconda.com/).
 1. Install [poetry](https://python-poetry.org/).
@@ -21,9 +53,10 @@ PCX is a Python JAX-based library designed to develop highly configurable predic
 1. `cd` into the root pcax folder.
 1. `poetry install --no-root`.
 
-This project uses [poetry](https://python-poetry.org/) to make sure the environment is 100% reproducible. If you are not familiar with `poetry`, now is a good time to skim through the docs.
 
-In a nutshell:
+In this way, we use [poetry](https://python-poetry.org/) to make sure the environment is 100% reproducible. If you are not familiar with `poetry`, now is a good time to skim through the docs.
+
+### Development Notes:
 
 1. If you need to add a Python package to the environment, use `poetry add package`. Avoid `pip install`!
 2. If you want to update a version of an existing package, run `poetry update package`. It will update the package to the latest available version that fits the constraints.
@@ -32,7 +65,7 @@ In a nutshell:
 5. If `pyproject.toml` and `poetry.lock` have diverged for some reason (for example, you've merged another branch and resolved conflicts in `poetry.lock`), use `poetry lock --no-update` to fix the `poetry.lock` file.
 6. **DO NOT** commit changes to `pyproject.toml` without running `poetry lock --no-update` to synchronize the `poetry.lock` file. If you commit `pyproject.toml` that is not in sync with `poetry.lock` this will break the automatic environment configuration for everyone.
 
-## Environment in Docker with Dev Containers
+## Fully Automatic: Environment in Docker with Dev Containers [Method #3]
 
 Run your development environment in a docker container. This is the most straightforward option to work with `pcx`, as the development environment is pre-configured for you.
 
@@ -73,41 +106,6 @@ When running a Jupyter Notebook it will prompt you to select an environment. Sel
 1. Replace ALL occurrences of `source = "torch-cpu"` with `source = "torch-gpu"` in the [pyproject.toml](./pyproject.toml) file.
 1. Run `poetry lock --no-update` to re-generate the `poetry.lock` file. Note that you should do it while running inside the container.
 1. Run `poetry install`. Make sure you run it inside the container. It will take up to 20 minutes.
-
-## Alternative installation method: PIP.
-
-First, create an environment with Python 3.10 or newer and [install JAX](https://github.com/google/jax#installation) in the correct version for your accelerator device. For cuda >= 12.0, the command is
-
-```shell
-pip install -U "jax[cuda12]"
-```
-
-For CPU only:
-
-```shell
-pip install -U "jax[cpu]"
-```
-
-Then you hav two options:
-
--   Install a stable version
--   Clone this repository and install the package by linking to the this folder. The installation of this libary only links to this folder and thus dynamically updates with all your changes.
-
-### Install stable version
-
-On the right side of the repository, click on "releases" and download the wheel file. You can install it using
-
-```shell
-pip install path/to/wheel_file.whl
-```
-
-### Install dynamically from github
-
-Clone this repository locally and then:
-
-```shell
-pip install -e /path/to/this/repo/ --config-settings editable_mode=strict
-```
 
 ## Docs
 
