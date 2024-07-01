@@ -53,7 +53,6 @@ pip install -e /path/to/this/repo/ --config-settings editable_mode=strict
 1. `cd` into the root pcax folder.
 1. `poetry install --no-root`.
 
-
 In this way, we use [poetry](https://python-poetry.org/) to make sure the environment is 100% reproducible. If you are not familiar with `poetry`, now is a good time to skim through the docs.
 
 ### Development Notes:
@@ -107,9 +106,11 @@ When running a Jupyter Notebook it will prompt you to select an environment. Sel
 1. Run `poetry lock --no-update` to re-generate the `poetry.lock` file. Note that you should do it while running inside the container.
 1. Run `poetry install`. Make sure you run it inside the container. It will take up to 20 minutes.
 
-## Docs
+## Documentation
 
-Go to `/docs/README.md` to learn how to get them.
+The documentation is available at: [https://pcx.readthedocs.io/en/stable/](https://pcx.readthedocs.io/en/stable/)
+
+To learn how to build it yourself, go to `/docs/README.md`.
 
 ## Contributing
 
