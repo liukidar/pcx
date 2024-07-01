@@ -23,7 +23,7 @@ build:
         pre_build:
             - pwd
             - ls
-            - cp examples/* docs/source/examples
+            - cp -r examples/* docs/source/examples
             - sphinx-apidoc -f -o ./docs/source/ ./pcax/
 
 # Build documentation in the "docs/" directory with Sphinx
