@@ -22,6 +22,7 @@ build:
             - VIRTUAL_ENV=$READTHEDOCS_VIRTUALENV_PATH poetry install --with dev
         pre_build:
             - pwd
+            - ls
             - cp ../examples/* source/examples
             - sphinx-apidoc -f -o ../docs/source/ ../pcax/
 
