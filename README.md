@@ -53,7 +53,6 @@ pip install -e /path/to/this/repo/ --config-settings editable_mode=strict
 6. `cd` into the root pcax folder.
 7. `poetry install --no-root`.
 
-
 In this way, we use [poetry](https://python-poetry.org/) to make sure the environment is 100% reproducible. If you are not familiar with `poetry`, now is a good time to skim through the docs.
 
 ### Development Notes:
@@ -122,9 +121,11 @@ If you found this library to be useful in your work, then please cite: [arXiv li
 }
 ```
 
-## Docs
+## Documentation
 
-Go to `/docs/README.md` to learn how to get them.
+The documentation is available at: [https://pcx.readthedocs.io/en/stable/](https://pcx.readthedocs.io/en/stable/)
+
+To learn how to build it yourself, go to `/docs/README.md`.
 
 ## Contributing
 
