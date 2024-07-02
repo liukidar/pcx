@@ -46,12 +46,12 @@ pip install -e /path/to/this/repo/ --config-settings editable_mode=strict
 **TL;DR** This is an alternative installation method that creates a fully configured environment to ensure your results are reproducible (no pip install, see previous section for that; no docker install, see the next section for docker install):
 
 1. Install [conda](https://www.anaconda.com/).
-1. Install [poetry](https://python-poetry.org/).
-1. `poetry config virtualenvs.create false`.
-1. Create a conda environment with python>=3.10: `conda create -n pcax python=3.10`.
-1. Activate the environment: `conda activate pcax`.
-1. `cd` into the root pcax folder.
-1. `poetry install --no-root`.
+2. Install [poetry](https://python-poetry.org/).
+3. `poetry config virtualenvs.create false`.
+4. Create a conda environment with python>=3.10: `conda create -n pcax python=3.10`.
+5. Activate the environment: `conda activate pcax`.
+6. `cd` into the root pcax folder.
+7. `poetry install --no-root`.
 
 
 In this way, we use [poetry](https://python-poetry.org/) to make sure the environment is 100% reproducible. If you are not familiar with `poetry`, now is a good time to skim through the docs.
@@ -94,18 +94,33 @@ When running a Jupyter Notebook it will prompt you to select an environment. Sel
 
 **Important notes**:
 
-1. You are not supposed to modify the `docker/Dockerfile` unless you perfectly know what you are doing and why.
-1. You are not supposed to run the docker container directly. The Dev Containers extension will do this for you. If you think you need to `docker run -it` then something is really wrong.
-1. Use `poetry` to add a python package to the environment: `poetry add --group dev [package]`. The `--group dev` part should be omitted if this package is needed for the core `pcx` code. Try not to install packages with `pip`.
-1. Please update your docker to >>20.10.9. [This image is known not to work with docker <= 20.10.9](https://stackoverflow.com/questions/71941032/why-i-cannot-run-apt-update-inside-a-fresh-ubuntu22-04). It failes with the following message: `E: Problem executing scripts APT::Update::Post-Invoke 'rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb /var/cache/apt/*.bin || true'`.
-1. Sometimes Pylance fails to start because it depends on the Python extension that starts later. In this case, just reload the window by running the `Developer: Reload window` command.
+- You are not supposed to modify the `docker/Dockerfile` unless you perfectly know what you are doing and why.
+- You are not supposed to run the docker container directly. The Dev Containers extension will do this for you. If you think you need to `docker run -it` then something is really wrong.
+- Use `poetry` to add a python package to the environment: `poetry add --group dev [package]`. The `--group dev` part should be omitted if this package is needed for the core `pcx` code. Try not to install packages with `pip`.
+- Please update your docker to >>20.10.9. [This image is known not to work with docker <= 20.10.9](https://stackoverflow.com/questions/71941032/why-i-cannot-run-apt-update-inside-a-fresh-ubuntu22-04). It failes with the following message: `E: Problem executing scripts APT::Update::Post-Invoke 'rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb /var/cache/apt/*.bin || true'`.
+- Sometimes Pylance fails to start because it depends on the Python extension that starts later. In this case, just reload the window by running the `Developer: Reload window` command.
 
 **PyTorch with GPU support**: By default, the image will install a CPU-only PyTorch. If you need GPU support with PyTorch, do the following:
 
 1. Open the project in a container using DevContainers as described above.
-1. Replace ALL occurrences of `source = "torch-cpu"` with `source = "torch-gpu"` in the [pyproject.toml](./pyproject.toml) file.
-1. Run `poetry lock --no-update` to re-generate the `poetry.lock` file. Note that you should do it while running inside the container.
-1. Run `poetry install`. Make sure you run it inside the container. It will take up to 20 minutes.
+2. Replace ALL occurrences of `source = "torch-cpu"` with `source = "torch-gpu"` in the [pyproject.toml](./pyproject.toml) file.
+3. Run `poetry lock --no-update` to re-generate the `poetry.lock` file. Note that you should do it while running inside the container.
+4. Run `poetry install`. Make sure you run it inside the container. It will take up to 20 minutes.
+
+## Citation
+If you found this library to be useful in your work, then please cite: [arXiv link](https://arxiv.org/abs/2407.01163)
+
+```bibtex
+@article{pinchetti2024benchmarkingpredictivecodingnetworks,
+      title={Benchmarking Predictive Coding Networks -- Made Simple}, 
+      author={Luca Pinchetti and Chang Qi and Oleh Lokshyn and Gaspard Olivers and Cornelius Emde and Mufeng Tang and Amine M'Charrak and Simon Frieder and Bayar Menzat and Rafal Bogacz and Thomas Lukasiewicz and Tommaso Salvatori},
+      year={2024},
+      eprint={2407.01163},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2407.01163}, 
+}
+```
 
 ## Docs
 
