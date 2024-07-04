@@ -164,7 +164,6 @@ class Vode(EnergyModule):
 
     def __init__(
         self,
-        shape: Tuple[int, ...],
         energy_fn: Callable[["Vode", RandomKeyGenerator], jax.Array] = se_energy,
         ruleset: dict = {},
         tforms: dict = {},
@@ -175,10 +174,12 @@ class Vode(EnergyModule):
         """Vode constructor.
 
         Args:
-            shape (Tuple[int, ...]): shape (not including the batch dimension) of the Vode value. It should match
-                the input activation 'u'.
             energy_fn (Callable[['Vode', RandomKeyGenerator], jax.Array], optional): function used to compute the Vode
                 energy.
+            axes (int): number of dimensions (not including the batch dimension) of the Vode value. It should match
+                the input activation 'u'. It is used to determine wether the Vode is being used in a vmapped context.
+                The default value None assumes that the first activation received by the Vode is vmapped over the batch
+                dimension and sets the number of axes accordingly.
             ruleset (Ruleset, optional): ruleset specifying the Vode behaviour. The default value indicates that, with
                 status set to 'STATUS.INIT', the incoming activation 'u' is also saved to the value 'h', which
                 corresponds to forward initialisation.
@@ -187,11 +188,11 @@ class Vode(EnergyModule):
         """
         super().__init__()
 
-        self.shape = static(shape)
         self.h = param_type(*param_args, **param_kwargs)
         self.cache = param_type.Cache()
         self.energy_fn = static(energy_fn)
         self.ruleset = Ruleset({STATUS.INIT: ("h, u <- u",), **ruleset}, tforms)
+        self.shape = static(None)
 
     def __call__(self, u: jax.Array | None, rkg: RandomKeyGenerator = RKG, output="h", **kwargs) -> jax.Array | Any:
         """Deep learning layers are typically implemented as callable objects, taking in input the incoming activation
@@ -204,16 +205,22 @@ class Vode(EnergyModule):
             u (jax.Array | None): if provided, it sets the incoming activation 'u' to the given value.
             rkg (RandomKeyGenerator, optional): random key generator. Defaults to RKG.
             output (str, optional): Value to return. Defaults to "h". If 'None', the Vode object is returned.
-            **kwargs: eventual additional activations to set.
+            **kwargs: optional additional activations to set.
 
         Returns:
             jax.Array | 'Vode': output value corresponding to the selected output parameter.
         """
+        
         if u is not None:
             self.set("u", u, rkg)
 
+
         for _k, _v in kwargs.items():
             self.set(_k, _v, rkg)
+        
+        if (h := self.get("u")) is not None:
+            # Record the input shape to distinguish between vmapped and non-vmapped contexts when calling .energy
+            self.shape.set(h.shape)
 
         if output is None:
             return self
@@ -308,7 +315,8 @@ class Vode(EnergyModule):
         """
         if "E" not in self.cache:
             _E = self.energy_fn(self, rkg=rkg) if self.energy_fn is not None else 0.0
-            if self.h.shape == self.shape.get():
+                        
+            if self.h.shape == self.shape:
                 # if the shape is the same as the vode shape,
                 # '.energy' is being called from a vmapped function
                 # otherwise 'h' would have a an extra dimension (batch)
