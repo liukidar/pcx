@@ -9,8 +9,9 @@ __all__ = [
 ]
 
 
-from typing import Tuple, Sequence
+from typing import Tuple, Sequence, Callable
 
+import jax
 import jax.tree_util as jtu
 import equinox as eqx
 
@@ -62,18 +63,16 @@ class Layer(Module):
 
 
 class Linear(Layer):
-    def __init__(self, in_features: int, out_features: int, bias: bool = True, rkg: RandomKeyGenerator = RKG):
-        super().__init__(eqx.nn.Linear, in_features, out_features, bias, key=rkg())
-
-
-class LayerNorm(Layer):
     def __init__(
         self,
-        shape: Tuple[int, ...] | None = None,
-        eps: float = 1e-05,
-        elementwise_affine: bool = True,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        *,
+        rkg: RandomKeyGenerator = RKG,
+        **kwargs,
     ):
-        super().__init__(eqx.nn.LayerNorm, shape, eps, elementwise_affine)
+        super().__init__(eqx.nn.Linear, in_features, out_features, bias, key=rkg(), **kwargs)
 
 
 class Conv(Layer):
@@ -88,7 +87,11 @@ class Conv(Layer):
         dilation: int | Sequence[int] = 1,
         groups: int = 1,
         use_bias: bool = True,
+        padding_mode: str = "ZEROS",
+        dtype=None,
+        *,
         rkg: RandomKeyGenerator = RKG,
+        **kwargs,
     ):
         super().__init__(
             eqx.nn.Conv,
@@ -101,7 +104,10 @@ class Conv(Layer):
             dilation,
             groups,
             use_bias,
+            padding_mode,
+            dtype,
             key=rkg(),
+            **kwargs,
         )
 
 
@@ -116,12 +122,93 @@ class Conv2d(Conv):
         dilation: int | Sequence[int] = 1,
         groups: int = 1,
         use_bias: bool = True,
+        padding_mode: str = "ZEROS",
+        dtype=None,        
+        *,
         rkg: RandomKeyGenerator = RKG,
+        **kwargs,
     ):
-        super().__init__(2, in_channels, out_channels, kernel_size, stride, padding, dilation, groups, use_bias, rkg)
+        super().__init__(
+            2,
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride,
+            padding,
+            dilation,
+            groups,
+            use_bias,
+            padding_mode,
+            dtype,
+            rkg=rkg,
+            **kwargs
+        )
+
+
+class ConvTranspose(Layer):
+    def __init__(
+        self,
+        num_spatial_dims: int,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int | Sequence[int],
+        stride: int | Sequence[int] = 1,
+        padding: str | int | Sequence[int] | Sequence[tuple[int, int]] = 0,
+        output_padding: int | Sequence[int] = 0,
+        dilation: int | Sequence[int] = 1,
+        groups: int = 1,
+        use_bias: bool = True,
+        padding_mode: str = "ZEROS",
+        dtype=None,
+        *,
+        rkg: RandomKeyGenerator = RKG,
+        **kwargs
+    ):
+        super().__init__(
+            eqx.nn.ConvTranspose,
+            num_spatial_dims,
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride,
+            padding,
+            output_padding,
+            dilation,
+            groups,
+            use_bias,
+            padding_mode,
+            dtype,
+            key=rkg(),
+            **kwargs
+        )
 
 
 # Pooling ##############################################################################################################
+
+
+class Pool(Layer):
+    def __init__(
+        self,
+        init: int | float | jax.Array,
+        operation: Callable[[jax.Array, jax.Array], jax.Array],
+        num_spatial_dims: int,
+        kernel_size: int | Sequence[int],
+        stride: int | Sequence[int] = 1,
+        padding: int | Sequence[int] | Sequence[tuple[int, int]] = 0,
+        use_ceil: bool = False,
+        **kwargs
+    ):
+        super().__init__(
+            eqx.nn.Pool,
+            init,
+            operation,
+            num_spatial_dims,
+            kernel_size,
+            stride,
+            padding,
+            use_ceil,
+            **kwargs
+        )
 
 
 class MaxPool2d(Layer):
@@ -139,6 +226,23 @@ class MaxPool2d(Layer):
 class AvgPool2d(Layer):
     def __init__(
         self,
+        target_shape: int | Sequence[int],
+        num_spatial_dims: int,
+        operation: Callable,
+        **kwargs,
+    ):
+        super().__init__(
+            eqx.nn.AdaptivePool,
+            target_shape,
+            num_spatial_dims,
+            operation,
+            **kwargs
+        )
+
+
+class AdaptivePool(Layer):
+    def __init__(
+        self,
         kernel_size: int | Sequence[int],
         stride: int | Sequence[int] = 1,
         padding: int | Sequence[int] | Sequence[Tuple[int, int]] = 0,
@@ -146,3 +250,67 @@ class AvgPool2d(Layer):
         **kwargs,
     ):
         super().__init__(eqx.nn.AvgPool2d, kernel_size, stride, padding, use_ceil, **kwargs)
+
+
+class AdaptiveAvgPool2d(Layer):
+    def __init__(
+        self,
+        target_shape: int | Sequence[int],
+        **kwargs,
+    ):
+        super().__init__(
+            eqx.nn.AdaptiveAvgPool2d,
+            target_shape,
+            **kwargs
+        )
+
+
+class AdaptiveAvgPool2d(Layer):
+    def __init__(
+        self,
+        target_shape: int | Sequence[int],
+        **kwargs,
+    ):
+        super().__init__(
+            eqx.nn.AdaptiveAvgPool2d,
+            target_shape,
+            **kwargs
+        )
+
+
+class AdaptiveMaxPool2d(Layer):
+    def __init__(
+        self,
+        target_shape: int | Sequence[int],
+        **kwargs,
+    ):
+        super().__init__(
+            eqx.nn.AdaptiveMaxPool2d,
+            target_shape,
+            **kwargs
+        )
+
+
+# Normalisation ########################################################################################################
+
+
+class LayerNorm(Layer):
+    def __init__(
+        self,
+        shape: Tuple[int, ...] | None = None,
+        eps: float = 1e-05,
+        use_weight: bool = True,
+        use_bias: bool = True,
+        dtype = None,
+        *,
+        elementwise_affine: bool = True,
+    ):
+        super().__init__(
+            eqx.nn.LayerNorm,
+            shape,
+            eps,
+            use_weight,
+            use_bias,
+            dtype,
+            elementwise_affine=elementwise_affine
+        )
