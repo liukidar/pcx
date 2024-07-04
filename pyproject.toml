@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "pcax"
-version = "0.6.0"
+name = "pcx"
+version = "0.6.2"
 description = "A library for efficient Predictive Coding networks"
 authors = ["Luca Pinchetti <luca.pinchetti@cs.ox.ac.uk>"]
 license = "Propriaetary. Confidential. No part of this work can be disclosed or shared without the explicit consent of the authors."
