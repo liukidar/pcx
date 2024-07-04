@@ -1,7 +1,4 @@
-__all__ = [
-    "ParamCache",
-    "VodeParam"
-]
+__all__ = ["ParamCache", "VodeParam"]
 
 
 from typing import Dict, Optional
@@ -28,8 +25,5 @@ class VodeParam(Param):
         def __init__(self, params: Dict[str, jax.Array] = None):
             super().__init__(params)
 
-    def __init__(
-        self,
-        value: Optional[jax.Array] = None
-    ):
+    def __init__(self, value: Optional[jax.Array] = None):
         super().__init__(value)

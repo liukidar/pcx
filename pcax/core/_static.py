@@ -1,7 +1,4 @@
-__all__ = [
-    "StaticParam",
-    "static"
-]
+__all__ = ["StaticParam", "static"]
 
 
 from typing import Any

@@ -72,7 +72,9 @@ class Linear(Layer):
         rkg: RandomKeyGenerator = RKG,
         **kwargs,
     ):
-        super().__init__(eqx.nn.Linear, in_features, out_features, bias, key=rkg(), **kwargs)
+        super().__init__(
+            eqx.nn.Linear, in_features, out_features, bias, key=rkg(), **kwargs
+        )
 
 
 class Conv(Layer):
@@ -123,7 +125,7 @@ class Conv2d(Conv):
         groups: int = 1,
         use_bias: bool = True,
         padding_mode: str = "ZEROS",
-        dtype=None,        
+        dtype=None,
         *,
         rkg: RandomKeyGenerator = RKG,
         **kwargs,
@@ -141,7 +143,7 @@ class Conv2d(Conv):
             padding_mode,
             dtype,
             rkg=rkg,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -162,7 +164,7 @@ class ConvTranspose(Layer):
         dtype=None,
         *,
         rkg: RandomKeyGenerator = RKG,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             eqx.nn.ConvTranspose,
@@ -179,7 +181,7 @@ class ConvTranspose(Layer):
             padding_mode,
             dtype,
             key=rkg(),
-            **kwargs
+            **kwargs,
         )
 
 
@@ -196,7 +198,7 @@ class Pool(Layer):
         stride: int | Sequence[int] = 1,
         padding: int | Sequence[int] | Sequence[tuple[int, int]] = 0,
         use_ceil: bool = False,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             eqx.nn.Pool,
@@ -207,7 +209,7 @@ class Pool(Layer):
             stride,
             padding,
             use_ceil,
-            **kwargs
+            **kwargs,
         )
 
 
@@ -220,7 +222,9 @@ class MaxPool2d(Layer):
         use_ceil: bool = False,
         **kwargs,
     ):
-        super().__init__(eqx.nn.MaxPool2d, kernel_size, stride, padding, use_ceil, **kwargs)
+        super().__init__(
+            eqx.nn.MaxPool2d, kernel_size, stride, padding, use_ceil, **kwargs
+        )
 
 
 class AvgPool2d(Layer):
@@ -232,11 +236,7 @@ class AvgPool2d(Layer):
         **kwargs,
     ):
         super().__init__(
-            eqx.nn.AdaptivePool,
-            target_shape,
-            num_spatial_dims,
-            operation,
-            **kwargs
+            eqx.nn.AdaptivePool, target_shape, num_spatial_dims, operation, **kwargs
         )
 
 
@@ -249,19 +249,8 @@ class AdaptivePool(Layer):
         use_ceil: bool = False,
         **kwargs,
     ):
-        super().__init__(eqx.nn.AvgPool2d, kernel_size, stride, padding, use_ceil, **kwargs)
-
-
-class AdaptiveAvgPool2d(Layer):
-    def __init__(
-        self,
-        target_shape: int | Sequence[int],
-        **kwargs,
-    ):
         super().__init__(
-            eqx.nn.AdaptiveAvgPool2d,
-            target_shape,
-            **kwargs
+            eqx.nn.AvgPool2d, kernel_size, stride, padding, use_ceil, **kwargs
         )
 
 
@@ -271,11 +260,16 @@ class AdaptiveAvgPool2d(Layer):
         target_shape: int | Sequence[int],
         **kwargs,
     ):
-        super().__init__(
-            eqx.nn.AdaptiveAvgPool2d,
-            target_shape,
-            **kwargs
-        )
+        super().__init__(eqx.nn.AdaptiveAvgPool2d, target_shape, **kwargs)
+
+
+class AdaptiveAvgPool2d(Layer):
+    def __init__(
+        self,
+        target_shape: int | Sequence[int],
+        **kwargs,
+    ):
+        super().__init__(eqx.nn.AdaptiveAvgPool2d, target_shape, **kwargs)
 
 
 class AdaptiveMaxPool2d(Layer):
@@ -284,11 +278,7 @@ class AdaptiveMaxPool2d(Layer):
         target_shape: int | Sequence[int],
         **kwargs,
     ):
-        super().__init__(
-            eqx.nn.AdaptiveMaxPool2d,
-            target_shape,
-            **kwargs
-        )
+        super().__init__(eqx.nn.AdaptiveMaxPool2d, target_shape, **kwargs)
 
 
 # Normalisation ########################################################################################################
@@ -301,7 +291,7 @@ class LayerNorm(Layer):
         eps: float = 1e-05,
         use_weight: bool = True,
         use_bias: bool = True,
-        dtype = None,
+        dtype=None,
         *,
         elementwise_affine: bool = True,
     ):
@@ -312,5 +302,5 @@ class LayerNorm(Layer):
             use_weight,
             use_bias,
             dtype,
-            elementwise_affine=elementwise_affine
+            elementwise_affine=elementwise_affine,
         )

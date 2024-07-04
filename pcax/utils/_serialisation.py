@@ -25,7 +25,7 @@ from ..nn._parameter import LayerParam
 def save_params(
     model: PyTree,
     path: str,
-    filter: Callable[[Any], bool] | Type[BaseParam] = LayerParam
+    filter: Callable[[Any], bool] | Type[BaseParam] = LayerParam,
 ) -> None:
     """Function to save the parameters of a model to a file. The '.npz' extension is automatically added
     to the file name.
@@ -38,15 +38,14 @@ def save_params(
             the parameters to save. The default value 'LayerParam' selects all the weights of the layers in the
             model.
     """
-    _filter_fn = (filter 
+    _filter_fn = (
+        filter
         if not isinstance(filter, type | UnionType)
-        else lambda x: isinstance(x, filter))
+        else lambda x: isinstance(x, filter)
+    )
 
-    _params = jtu.tree_flatten_with_path(
-        model,
-        is_leaf=_filter_fn
-    )[0]
-    
+    _params = jtu.tree_flatten_with_path(model, is_leaf=_filter_fn)[0]
+
     # Cache to check for duplicate parameters.
     _seen = _cache()
     _data = {}
@@ -64,12 +63,12 @@ def save_params(
 def load_params(
     model: PyTree,
     path: str,
-    filter: Callable[[Any], bool] | Type[BaseParam] = LayerParam
+    filter: Callable[[Any], bool] | Type[BaseParam] = LayerParam,
 ) -> None:
     """Function to load the parameters of a model from a file. The '.npz' extension is automatically added
     to the file name. The model must have the same structure as the one used to save the parameters and must
     already be initialized:
-    
+
     ```python
     model = Model()
     load_params(model, "model.npz")
@@ -86,16 +85,15 @@ def load_params(
         KeyError: the file does not contain all the parameters required by the model.
     """
     path = path if path.endswith(".npz") else f"{path}.npz"
-    _filter_fn = (filter 
+    _filter_fn = (
+        filter
         if not isinstance(filter, type | UnionType)
-        else lambda x: isinstance(x, filter))
+        else lambda x: isinstance(x, filter)
+    )
 
     _loaded_values = np.load(path)
-    _params = jtu.tree_flatten_with_path(
-        model,
-        is_leaf=_filter_fn
-    )[0]
-    
+    _params = jtu.tree_flatten_with_path(model, is_leaf=_filter_fn)[0]
+
     for _key, _param in _params:
         if _filter_fn(_param):
             _key = jtu.keystr(_key)
@@ -103,5 +101,5 @@ def load_params(
                 raise KeyError(f"Parameter '{_key}' not found in the file '{path}'.")
             elif (_value := _loaded_values[_key]) is not None:
                 _param.set(jax.numpy.array(_value))
-    
+
     _loaded_values.close()

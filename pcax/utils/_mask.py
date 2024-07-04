@@ -13,7 +13,7 @@ from ..core._tree import tree_ref
 #
 # MASK
 #
-# Mask provided a convenient way to filter parameters based on their type or attributes. It is used to mask out 
+# Mask provided a convenient way to filter parameters based on their type or attributes. It is used to mask out
 # parameters that are not relevant to the current operation or transformation (such as when we want to compute the
 # gradient only with respect to a subset of the parameters). It is quite similar to `equinox.filter` as functionality
 # but it provides shortcuts to filter based on the type of the parameter or its attributes. Further classes can be
@@ -29,11 +29,8 @@ class Mask:
     modified value is the Param's value (and thus it is impossible to differentiate between different children of the
     same Param, in the case its value is a pytree itself).
     """
-    def __init__(
-        self,
-        x: Type | 'm' | Callable,
-        map_to: Tuple[Any, Any] | None = None
-    ):
+
+    def __init__(self, x: Type | "m" | Callable, map_to: Tuple[Any, Any] | None = None):
         """Mask constructor.
 
         Args:
@@ -60,18 +57,20 @@ class Mask:
             Any: the masked pydag (enforced to be a pytree).
         """
         if self.map_to is None:
+
             def map_fn(param: Any | Param):
                 _mask_value = Mask.apply(self.x, param)
 
                 return param if _mask_value is True else None
         else:
+
             def map_fn(param: Any | Param):
                 return self.map_to[Mask.apply(self.x, param)]
 
         t = jtu.tree_map(
             map_fn,
             pydag if is_pytree else tree_ref(pydag),
-            is_leaf=lambda x: isinstance(x, BaseParam)
+            is_leaf=lambda x: isinstance(x, BaseParam),
         )
 
         return t
@@ -104,19 +103,19 @@ class m:
     - `~` for logical not
     - `has` to filter based on the presence of an attribute with a specific value
     - `has_not` to filter based on the absence of an attribute with a specific value
-    
+
     For example:
-    
+
     ```python
     (m(A | B)) & ~m(C).has(attr1=1)
     ```
-    
-    selects paraameters of class A or B that are not of class C and have an attribute `attr1` equal to 1. 
+
+    selects paraameters of class A or B that are not of class C and have an attribute `attr1` equal to 1.
     """
 
     def __init__(
         self,
-        x: Type | 'm' | Callable | None = None,
+        x: Type | "m" | Callable | None = None,
     ):
         self.x = x
 

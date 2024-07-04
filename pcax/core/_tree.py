@@ -83,7 +83,10 @@ class _BaseParamRef(StaticParam):
 
 
 def tree_apply(
-    fn: Callable[[Any], None], filter_fn: Callable[[Any], bool], tree: PyTree, recursive: bool = True
+    fn: Callable[[Any], None],
+    filter_fn: Callable[[Any], bool],
+    tree: PyTree,
+    recursive: bool = True,
 ) -> None:
     """Executes a function on the selected nodes of the pytree. Note that pydag are supported since the structure of
     the pytree is preserved (i.e., the function can only modify the content of the nodes, not the nodes themselves).
@@ -197,7 +200,10 @@ def tree_inject(
     assert is_pytree is True, "Not implemented for non-pytrees."
 
     if values is None:
-        values = filter(filter_fn, jtu.tree_leaves(params, is_leaf=lambda x: isinstance(x, BaseParam)))
+        values = filter(
+            filter_fn,
+            jtu.tree_leaves(params, is_leaf=lambda x: isinstance(x, BaseParam)),
+        )
     else:
         assert params is None, "Cannot specify both 'values' and 'params'"
 
@@ -219,7 +225,9 @@ def tree_inject(
         # This is to assert the user didn't mess up with the pytree structure.
         try:
             next(_values_it)
-            raise ValueError("The number of values does not match the number of leaves in the pytree.")
+            raise ValueError(
+                "The number of values does not match the number of leaves in the pytree."
+            )
         except StopIteration:
             pass
 

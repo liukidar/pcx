@@ -1,7 +1,4 @@
-__all__ = [
-    "BaseModule",
-    "Module"
-]
+__all__ = ["BaseModule", "Module"]
 
 
 import abc
@@ -50,7 +47,7 @@ class _BaseModuleMeta(abc.ABCMeta):
     """
     Metaclass to register all modules as JAX pytrees so that can be (un)flattened.
     A module is flattened as if it were a dictionary, separating keys and values.
-    
+
     NOTE: as equinox does, it may be necessary to update this code to treat __special__ attributes differently.
     """
 
@@ -61,35 +58,41 @@ class _BaseModuleMeta(abc.ABCMeta):
             _cls,
             flatten_func=_BaseModuleMeta.flatten_module,
             flatten_with_keys=_BaseModuleMeta.flatten_module_with_keys,
-            unflatten_func=functools.partial(_BaseModuleMeta.unflatten_module, cls=_cls)
+            unflatten_func=functools.partial(
+                _BaseModuleMeta.unflatten_module, cls=_cls
+            ),
         )
 
         return _cls
-    
+
     @staticmethod
-    def flatten_module(module: 'BaseModule') -> Tuple[Tuple[Any, ...], Tuple[str, ...]]:
+    def flatten_module(module: "BaseModule") -> Tuple[Tuple[Any, ...], Tuple[str, ...]]:
         return tuple(module.__dict__.values()), tuple(module.__dict__.keys())
-    
+
     @staticmethod
-    def flatten_module_with_keys(module: 'BaseModule') -> Tuple[Tuple[Tuple[str, Any], ...], Tuple[str, ...]]:
+    def flatten_module_with_keys(
+        module: "BaseModule",
+    ) -> Tuple[Tuple[Tuple[str, Any], ...], Tuple[str, ...]]:
         return (
-            tuple(zip(map(lambda k: jtu.GetAttrKey(k), module.__dict__.keys()), module.__dict__.values())),
-            tuple(module.__dict__.keys())
+            tuple(
+                zip(
+                    map(lambda k: jtu.GetAttrKey(k), module.__dict__.keys()),
+                    module.__dict__.values(),
+                )
+            ),
+            tuple(module.__dict__.keys()),
         )
-    
+
     @staticmethod
     def unflatten_module(
-        aux_data: Tuple[str, ...], children: Tuple[Any, ...], cls: Type['BaseModule']
-    ) -> 'BaseModule':
+        aux_data: Tuple[str, ...], children: Tuple[Any, ...], cls: Type["BaseModule"]
+    ) -> "BaseModule":
         _module = object.__new__(cls)
-                        
-        _module.__dict__ = dict(zip(
-            aux_data,
-            children
-        ))
-        
+
+        _module.__dict__ = dict(zip(aux_data, children))
+
         return _module
-            
+
 
 class BaseModule(metaclass=_BaseModuleMeta):
     """
@@ -98,18 +101,21 @@ class BaseModule(metaclass=_BaseModuleMeta):
 
     def __call__(self):
         raise NotImplementedError
-    
+
     def __repr__(self) -> str:
-        leaves = jtu.tree_leaves_with_path(self, is_leaf=lambda x: isinstance(x, DynamicParam))
-        
-        return "\n".join((
-            f"({self.__class__.__name__}):",
-            *(f"  {jtu.keystr(key)}: {repr(value)}"
-            for key, value in leaves)
-        ))
-    
+        leaves = jtu.tree_leaves_with_path(
+            self, is_leaf=lambda x: isinstance(x, DynamicParam)
+        )
+
+        return "\n".join(
+            (
+                f"({self.__class__.__name__}):",
+                *(f"  {jtu.keystr(key)}: {repr(value)}" for key, value in leaves),
+            )
+        )
+
     def submodules(self, *, cls: Type[T] | None = None) -> Generator[T, None, None]:
-        """Return the children submodules of the given type. Does not work recursively, and 
+        """Return the children submodules of the given type. Does not work recursively, and
         only returns the direct children of matching type.
 
         Args:
@@ -125,7 +131,7 @@ class BaseModule(metaclass=_BaseModuleMeta):
         _leaves, _ = eqx.tree_flatten_one_level(self)
 
         yield from filter(_is_leaf_fn, jtu.tree_leaves(_leaves, is_leaf=_is_leaf_fn))
-    
+
 
 # Module ###############################################################################################################
 
@@ -134,14 +140,15 @@ class Module(BaseModule):
     """
     Module represents a standard deep learning module with a train/eval mode flag that can be recursively set.
     """
+
     class MODE(IntEnum):
         NONE = 0
         TRAIN = 1
         EVAL = 2
-    
+
     def __init__(self) -> None:
         self._mode = static(None)
-        
+
     def mode(self, value: MODE | None) -> MODE | None:
         """Recursively set the mode of the module and its submodules.
         If the value is None, the current mode is instead returned.
@@ -155,28 +162,30 @@ class Module(BaseModule):
         if value is None:
             return self._mode.get()
         else:
-            tree_apply(lambda m: m._mode.set(value), lambda x: isinstance(x, Module), self)
-            
+            tree_apply(
+                lambda m: m._mode.set(value), lambda x: isinstance(x, Module), self
+            )
+
             return
-        
+
     def train(self) -> None:
         """Set the module in train mode."""
         self.mode(Module.MODE.TRAIN)
-    
+
     def eval(self) -> None:
         """Set the module in eval mode."""
         self.mode(Module.MODE.EVAL)
-    
+
     @property
     def is_train(self) -> bool:
         """Returns:
-            bool: whether the module is in train mode.
+        bool: whether the module is in train mode.
         """
         return self._mode.get() == Module.MODE.TRAIN
 
     @property
     def is_eval(self) -> bool:
         """Returns:
-            bool: whether the module is in eval mode.
+        bool: whether the module is in eval mode.
         """
         return self._mode.get() == Module.MODE.EVAL

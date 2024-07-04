@@ -29,24 +29,23 @@ class EnergyModule(Module):
     """Module inherits from core.Module. he extra '_status' attribute can be used to configure the behavior
     of its methods. In particular, it used by 'preditive_coding.Vode'.
     """
+
     def __init__(self) -> None:
-        """Module constructor.
-        """
+        """Module constructor."""
         super().__init__()
         self._status = static(None)
 
     def energy(self) -> jax.Array:
         """Return the total energy of the module as the recursive sum of all the energies of its submodules.
         Note that differently from the Vodes, the energy is not cached.
-        
+
         Returns:
             jax.Array: total energy of the module.
         """
         return functools.reduce(
-            lambda x, y: x + y,
-            (m.energy() for m in self.submodules(cls=EnergyModule))
+            lambda x, y: x + y, (m.energy() for m in self.submodules(cls=EnergyModule))
         )
-    
+
     def clear_params(self, filter: Callable[[Any], bool] | Type) -> None:
         """Set the selected parameters to None. This is especially useful to clear the cache of the parameters when needed.
         Note that, being pcax an imperative library, the change is done in-place and no updated module is returned.
@@ -56,9 +55,11 @@ class EnergyModule(Module):
         """
         tree_apply(
             lambda p: p.set(None),
-            filter if not isinstance(filter, type | UnionType) else lambda x: isinstance(x, filter),
+            filter
+            if not isinstance(filter, type | UnionType)
+            else lambda x: isinstance(x, filter),
             tree=self,
-            recursive=False
+            recursive=False,
         )
 
     @property

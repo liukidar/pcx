@@ -34,7 +34,9 @@ class _BaseParamMeta(abc.ABCMeta):
             _cls,
             flatten_func=_BaseParamMeta.flatten_parameter,
             flatten_with_keys=_BaseParamMeta.flatten_parameter_with_keys,
-            unflatten_func=functools.partial(_BaseParamMeta.unflatten_parameter, cls=_cls),
+            unflatten_func=functools.partial(
+                _BaseParamMeta.unflatten_parameter, cls=_cls
+            ),
         )
 
         return _cls
@@ -54,7 +56,9 @@ class _BaseParamMeta(abc.ABCMeta):
         return ((jax.tree_util.GetAttrKey("value"), param._value),), _aux_data
 
     @staticmethod
-    def unflatten_parameter(aux_data: Dict[str, Any], children: Any, *, cls: Type["BaseParam"]) -> "BaseParam":
+    def unflatten_parameter(
+        aux_data: Dict[str, Any], children: Any, *, cls: Type["BaseParam"]
+    ) -> "BaseParam":
         _param = object.__new__(cls)
 
         _param.__dict__ = dict.copy(aux_data)
@@ -307,7 +311,9 @@ class ParamDict(DynamicParam):
     def __contains__(self, __key: str) -> bool:
         return __key in self._value
 
-    def get(self, key: str | None = None, default: jax.Array | Any | None = None) -> Any:
+    def get(
+        self, key: str | None = None, default: jax.Array | Any | None = None
+    ) -> Any:
         return self._value.get(key, default) if key is not None else self._value
 
     def set(self, value) -> None:

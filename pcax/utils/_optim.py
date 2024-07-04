@@ -31,7 +31,9 @@ from ..core._static import static
 class Optim(BaseModule):
     """Optim inherits from core.BaseModule and thus it is a pytree. It is a thin wrapper around the optax library."""
 
-    def __init__(self, optax_opt: optax.GradientTransformation, parameters: PyTree | None = None):
+    def __init__(
+        self, optax_opt: optax.GradientTransformation, parameters: PyTree | None = None
+    ):
         """Optim constructor.
 
         Args:
@@ -47,7 +49,11 @@ class Optim(BaseModule):
             self.init(parameters)
 
     def step(
-        self, module: PyTree, grads: PyTree, scale_by: float | None = None, apply_updates: bool = True
+        self,
+        module: PyTree,
+        grads: PyTree,
+        scale_by: float | None = None,
+        apply_updates: bool = True,
     ) -> None:
         """Performs a gradient update step similarly to Pytorch's 'optimizer.step()' by calling first 'optax_opt.update'
         and then 'eqx.apply_updates'.
@@ -68,20 +74,22 @@ class Optim(BaseModule):
         # parameters structure.
         # For example 'grads' could contain gradients computed for parameters not targeted by this optimiser without
         # causing any issue since they will be filtered out automatically.
-        module = eqx.filter(module, self.filter.get(), is_leaf=lambda x: isinstance(x, BaseParam))
-        
+        module = eqx.filter(
+            module, self.filter.get(), is_leaf=lambda x: isinstance(x, BaseParam)
+        )
+
         if scale_by is not None:
             _filter_fn = lambda x, f: set(x, x * scale_by) if f is True else None
         else:
             _filter_fn = lambda x, f: x if f is True else None
-        
+
         grads = jtu.tree_map(
             _filter_fn,
             grads,
             self.filter.get(),
             is_leaf=lambda x: isinstance(x, BaseParam),
         )
-    
+
         updates, state = self.optax_opt.update(
             grads,
             self.state.get(),
@@ -114,9 +122,15 @@ class Optim(BaseModule):
         # the remaining parameters and allow them to change structure without affecting the functioning of the
         # optimizer.
         self.filter.set(
-            jtu.tree_map(lambda x: get(x) is not None, parameters, is_leaf=lambda x: isinstance(x, BaseParam))
+            jtu.tree_map(
+                lambda x: get(x) is not None,
+                parameters,
+                is_leaf=lambda x: isinstance(x, BaseParam),
+            )
         )
-        parameters = eqx.filter(parameters, self.filter.get(), is_leaf=lambda x: isinstance(x, BaseParam))
+        parameters = eqx.filter(
+            parameters, self.filter.get(), is_leaf=lambda x: isinstance(x, BaseParam)
+        )
 
         self.state.set(self.optax_opt.init(parameters))
 

@@ -1,8 +1,4 @@
-__all__ = [
-    "RKGState",
-    "RKG",
-    "RandomKeyGenerator"
-]
+__all__ = ["RKGState", "RKG", "RandomKeyGenerator"]
 
 from typing import Tuple
 from jaxtyping import ArrayLike
@@ -51,7 +47,7 @@ class RKGState(Param):
 
         Args:
             n (int): the number of keys to generate.
-            
+
         Returns:
             jax.typing.ArrayLike: a list of n keys.
         """
@@ -87,15 +83,15 @@ class RandomKeyGenerator(BaseModule):
 
     def __call__(self, n: int = 1) -> Tuple[ArrayLike, ...] | ArrayLike:
         """Generate n random keys.
-        
+
         Args:
             n (int, optional): number of keys to generate.
-        
+
         Returns:
             Tuple[ArrayLike, ...] | ArrayLike: a single key if n is 1, otherwise a tuple of keys.
         """
         _k = self.key.split(n)
-        
+
         # For comodity, return a single key if n is 1
         if n == 1:
             return _k[0]

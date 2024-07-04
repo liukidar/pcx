@@ -23,16 +23,10 @@ from ..core._parameter import Param
 
 
 class LayerParam(Param):
-    def __init__(
-        self,
-        value: Optional[jax.Array] = None
-    ):
+    def __init__(self, value: Optional[jax.Array] = None):
         super().__init__(value)
 
 
 class LayerState(Param):
-    def __init__(
-        self,
-        value: Optional[jax.Array] = None
-    ):
+    def __init__(self, value: Optional[jax.Array] = None):
         super().__init__(value)

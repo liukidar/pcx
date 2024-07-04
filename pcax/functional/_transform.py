@@ -73,7 +73,11 @@ def _make_tuple(x: Any):
 def _repr_function(f: Callable) -> str:
     """Human readable function representation."""
     _signature = inspect.signature(f)
-    _args = [f"{k}={v.default}" for k, v in _signature.parameters.items() if v.default is not inspect.Parameter.empty]
+    _args = [
+        f"{k}={v.default}"
+        for k, v in _signature.parameters.items()
+        if v.default is not inspect.Parameter.empty
+    ]
     _args = ", ".join(_args)
     while not hasattr(f, "__name__"):
         if not hasattr(f, "func"):
@@ -192,7 +196,9 @@ class _BaseTransform(abc.ABC):
 
     def __repr__(self):
         _fn = (
-            repr(self.__wrapped__) if isinstance(self.__wrapped__, _BaseTransform) else _repr_function(self.__wrapped__)
+            repr(self.__wrapped__)
+            if isinstance(self.__wrapped__, _BaseTransform)
+            else _repr_function(self.__wrapped__)
         )
         return f"{self.__class__.__name__}(fn={_fn})"
 
@@ -293,7 +299,9 @@ class ValueAndGrad(_BaseTransform):
     easily be redesigned to allow for masking of the value if deemed to be a necessary feature.
     """
 
-    def __init__(self, fn: "_BaseTransform" | Callable, kwargs_mask: Any = {}, **t_kwargs: Any):
+    def __init__(
+        self, fn: "_BaseTransform" | Callable, kwargs_mask: Any = {}, **t_kwargs: Any
+    ):
         super().__init__(fn)
         self.kwargs_mask = kwargs_mask
         self.has_aux = t_kwargs["has_aux"]
@@ -304,14 +312,22 @@ class ValueAndGrad(_BaseTransform):
     def _t(self, *args, **kwargs):
         def _wrap_fn(*args):
             _args, _target_kwargs, _other_kwargs = args[:-2], args[-2], args[-1]
-            _kwargs = eqx.combine(_target_kwargs, _other_kwargs, is_leaf=lambda x: isinstance(x, BaseParam))
+            _kwargs = eqx.combine(
+                _target_kwargs,
+                _other_kwargs,
+                is_leaf=lambda x: isinstance(x, BaseParam),
+            )
             _r, _kwargs = self.fn(*_args, **_kwargs)
             _r = _make_tuple(_r)
 
             return _r[0], (_r[1:], _kwargs)
 
         (_l, (_r, _values)), _aux = jax.value_and_grad(
-            _wrap_fn, **{**self.t_kwargs, "argnums": self.t_kwargs.get("argnums", ()) + (len(args),)}
+            _wrap_fn,
+            **{
+                **self.t_kwargs,
+                "argnums": self.t_kwargs.get("argnums", ()) + (len(args),),
+            },
         )(
             *args,
             # We split kwargs to isolate the parameters we want to differentiate, following the jax syntax.
@@ -344,7 +360,9 @@ class Vmap(_BaseTransform):
     NOTE: RKG is automatically handled by the transformation, so it must not be provided in the kwargs.
     """
 
-    def __init__(self, fn: "_BaseTransform" | Callable, kwargs_mask: Any = {}, **t_kwargs: Any):
+    def __init__(
+        self, fn: "_BaseTransform" | Callable, kwargs_mask: Any = {}, **t_kwargs: Any
+    ):
         super().__init__(fn)
         self.kwargs_mask = kwargs_mask
         self.t_kwargs = t_kwargs
@@ -355,13 +373,19 @@ class Vmap(_BaseTransform):
 
         # Compute vaxes dimension which is necessary to split the RKG key.
         def _extract_vaxes_dim(node, mask):
-            for param in filter(lambda _node: hasattr(_node, "shape"), jtu.tree_leaves(node)):
+            for param in filter(
+                lambda _node: hasattr(_node, "shape"), jtu.tree_leaves(node)
+            ):
                 return param.shape[mask]
 
             return None
 
         _vaxis_dim = jtu.tree_leaves(
-            jtu.tree_map(lambda mask, node: _extract_vaxes_dim(node, mask), _in_axes_mask, (*args, kwargs))
+            jtu.tree_map(
+                lambda mask, node: _extract_vaxes_dim(node, mask),
+                _in_axes_mask,
+                (*args, kwargs),
+            )
         )[0]
 
         # Split the __RKG key over the vmap axis (and set the mask accordingly)
