@@ -1,1 +1,0 @@
-python -m stune --exe EP_adam_zero --study fmnist_z[T=11] --gpus 0,1,2,3 --n_trials 16:8 --tuner ssh --config EP.yaml
