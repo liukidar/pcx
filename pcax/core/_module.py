@@ -127,10 +127,9 @@ class BaseModule(metaclass=_BaseModuleMeta):
         """
         # We target all modules by default.
         cls = cls or BaseModule
-        _is_leaf_fn = lambda x: isinstance(x, cls)
         _leaves, _ = eqx.tree_flatten_one_level(self)
 
-        yield from filter(_is_leaf_fn, jtu.tree_leaves(_leaves, is_leaf=_is_leaf_fn))
+        yield from filter(lambda x: isinstance(x, cls), jtu.tree_leaves(_leaves, is_leaf=lambda x: isinstance(x, cls)))
 
 
 # Module ###############################################################################################################
