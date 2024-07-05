@@ -129,7 +129,10 @@ class BaseModule(metaclass=_BaseModuleMeta):
         cls = cls or BaseModule
         _leaves, _ = eqx.tree_flatten_one_level(self)
 
-        yield from filter(lambda x: isinstance(x, cls), jtu.tree_leaves(_leaves, is_leaf=lambda x: isinstance(x, cls)))
+        yield from filter(
+            lambda x: isinstance(x, cls),
+            jtu.tree_leaves(_leaves, is_leaf=lambda x: isinstance(x, cls)),
+        )
 
 
 # Module ###############################################################################################################
@@ -171,9 +174,26 @@ class Module(BaseModule):
         """Set the module in train mode."""
         self.mode(Module.MODE.TRAIN)
 
+        # Set equinox inference mode to False. Note that all attributes of an equinox module are automatically
+        # converted to parameters, either static or dynamic, so we can access them via `.set()`/`.get()`.
+        tree_apply(
+            lambda eqx_m: eqx_m.inference.set(False),
+            lambda x: hasattr(x, "inference"),
+            self,
+            False,
+        )
+
     def eval(self) -> None:
         """Set the module in eval mode."""
         self.mode(Module.MODE.EVAL)
+
+        # Set equinox inference mode to True.
+        tree_apply(
+            lambda eqx_m: eqx_m.inference.set(True),
+            lambda x: hasattr(x, "inference"),
+            self,
+            False,
+        )
 
     @property
     def is_train(self) -> bool:
