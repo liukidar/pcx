@@ -263,15 +263,6 @@ class AdaptiveAvgPool2d(Layer):
         super().__init__(eqx.nn.AdaptiveAvgPool2d, target_shape, **kwargs)
 
 
-class AdaptiveAvgPool2d(Layer):
-    def __init__(
-        self,
-        target_shape: int | Sequence[int],
-        **kwargs,
-    ):
-        super().__init__(eqx.nn.AdaptiveAvgPool2d, target_shape, **kwargs)
-
-
 class AdaptiveMaxPool2d(Layer):
     def __init__(
         self,
