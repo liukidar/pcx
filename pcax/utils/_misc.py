@@ -1,7 +1,6 @@
 from typing import Any, Callable, Type, Tuple
 from jaxtyping import PyTree
 import contextlib
-import enum
 
 from ..core._tree import tree_apply
 from ..predictive_coding._energy_module import EnergyModule
@@ -33,10 +32,7 @@ def step(
 
     Args:
         module (EnergyModule | PyTree): the target module.
-        status (str | None | Tuple, optional): the status to apply to the module and its submodules. By default, the
-            status is set to None both before and after the step. If a tuple is provided, the first element is the
-            status before the step and the second element is the status after the step. If a single element is
-            provided, it is used BEFORE the step and None is used after the step.
+        status (str | None, optional): the status to apply to the module and its submodules.
         clear_params (Callable[[Any], bool] | Type | Tuple, optional): Target parameters to clear. The value is
             directly passed to the 'EnergyModule.clear_params', so refer to that method for more information.
             If a tuple is provided, the first element is used to call '.clear_params' before the step and the second
@@ -45,7 +41,6 @@ def step(
     """
 
     # Enforce status to be a tuple.
-    status = (status, None) if not isinstance(status, list | tuple) else status
     clear_params = (
         (None, clear_params)
         if not isinstance(clear_params, list | tuple)
@@ -56,18 +51,12 @@ def step(
         module.clear_params(clear_params[0])
 
     tree_apply(
-        lambda m: m._status.set(status[0]),
+        lambda m: m._status.set(status),
         lambda x: isinstance(x, EnergyModule),
         tree=module,
     )
 
     yield
-
-    tree_apply(
-        lambda m: m._status.set(status[1]),
-        lambda x: isinstance(x, EnergyModule),
-        tree=module,
-    )
 
     if clear_params[1] is not None:
         module.clear_params(clear_params[1])
