@@ -61,9 +61,7 @@ class M:
         self.mask = mask
         self.map_to = None
 
-    def __call__(
-        self, pydag: Any, is_pytree: bool = False
-    ) -> Any:
+    def __call__(self, pydag: Any, is_pytree: bool = False) -> Any:
         """Applies the mask to the given pydag.
 
         Args:
@@ -92,7 +90,7 @@ class M:
         )
 
         return t
-    
+
     def to(self, map_to: Tuple[Any, Any] | None) -> "M":
         """Sets the `map_to` value, this allows to map the target pytree to the desired pair of masked/unmasked values,
         instead of relying on the default behaviour of simply filtering out (i.e., substite with `None`) values that
@@ -108,7 +106,7 @@ class M:
                 `masked_model = pxu.M(pxnn.LayerParam).to([False, True])(model)`.
         """
         self.map_to = map_to
-        
+
         return self
 
     @staticmethod
