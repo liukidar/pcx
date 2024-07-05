@@ -121,6 +121,8 @@ If you found this library to be useful in your work, then please cite: [arXiv li
 }
 ```
 
+For the code relative to the experiments performed in the above paper, please refer to the [Submission of Benchmark Paper](https://github.com/liukidar/pcax/releases/tag/v0.6.1) code release.
+
 ## Documentation
 
 The documentation is available at: [https://pcx.readthedocs.io/en/stable/](https://pcx.readthedocs.io/en/stable/)
