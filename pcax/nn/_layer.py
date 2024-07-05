@@ -1,11 +1,17 @@
 __all__ = [
     "Layer",
     "Linear",
-    "LayerNorm",
     "Conv",
     "Conv2d",
+    "ConvTranspose",
+    "Pool",
     "MaxPool2d",
     "AvgPool2d",
+    "AdaptivePool",
+    "AdaptiveAvgPool2d",
+    "AdaptiveMaxPool2d",
+    "Dropout",
+    "LayerNorm",
 ]
 
 
@@ -270,6 +276,14 @@ class AdaptiveMaxPool2d(Layer):
         **kwargs,
     ):
         super().__init__(eqx.nn.AdaptiveMaxPool2d, target_shape, **kwargs)
+
+
+# Dropout ##############################################################################################################
+
+
+class Dropout(Layer):
+    def __init__(self, p: float = 0.5, inference: bool = False, **kwargs):
+        super().__init__(eqx.nn.Dropout, p, inference, **kwargs)
 
 
 # Normalisation ########################################################################################################
