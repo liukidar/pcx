@@ -107,7 +107,7 @@ class StaticParam(BaseParam):
 
     def __setitem__(self, __idx: Any, value: Any) -> Any:
         """Overloads __setitem__ to set the item at index __idx in the static value."""
-        return self._static_value.__setitem__(__idx, Any)
+        return self._static_value.__setitem__(__idx, value)
 
     def __call__(self, *args, **kwds) -> Any:
         """Overloads __call__ to call the static value as if it were a function."""
