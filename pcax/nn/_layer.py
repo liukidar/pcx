@@ -74,13 +74,9 @@ class Linear(Layer):
         in_features: int,
         out_features: int,
         bias: bool = True,
-        *,
-        rkg: RandomKeyGenerator = RKG,
         **kwargs,
     ):
-        super().__init__(
-            eqx.nn.Linear, in_features, out_features, bias, key=rkg(), **kwargs
-        )
+        super().__init__(eqx.nn.Linear, in_features, out_features, bias, **kwargs)
 
 
 class Conv(Layer):
@@ -148,7 +144,7 @@ class Conv2d(Conv):
             use_bias,
             padding_mode,
             dtype,
-            rkg=rkg,
+            key=rkg(),
             **kwargs,
         )
 

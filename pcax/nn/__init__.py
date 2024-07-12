@@ -15,7 +15,9 @@ __all__ = [
     "LayerParam",
     "LayerState",
     "shared",
-    # "",
+    "StateParam",
+    "StatefulLayer",
+    "BatchNorm",
 ]
 
 from ._layer import (
@@ -46,4 +48,4 @@ from ._shared import (
 )
 
 
-# from ._stateful import ()
+from ._stateful import StateParam, StatefulLayer, BatchNorm
