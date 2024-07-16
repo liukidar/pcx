@@ -78,7 +78,7 @@ class Linear(Layer):
         rkg: RandomKeyGenerator = RKG,
         **kwargs,
     ):
-        super().__init__(eqx.nn.Linear, in_features, out_features, bias, key=rkg, **kwargs)
+        super().__init__(eqx.nn.Linear, in_features, out_features, bias, key=rkg(), **kwargs)
 
 
 class Conv(Layer):
@@ -234,19 +234,6 @@ class MaxPool2d(Layer):
 class AvgPool2d(Layer):
     def __init__(
         self,
-        target_shape: int | Sequence[int],
-        num_spatial_dims: int,
-        operation: Callable,
-        **kwargs,
-    ):
-        super().__init__(
-            eqx.nn.AdaptivePool, target_shape, num_spatial_dims, operation, **kwargs
-        )
-
-
-class AdaptivePool(Layer):
-    def __init__(
-        self,
         kernel_size: int | Sequence[int],
         stride: int | Sequence[int] = 1,
         padding: int | Sequence[int] | Sequence[Tuple[int, int]] = 0,
@@ -255,6 +242,19 @@ class AdaptivePool(Layer):
     ):
         super().__init__(
             eqx.nn.AvgPool2d, kernel_size, stride, padding, use_ceil, **kwargs
+        )
+
+
+class AdaptivePool(Layer):
+    def __init__(
+        self,
+        target_shape: int | Sequence[int],
+        num_spatial_dims: int,
+        operation: Callable,
+        **kwargs,
+    ):
+        super().__init__(
+            eqx.nn.AdaptivePool, target_shape, num_spatial_dims, operation, **kwargs
         )
 
 
