@@ -283,7 +283,7 @@ def tree_unref(pytree: PyTree) -> PyTree:
     This is automatically and efficiently done when using automatic parameter tracing via pcax transformations
     (i.e., passing parameters within the kwargs of a pcax transformation).
 
-    NOTE #1: Refernces work via simple indexing, which requires the underlying pydag/pytree structure to be constant
+    NOTE #1: References work via simple indexing, which requires the underlying pydag/pytree structure to be constant
     between ref and unref (i.e., unref has defined behaviour only if used on a pytree with the same structure as
     the value returned by ref). For example, the following is not allowed:
 
