@@ -25,7 +25,10 @@ class StatefulLayer(Module):
             lambda w: LayerParam(w) if filter(w) else StaticParam(w),
             self.nn,
         )
-        
+
+        # print(self.nn)
+        # print(self.state)
+
         # We opt for a single StateParam to encapsule all the state data. This limits the
         # masking that can be done on it (as you either select all or nothing). For a for
         # fine-grained selection, a per-array StateParam approach must be used.
@@ -38,13 +41,13 @@ class StatefulLayer(Module):
         self.state = StateParam(self.state)
 
     def __call__(self, *args, key=None, **kwargs):
-        _nn, _state = jtu.tree_map(
+        _nn = jtu.tree_map(
             lambda w: w.get() if isinstance(w, BaseParam) else w,
-            (self.nn, self.state),
+            self.nn,
             is_leaf=lambda w: isinstance(w, BaseParam),
         )
 
-        _r, _state = _nn(*args, _state, **kwargs, key=key)
+        _r, _state = _nn(*args, self.state.get(), **kwargs, key=key)
 
         # Alternative per-array StateParam approach
         #
@@ -67,7 +70,7 @@ class BatchNorm(StatefulLayer):
         axis_name: Hashable | Sequence[Hashable],
         eps: float = 1e-05,
         channelwise_affine: bool = True,
-        momentum: float = 0.99,
+        momentum: float = 0.1,
         inference: bool = False,
         dtype=None,
         **kwargs,
