@@ -150,3 +150,7 @@ dmypy.json
 *.jpeg
 *.gif
 *.pdf
+
+# specific debugging and experimental files
+DAS_github_issue.py
+
