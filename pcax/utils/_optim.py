@@ -1,12 +1,13 @@
 __all__ = ["Optim"]
 
+from typing import Callable, Any
 from jaxtyping import PyTree
 import optax
 import jax.tree_util as jtu
 import equinox as eqx
 
 from ..core._module import BaseModule
-from ..core._parameter import Param, BaseParam, set, get
+from ..core._parameter import Param, DynamicParam, BaseParam, set, get
 from ..core._static import static
 
 
@@ -54,7 +55,8 @@ class Optim(BaseModule):
         grads: PyTree,
         scale_by: float | None = None,
         apply_updates: bool = True,
-    ) -> None:
+        allow_none: bool = False,
+    ) -> PyTree:
         """Performs a gradient update step similarly to Pytorch's 'optimizer.step()' by calling first 'optax_opt.update'
         and then 'eqx.apply_updates'.
 
@@ -65,6 +67,10 @@ class Optim(BaseModule):
             scale_by (float, optional): if given, the gradients are multiplied by value before calling the optimizer.
             apply_updates (bool, optional): if True, the updates are applied to the module parameters, if False, they
                 are simply returned.
+            allow_none (bool, optional): if True, the method will not raise an error if some gradients are None.
+
+        Returns:
+            PyTree: returns the computed updates.
         """
 
         # Filter out the Params that do not have a gradient (this, for example, includes all the StaticParam whose
@@ -74,19 +80,44 @@ class Optim(BaseModule):
         # parameters structure.
         # For example 'grads' could contain gradients computed for parameters not targeted by this optimiser without
         # causing any issue since they will be filtered out automatically.
-        module = eqx.filter(
-            module, self.filter.get(), is_leaf=lambda x: isinstance(x, BaseParam)
-        )
+
+        _is_valid_grads = True
 
         if scale_by is not None:
-            _filter_fn = lambda x, f: set(x, x * scale_by) if f is True else None
+
+            def _map_grad(_, g):
+                nonlocal _is_valid_grads
+                if get(g) is None:
+                    _is_valid_grads = False
+
+                    return g
+
+                return set(g, g * scale_by)
         else:
-            _filter_fn = lambda x, f: x if f is True else None
+
+            def _map_grad(_, g):
+                nonlocal _is_valid_grads
+                if get(g) is None:
+                    _is_valid_grads = False
+
+                return g
 
         grads = jtu.tree_map(
-            _filter_fn,
-            grads,
+            _map_grad,
             self.filter.get(),
+            grads,
+            is_leaf=lambda x: isinstance(x, BaseParam),
+        )
+
+        if _is_valid_grads is False:
+            if allow_none is False:
+                raise ValueError("Gradients for some parameters are None.")
+            return None
+
+        module = jtu.tree_map(
+            lambda _, x: x,
+            self.filter.get(),
+            module,
             is_leaf=lambda x: isinstance(x, BaseParam),
         )
 
@@ -123,17 +154,106 @@ class Optim(BaseModule):
         # optimizer.
         self.filter.set(
             jtu.tree_map(
-                lambda x: get(x) is not None,
+                lambda _: True,
                 parameters,
                 is_leaf=lambda x: isinstance(x, BaseParam),
             )
-        )
-        parameters = eqx.filter(
-            parameters, self.filter.get(), is_leaf=lambda x: isinstance(x, BaseParam)
         )
 
         self.state.set(self.optax_opt.init(parameters))
 
     def clear(self) -> None:
+        """Reset the optimizer state.
+        """
         self.state.set(None)
         self.filter.set(None)
+
+
+class OptimTree(BaseModule):
+    """OptimTree creates multiple optimizers for each leaf of the provided parameters, specified by `leaf_fn`. This is useful when
+    different set of parameters are optimized at separate times. By default, a different optimizer is created for each Param.
+    """
+
+    def __init__(
+        self,
+        optax_opt: optax.GradientTransformation,
+        leaf_fn: Callable[[Any], bool],
+        parameters: PyTree | None = None,
+    ):
+        """OptimTree constructor.
+
+        Args:
+            optax_opt (optax.GradientTransformation): the optax constructor function.
+            leaf_fn (Callable[[Any], bool]): function to specify which nodes to target for optimization. For each node a separate
+                optimizer is created.
+            parameters (PyTree | None, optional): target parameters. The init method can be called separately by passing
+                None.
+        """
+
+        self.optax_opt = static(optax_opt)
+        self.leaf_fn = static(leaf_fn)
+        self.state = Param(None)
+
+        if parameters is not None:
+            self.init(parameters)
+
+    def init(self, parameters: PyTree) -> None:
+        leaves, structure = jtu.tree_flatten(
+            parameters, is_leaf=lambda x: isinstance(x, DynamicParam) or self.leaf_fn(x)
+        )
+
+        optims = (Optim(self.optax_opt, n) for n in leaves)
+
+        self.state.set(jtu.tree_unflatten(structure, optims))
+
+    def step(
+        self,
+        module: PyTree,
+        grads: PyTree,
+        scale_by: float | None = None,
+        apply_updates: bool = True,
+    ) -> PyTree:
+        """Performs a gradient update step similarly to Pytorch's 'optimizer.step()' by calling first 'optax_opt.update'
+        and then 'eqx.apply_updates'.
+
+        Args:
+            module (PyTree): the module storing the target parameters.
+            grads (PyTree): the computed gradients to apply. Provided gradients must match the same structure of the
+                module used to initialise the optimizer. If the a gradient is None, the corresponding parameter group
+                (i.e., the set of parameters contained in a node specified by the constructor's 'leaf_fn') is skipped
+                during optimization.
+            scale_by (float, optional): if given, the gradients are multiplied by value before calling the optimizer.
+            apply_updates (bool, optional): if True, the updates are applied to the module parameters, if False, they
+                are simply returned.
+        Returns:
+            PyTree: returns the computed updates.
+        """
+
+        # Each optimizer independently checks if the gradients are None and skips the optimization step if so.
+        updates = jtu.tree_map(
+            lambda optim, g, m: optim.step(
+                m, g, scale_by=scale_by, apply_updates=apply_updates, allow_none=True
+            ),
+            self.state.get(),
+            grads,
+            module,
+            is_leaf=lambda x: isinstance(x, Optim),
+        )
+
+        return updates
+
+    def apply_updates(self, module: PyTree, updates: PyTree) -> None:
+        # TODO: check this works properly as intended
+        jtu.tree_map(
+            lambda optim, u, m: optim.apply_updates(m, u),
+            self.state.get(),
+            updates,
+            module,
+            is_leaf=lambda x: isinstance(x, Optim),
+        )
+
+    def clear(self) -> None:
+        """Reset each optimizer state.
+        """
+
+        self.state.set(None)
