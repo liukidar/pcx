@@ -107,12 +107,15 @@ class BaseModule(metaclass=_BaseModuleMeta):
             self, is_leaf=lambda x: isinstance(x, DynamicParam)
         )
 
-        return "\n".join(
-            (
-                f"({self.__class__.__name__}):",
-                *(f"  {jtu.keystr(key)}: {repr(value)}" for key, value in leaves),
+        if len(leaves):
+            return "\n".join(
+                (
+                    f"({self.__class__.__name__}):",
+                    *(f"  {jtu.keystr(key)}: {repr(value)}" for key, value in leaves)
+                )
             )
-        )
+        else:
+            return f"({self.__class__.__name__}):  (empty)"
 
     def submodules(self, *, cls: Type[T] | None = None) -> Generator[T, None, None]:
         """Return the children submodules of the given type. Does not work recursively, and
