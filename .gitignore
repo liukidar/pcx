@@ -154,3 +154,4 @@ dmypy.json
 # specific debugging and experimental files
 DAS_github_issue.py
 
+examples/experiments/
