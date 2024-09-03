@@ -71,3 +71,23 @@ for graph_type, csv_file in csv_files.items():
 
     # Show the plot, which will be interactable
     plt.show()
+
+    # also plot shd vs lam_h and shd vs lam_l1
+    fig, axs = plt.subplots(1, 2, figsize=(14, 8))
+    axs[0].scatter(lam_h, SHD)
+    axs[0].set_xlabel('lam_h')
+    axs[0].set_ylabel('SHD')
+    axs[0].set_title(f'SHD vs lam_h for {graph_type}')
+
+    axs[1].scatter(lam_l1, SHD)
+    axs[1].set_xlabel('lam_l1')
+    axs[1].set_ylabel('SHD')
+    axs[1].set_title(f'SHD vs lam_l1 for {graph_type}')
+
+    # Save the figure
+    save_path = os.path.join(experiments_path, f"{graph_type}_SHD_scatter_plots.png")
+    plt.savefig(save_path)
+    print(f"Figure saved as {save_path}")
+
+    # Show the plot, which will be interactable
+    plt.show()

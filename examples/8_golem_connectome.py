@@ -10,7 +10,7 @@ from tqdm.auto import tqdm
 import torch
 
 # Set environment variables
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 # pcax
@@ -61,8 +61,8 @@ SF_true = simulate_dag(d=279, s0=1674, graph_type='SF')
 
 # Select B_true graph (the true adjacency matrix to use)
 #B_true = C_dag_bin  # if you want to use the connectome-based DAG
-B_true = ER_dag_bin # if you want to use the ER-based DAG
-#B_true = SF_true # if you want to use the SF-based DAG
+#B_true = ER_dag_bin # if you want to use the ER-based DAG
+B_true = SF_true # if you want to use the SF-based DAG
 
 # Simulate parameters and data
 W_true = simulate_parameter(B_true)
@@ -71,9 +71,9 @@ X = simulate_linear_sem(W_true, n=1000, sem_type='gauss')
 ################################################# HYPERPARAMETERS #################################################
 
 # Set hyperparameter ranges for grid search
-w_learning_rate_values = [5e-3, 5e-2]
-lam_h_values = [1e1, 1e3, 1e5]
-lam_l1_values = [1e-2, 1, 1e2] #[1e-4, 1e-3, 1e-2]
+w_learning_rate_values = [5e-3]
+lam_h_values = [1e-5, 1e-1, 1e1, 1e5]
+lam_l1_values = [1e-5, 1e-1, 1e1, 1e5]
 h_learning_rate = 5e-4
 T = 1
 nm_epochs = 100000
