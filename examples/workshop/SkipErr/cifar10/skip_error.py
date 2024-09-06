@@ -55,6 +55,8 @@ class SkipError(pxc.EnergyModule):
         input_dim: tuple[int, int, int],
         hidden_dim: int,
         num_classes: int,
+        backward_indices: list,
+        beta: float,
         act_fn: Callable[[jax.Array], jax.Array],
     ) -> None:
         super().__init__()
@@ -64,6 +66,8 @@ class SkipError(pxc.EnergyModule):
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
         self.act_fn = px.static(act_fn)
+        self.backward_indices = px.static(backward_indices)
+        self.beta = beta
 
         self.layer_dims = [math.prod(input_dim)] + [hidden_dim for _ in range(num_layers - 1)] + [num_classes]
 
@@ -71,13 +75,18 @@ class SkipError(pxc.EnergyModule):
         for layer_input, layer_output in zip(self.layer_dims[:-1], self.layer_dims[1:]):
             self.layers.append(pxnn.Linear(layer_input, layer_output))
 
+        self.backward_layers = [pxnn.Linear(num_classes, hidden_dim) for i in range(len(backward_indices))]
+
         self.vodes = []
         for layer_output in self.layer_dims[1:-1]:
             self.vodes.append(pxc.Vode())
-        self.vodes.append(pxc.Vode(pxc.ce_energy))
+        self.vodes.append(pxc.Vode(pxc.se_energy))
         self.vodes[-1].h.frozen = True
 
-    def __call__(self, x, y=None, beta=1.0):
+        # for index in self.backward_indices:
+        #     self.vodes[index].h.frozen = True
+
+    def __call__(self, x, y=None):
         x = x.flatten()
 
         for i, layer in enumerate(self.layers):
@@ -86,13 +95,20 @@ class SkipError(pxc.EnergyModule):
             x = act_fn(self.vodes[i](x))
 
         if y is not None:
-            self.vodes[-1].set("h", self.vodes[-1].get("u") - beta * (self.vodes[-1].get("u") - y))
+            self.vodes[-1].set("h", y)
+
+            error = self.vodes[-1].get("u") - y
+
+            for i, index in enumerate(self.backward_indices):
+                h_hat = self.backward_layers[i](error)
+                self.vodes[index].set("h", self.vodes[index].get("h") - self.beta * h_hat)
+
         return self.vodes[-1].get("u")
 
 
 @pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), in_axes=(0, 0), out_axes=0)
-def forward(x, y, *, model: SkipError, beta=1.0):
-    return model(x, y, beta=beta)
+def forward(x, y=None, *, model: SkipError):
+    return model(x, y)
 
 
 @pxf.vmap(
@@ -102,7 +118,7 @@ def forward(x, y, *, model: SkipError, beta=1.0):
     axis_name="batch",
 )
 def energy(x, *, model: SkipError):
-    y_ = model(x, None)
+    y_ = model(x)
     return jax.lax.psum(model.energy(), "batch"), y_
 
 
@@ -165,6 +181,7 @@ def run_experiment(
     dataset_name: str = "cifar10",
     num_layers: int,
     hidden_dim: int,
+    beta: float,
     num_classes: int = 10,
     act_fn: str | None,
     batch_size: int,
@@ -195,21 +212,26 @@ def run_experiment(
         hidden_dim=hidden_dim,
         num_classes=num_classes,
         act_fn=ACTIVATION_FUNCS[act_fn],
+        beta=beta,
+        backward_indices=[2, 5],
     )
 
-    with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-        forward(jnp.zeros((batch_size, math.prod(input_dim))), None, model=model)
+    # with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
+    #     forward(jnp.zeros((batch_size, math.prod(input_dim))), None, model=model)
 
     optim_h = pxu.Optim(optax.sgd(learning_rate=optim_x_lr, momentum=optim_x_momentum))
+    mask = pxu.M(pxnn.LayerParam)(model)
+    mask.backward_layers = jax.tree_util.tree_map(
+        lambda x: None, mask.backward_layers, is_leaf=lambda x: isinstance(x, pxnn.LayerParam)
+    )
+
     if optim_w_name == "adamw":
         optim_w = pxu.Optim(
             optax.adamw(learning_rate=optim_w_lr, weight_decay=optim_w_wd),
-            pxu.M(pxnn.LayerParam)(model),
+            mask,
         )
     elif optim_w_name == "sgd":
-        optim_w = pxu.Optim(
-            optax.sgd(learning_rate=optim_w_lr, momentum=optim_w_momentum), pxu.M(pxnn.LayerParam)(model)
-        )
+        optim_w = pxu.Optim(optax.sgd(learning_rate=optim_w_lr, momentum=optim_w_momentum), mask)
     else:
         raise ValueError(f"Unknown optimizer name: {optim_w_name}")
 
@@ -238,6 +260,8 @@ def run_experiment(
             best_acc = mean_acc
         print(f"Epoch {epoch + 1}/{epochs} - Test Accuracy: {mean_acc:.4f}")
 
+    print(f"\nBest accuracy: {best_acc}")
+
     return min(test_acc) if test_acc else np.nan
 
 
@@ -255,6 +279,7 @@ if __name__ == "__main__":
         seed=get_config_value(config, "seed", required=False),
         num_layers=get_config_value(config, "hp/num_layers"),
         hidden_dim=get_config_value(config, "hp/hidden_dim"),
+        beta=get_config_value(config, "hp/beta"),
         act_fn=get_config_value(config, "hp/act_fn"),
         batch_size=get_config_value(config, "hp/batch_size"),
         epochs=get_config_value(config, "hp/epochs"),

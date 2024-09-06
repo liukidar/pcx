@@ -6,12 +6,13 @@ hp:
     act_fn:
         sample_type: categorical
         sample_space: [relu, leaky_relu, gelu, tanh, hard_tanh]
-        default: gelu
+        default: leaky_relu
     num_layers: 8
     hidden_dim: 128
+    beta: 0.0001
     batch_size: 200
     epochs: 20
-    T: 10
+    T: 16
     optim:
         x:
             lr:
@@ -21,7 +22,7 @@ hp:
             momentum:
                 sample_type: float
                 sample_space: [[0.0, 0.95], 0.05]
-                default: 0.1
+                default: 0.9
         w:
             name: adamw
             lr:
