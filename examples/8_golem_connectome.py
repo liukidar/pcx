@@ -10,7 +10,7 @@ from tqdm.auto import tqdm
 import torch
 
 # Set environment variables
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 # pcax
@@ -72,11 +72,11 @@ X = simulate_linear_sem(W_true, n=1000, sem_type='gauss')
 
 # Set hyperparameter ranges for grid search
 w_learning_rate_values = [5e-3]
-lam_h_values = [1e-5, 1e-1, 1e1, 1e5]
-lam_l1_values = [1e-5, 1e-1, 1e1, 1e5]
+lam_h_values = [1e2, 1e4, 1e8]
+lam_l1_values = [1e-4, 1e-2, 1e6]
 h_learning_rate = 5e-4
 T = 1
-nm_epochs = 100000
+nm_epochs = 1000000
 batch_size = 128
 
 # Determine the graph type based on B_true
@@ -385,7 +385,7 @@ for w_learning_rate, lam_h, lam_l1 in itertools.product(w_learning_rate_values, 
     print(f"Start difference (cont.) between W_true and W_init: {MAE_init:.4f}")
 
     SHD_init = SHD(B_true, compute_binary_adjacency(model.get_W()))
-    print(f"Start SHD between W_true and W_init: {SHD_init:.4f}")
+    print(f"Start SHD between B_true and B_init: {SHD_init:.4f}")
 
     # Print the values of the diagonal of the initial W
     print("The diagonal of the initial W: ", jnp.diag(model.get_W()))
