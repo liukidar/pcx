@@ -1,0 +1,35 @@
+direction: minimize
+gpus_per_task: 1
+dataset_name: cifar10
+seed: 0
+hp:
+    act_fn:
+        sample_type: categorical
+        sample_space: [relu, leaky_relu, gelu, tanh, hard_tanh]
+        default: gelu
+    num_layers: 8
+    hidden_dim: 128
+    batch_size: 200
+    epochs: 20
+    T: 10
+    optim:
+        x:
+            lr:
+                sample_type: float
+                sample_space: [[1e-2, 5e-1], null, true]
+                default: 0.1
+            momentum:
+                sample_type: float
+                sample_space: [[0.0, 0.95], 0.05]
+                default: 0.1
+        w:
+            name: adamw
+            lr:
+                sample_type: float
+                sample_space: [[3e-5, 1e-3], null, true]
+                default: 0.0001
+            wd:
+                sample_type: float
+                sample_space: [[1e-5, 1e-2], null, true]
+                default: 0.0001
+            momentum: 0.0
