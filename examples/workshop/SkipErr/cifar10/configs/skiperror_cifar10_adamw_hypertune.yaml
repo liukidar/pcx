@@ -1,6 +1,7 @@
 direction: minimize
 gpus_per_task: 1
 dataset_name: cifar10
+num_classes: 10
 seed: 0
 hp:
     act_fn:
@@ -9,10 +10,13 @@ hp:
         default: leaky_relu
     num_layers: 8
     hidden_dim: 128
-    beta: 0.0001
+    skip_error_layer_indices: [2, 5]
+    freeze_skip_layers: false
+    beta: 1.0
+    beta_annealing: true
     batch_size: 200
     epochs: 20
-    T: 16
+    T: 8
     optim:
         x:
             lr:
@@ -22,15 +26,15 @@ hp:
             momentum:
                 sample_type: float
                 sample_space: [[0.0, 0.95], 0.05]
-                default: 0.9
+                default: 0.5
         w:
-            name: adamw
+            name: sgd
             lr:
                 sample_type: float
                 sample_space: [[3e-5, 1e-3], null, true]
-                default: 0.0001
+                default: 0.01
             wd:
                 sample_type: float
                 sample_space: [[1e-5, 1e-2], null, true]
-                default: 0.0001
-            momentum: 0.0
+                default: 0.001
+            momentum: 0.9
