@@ -20,8 +20,11 @@ import pcax.utils as pxu
 import pcax.functional as pxf
 from pcax import RKG
 
-sys.path.insert(0, "../../../")
-from data_utils import get_vision_dataloaders, seed_everything, get_config_value  # noqa: E402
+
+jax.config.update("jax_debug_nans", True)
+
+sys.path.insert(0, "../../")
+from data_utils import seed_everything, get_config_value  # noqa: E402
 
 sys.path.pop(0)
 
@@ -48,55 +51,68 @@ ACTIVATION_FUNCS = {
 }
 
 
-class SkipError(pxc.EnergyModule):
+def print_nans(msg: str, obj):
+    if isinstance(obj, jax.Array):
+        has_nans = jnp.isnan(obj).any()
+    else:
+        leafs, _ = jax.tree.flatten(obj)
+        has_nans = jnp.any(jnp.array([jnp.isnan(x).any() for x in leafs]))
+    jax.debug.print(msg + ": {x}", x=has_nans)
+
+
+class PCRNN(pxc.EnergyModule):
     def __init__(
         self,
-        max_seq_length: int,
+        max_seq_len: int,
         input_dim: int,
         hidden_dim: int,
         output_dim: int,
         act_fn: Callable[[jax.Array], jax.Array],
     ) -> None:
         super().__init__()
-
-        self.max_seq_length = max_seq_length
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
-        self.output_dim = output_dim
+        self.max_seq_len = px.static(max_seq_len)
+        self.input_dim = px.static(input_dim)
+        self.hidden_dim = px.static(hidden_dim)
+        self.output_dim = px.static(output_dim)
         self.act_fn = px.static(act_fn)
         self.W_input = pxnn.Linear(input_dim, hidden_dim, bias=False)
         self.W_hidden = pxnn.Linear(hidden_dim, hidden_dim, bias=False)
         self.W_out = pxnn.Linear(hidden_dim, output_dim, bias=False)
-        self.hidden_vodes = [pxc.Vode() for _ in range(self.max_seq_length)]
-        self.out_vodes = [pxc.Vode(pxc.se_energy) for _ in range(self.max_seq_length)]
+        self.hidden_vodes = [pxc.Vode() for _ in range(max_seq_len)]
+        self.out_vodes = [pxc.Vode(pxc.se_energy) for _ in range(max_seq_len)]
         for v in self.out_vodes:
             v.h.frozen = True
 
     def __call__(self, x, y=None):
         seq_len = x.shape[0]
-        input_dim = x.shape[1]
-        assert seq_len <= self.max_seq_length, "Sequence length cannot exceed the number of VODEs."
-        assert input_dim == self.input_dim, "Input dimension mismatch."
+        input_dim = 1
+        if len(x.shape) > 1:
+            input_dim = x.shape[1]
+        assert seq_len <= self.max_seq_len.get(), "Sequence length cannot exceed the number of VODEs."
+        assert input_dim == self.input_dim.get(), "Input dimension mismatch."
 
-        h = jnp.zeros(self.hidden_dim)
-        preds = jnp.zeros((self.max_seq_length, self.output_dim))
+        h = jnp.zeros(self.hidden_dim.get())
+        preds = jnp.zeros((self.max_seq_len.get(), self.output_dim.get()))
         for t in range(seq_len):
             h = self.W_hidden(h) + self.W_input(x[t])
             h = self.hidden_vodes[t](h)
+            # print_nans("h is NaN", h)
             h = self.act_fn(h)
             pred = self.W_out(h)
-            pred = self.out_vodes[t](pred)
+            self.out_vodes[t](pred)
             preds = preds.at[t].set(pred)
+            # print_nans("pred is NaN", pred)
 
             if y is not None:
                 self.out_vodes[t].set("h", y[t])
 
+        # jax.debug.print("Preds: {p}", p=preds)
         return preds
 
 
 @pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), in_axes=(0, 0), out_axes=0)
-def forward(x, y=None, beta=0.0, *, model: SkipError):
-    return model(x, y, beta)
+def forward(x, y=None, *, model: PCRNN):
+    return model(x, y)
 
 
 @pxf.vmap(
@@ -105,91 +121,111 @@ def forward(x, y=None, beta=0.0, *, model: SkipError):
     out_axes=(None, 0),
     axis_name="batch",
 )
-def energy(x, *, model: SkipError):
+def energy(x, *, model: PCRNN):
     y_ = model(x)
     return jax.lax.psum(model.energy(), "batch"), y_
 
 
-@pxf.jit(static_argnums=0)
-def train_on_batch(
-    T: int, x: jax.Array, y: jax.Array, beta: float, *, model: SkipError, optim_w: pxu.Optim, optim_h: pxu.Optim
-):
+# @pxf.jit(static_argnums=0)
+def train_on_batch(T: int, x: jax.Array, y: jax.Array, *, model: PCRNN, optim_w: pxu.Optim, optim_h: pxu.Optim):
     model.train()
 
     # Init step
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-        forward(x, y, beta, model=model)
+        forward(x, y, model=model)
     optim_h.init(pxu.M_hasnot(pxc.VodeParam, frozen=True)(model))
 
     # Inference steps
     for _ in range(T):
         with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-            _, g = pxf.value_and_grad(pxu.M_hasnot(pxc.VodeParam, frozen=True).to(([False, True])), has_aux=True)(
+            e, g = pxf.value_and_grad(pxu.M_hasnot(pxc.VodeParam, frozen=True).to(([False, True])), has_aux=True)(
                 energy
             )(x, model=model)
 
+        # print_nans("X update NaNs", g["model"])
+        all_grads = jnp.array(jax.tree.flatten(g["model"])[0])
+        jax.debug.print(
+            "E: {e:.4f}; grad.mean: {gm:.4f}; grad.std: {gs:.4f}",
+            e=e[0].mean(),
+            gm=all_grads.mean(),
+            gs=all_grads.std(),
+        )
         optim_h.step(model, g["model"])
     optim_h.clear()
 
     # Learning step
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
         _, g = pxf.value_and_grad(pxu.M(pxnn.LayerParam).to([False, True]), has_aux=True)(energy)(x, model=model)
-
-        for i, index in enumerate(model.skip_error_layer_indices):
-            error = jnp.expand_dims(model.hidden_vodes[-1].get("h") - model.hidden_vodes[-1].get("u"), -1)
-            state = jnp.expand_dims(model.hidden_vodes[index].get("h"), -1)
-            grad = jnp.mean(
-                -state @ jnp.transpose(error, (0, 2, 1)),
-                axis=0,
-            )
-            # jax.debug.print("grad variance: {x}", x=jnp.var(grad))
-            g["model"].skip_error_layers[i].nn.weight.set(grad)
+    # print_nans("W update NaNs", g["model"])
     optim_w.step(model, g["model"], scale_by=1.0 / x.shape[0])
 
 
-@pxf.jit()
-def eval_on_batch(x: jax.Array, y: jax.Array, *, model: SkipError):
+# @pxf.jit()
+def eval_on_batch(x: jax.Array, y: jax.Array, *, model: PCRNN):
     model.eval()
 
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-        y_ = forward(x, None, 0.0, model=model).argmax(axis=-1)
+        y_ = forward(x, None, model=model)
 
-    return (y_ == y).mean(), y_
+    jax.debug.print("Eval pred: {y}; exp: {e}", y=y_, e=y)
+
+    return jnp.pow(y - y_[..., None], 2).mean()
 
 
-def train(dl, T, *, model: SkipError, optim_w: pxu.Optim, optim_h: pxu.Optim, beta: float):
+def train(dl, T, *, model: PCRNN, optim_w: pxu.Optim, optim_h: pxu.Optim):
     for i, (x, y) in enumerate(dl):
-        train_on_batch(T, x, jax.nn.one_hot(y, 10), beta, model=model, optim_w=optim_w, optim_h=optim_h)
-
-    for i in range(len(model.skip_error_layers)):
-        print(f"E{i} variance: ", jnp.var(model.skip_error_layers[i].nn.weight.get()))
-        print(f"E{i} mean: ", jnp.mean(model.skip_error_layers[i].nn.weight.get()))
+        train_on_batch(T, x, y, model=model, optim_w=optim_w, optim_h=optim_h)
 
 
-def eval(dl, *, model: SkipError):
-    acc = []
-    ys_ = []
-
+def eval(dl, *, model: PCRNN):
+    mses = []
     for x, y in dl:
-        a, y_ = eval_on_batch(x, y, model=model)
-        acc.append(a)
-        ys_.append(y_)
+        mse = eval_on_batch(x, y, model=model)
+        mses.append(mse)
 
-    return np.mean(acc), np.concatenate(ys_)
+    return np.mean(mses)
+
+
+def get_dataloaders(
+    max_seq_len: int = 100,
+    train_size: int = 9000,
+    test_size: int = 1000,
+    batch_size: int = 2,
+):
+
+    class DataLoader:
+        def __init__(self, x, y):
+            self.x = x
+            self.y = y
+
+        def __iter__(self):
+            return zip(self.x, self.y)
+
+    x = jnp.linspace(0, 8 * math.pi, train_size + test_size).reshape(-1, max_seq_len, 1)
+    y = jnp.sin(x)
+    split = train_size // max_seq_len
+    train_x = jnp.array_split(x[:split], train_size / max_seq_len / batch_size)
+    train_y = jnp.array_split(y[:split], train_size / max_seq_len / batch_size)
+    test_x = jnp.array_split(x[split:], test_size / max_seq_len / batch_size)
+    test_y = jnp.array_split(y[split:], test_size / max_seq_len / batch_size)
+    return DataLoader(train_x, train_y), DataLoader(test_x, test_y)
+
+
+def window_mask(array_size: int, window_size: int) -> jax.Array:
+    assert array_size > window_size
+    i = jnp.arange(array_size)
+    lower_part = i[:, None] > i[None, :] - window_size // 2 - 1
+    upper_part = i[:, None] < i[None, :] + window_size // 2 + window_size % 2
+    mask = (lower_part & upper_part).astype(jnp.float32)
+    return mask
 
 
 def run_experiment(
     *,
-    dataset_name: str,
-    num_classes: int,
-    num_layers: int,
-    hidden_dim: int,
-    skip_error_layer_indices: list[int],
-    freeze_skip_layers: bool,
-    beta: float,
-    beta_annealing: bool,
     act_fn: str | None,
-    batch_size: int,
+    max_seq_len: int,
+    train_size: int,
+    test_size: int,
     epochs: int,
     T: int,
     optim_x_lr: float,
@@ -207,22 +243,21 @@ def run_experiment(
     if checkpoint_dir is not None:
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    dataset = get_vision_dataloaders(dataset_name=dataset_name, batch_size=batch_size, should_normalize=False)
+    max_seq_len = 5
 
-    input_dim = dataset.train_dataset[0][0].shape
+    # train_dl, test_dl = get_dataloaders(
+    #     max_seq_len=max_seq_len,
+    #     train_size=train_size,
+    #     test_size=test_size,
+    # )
 
-    model = SkipError(
-        num_layers=num_layers,
-        input_dim=input_dim,
-        hidden_dim=hidden_dim,
-        num_classes=num_classes,
+    model = PCRNN(
+        max_seq_len=max_seq_len,
+        input_dim=1,
+        hidden_dim=16,
+        output_dim=1,
         act_fn=ACTIVATION_FUNCS[act_fn],
-        skip_error_layer_indices=skip_error_layer_indices,
-        freeze_skip_layers=freeze_skip_layers,
     )
-
-    # with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-    #     forward(jnp.zeros((batch_size, math.prod(input_dim))), None, model=model)
 
     optim_h = pxu.Optim(optax.sgd(learning_rate=optim_x_lr, momentum=optim_x_momentum))
     mask = pxu.M(pxnn.LayerParam)(model)
@@ -240,61 +275,60 @@ def run_experiment(
     else:
         raise ValueError(f"Unknown optimizer name: {optim_w_name}")
 
-    model_save_dir: Path | None = checkpoint_dir / dataset_name / "best_model" if checkpoint_dir is not None else None
+    model_save_dir: Path | None = checkpoint_dir / "best_model" if checkpoint_dir is not None else None
     if model_save_dir is not None:
         model_save_dir.mkdir(parents=True, exist_ok=True)
 
     print("Training...")
 
-    best_acc: float | None = None
-    test_acc: list[float] = []
+    x = jnp.arange(max_seq_len) % 2
+    conv_kernel = jnp.array([3, 2, 1])
+    y = jax.nn.standardize(jnp.convolve(x, conv_kernel))[None, :, None]
+    x = x.reshape(1, -1, 1)
+
+    print(y)
+
+    best_mse: float | None = None
+    test_mse: list[float] = []
     for epoch in range(epochs):
-        effective_beta = beta
-        if beta_annealing:
-            effective_beta = max(0.1, min(1.0, (beta + 1.0) / (epoch + 1.0)))
+        train_on_batch(5, x, y, model=model, optim_w=optim_w, optim_h=optim_h)
+        mse = eval_on_batch(x, y, model=model)
+        print("MSE:", mse)
+
+        continue
         train(
-            dataset.train_dataloader,
+            train_dl,
             T=T,
             model=model,
             optim_w=optim_w,
             optim_h=optim_h,
-            beta=effective_beta,
         )
-        mean_acc, _ = eval(dataset.test_dataloader, model=model)
-        if np.isnan(mean_acc):
+        avg_mse = eval(test_dl, model=model)
+        if np.isnan(avg_mse):
             logging.warning("Model diverged. Stopping training.")
             break
-        test_acc.append(mean_acc)
-        if epochs > 1 and model_save_dir is not None and (best_acc is None or mean_acc >= best_acc):
-            best_acc = mean_acc
-        print(f"Epoch {epoch + 1}/{epochs} - Test Accuracy: {mean_acc:.4f}")
+        test_mse.append(avg_mse)
+        if epochs > 1 and model_save_dir is not None and (best_mse is None or avg_mse <= best_mse):
+            best_mse = avg_mse
+        print(f"Epoch {epoch + 1}/{epochs} - Test MSE: {avg_mse:.4f}")
 
-    print(f"\nBest accuracy: {best_acc}")
+    # print(f"\nBest MSE: {best_mse}")
 
-    return min(test_acc) if test_acc else np.nan
+    # return min(test_mse) if test_mse else np.nan
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--config", type=str, default="configs/skiperror_cifar10_adamw_hypertune.yaml", help="Path to the config file."
-    )
+    parser.add_argument("--config", type=str, default="configs/rnn.yaml", help="Path to the config file.")
 
     args = parser.parse_args()
     config = OmegaConf.load(args.config)
 
     run_experiment(
-        dataset_name=get_config_value(config, "dataset_name"),
-        num_classes=get_config_value(config, "num_classes"),
-        seed=get_config_value(config, "seed", required=False),
-        num_layers=get_config_value(config, "hp/num_layers"),
-        hidden_dim=get_config_value(config, "hp/hidden_dim"),
-        skip_error_layer_indices=get_config_value(config, "hp/skip_error_layer_indices"),
-        freeze_skip_layers=get_config_value(config, "hp/freeze_skip_layers"),
-        beta=get_config_value(config, "hp/beta"),
-        beta_annealing=get_config_value(config, "hp/beta_annealing"),
         act_fn=get_config_value(config, "hp/act_fn"),
-        batch_size=get_config_value(config, "hp/batch_size"),
+        max_seq_len=get_config_value(config, "hp/max_seq_len"),
+        train_size=get_config_value(config, "hp/train_size"),
+        test_size=get_config_value(config, "hp/test_size"),
         epochs=get_config_value(config, "hp/epochs"),
         T=get_config_value(config, "hp/T"),
         optim_x_lr=get_config_value(config, "hp/optim/x/lr"),
@@ -303,5 +337,5 @@ if __name__ == "__main__":
         optim_w_lr=get_config_value(config, "hp/optim/w/lr"),
         optim_w_wd=get_config_value(config, "hp/optim/w/wd"),
         optim_w_momentum=get_config_value(config, "hp/optim/w/momentum"),
-        checkpoint_dir=Path("results/skip_error"),
+        checkpoint_dir=Path("results/rnn"),
     )
