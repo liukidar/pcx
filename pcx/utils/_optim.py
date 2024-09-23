@@ -42,7 +42,8 @@ class Optim(BaseModule):
             parameters (PyTree | None, optional): target parameters. The init method can be called separately by passing
                 None.
         """
-        self.optax_opt = static(optax_opt)
+        self.optax_opt_fn = static(optax_opt)
+        self.optax_opt = static(None)
         self.state = Param(None)
         self.filter = static(None)
 
@@ -115,10 +116,10 @@ class Optim(BaseModule):
             return None
 
         module = jtu.tree_map(
-            lambda _, x: x,
+            lambda x, y: None if x is None else y,
             self.filter.get(),
             module,
-            is_leaf=lambda x: isinstance(x, BaseParam),
+            is_leaf=lambda x: x is None or isinstance(x, BaseParam),
         )
 
         updates, state = self.optax_opt.update(
@@ -160,11 +161,12 @@ class Optim(BaseModule):
             )
         )
 
+        self.optax_opt.set(self.optax_opt_fn())
         self.state.set(self.optax_opt.init(parameters))
 
     def clear(self) -> None:
-        """Reset the optimizer state.
-        """
+        """Reset the optimizer state."""
+        self.optax_opt.set(None)
         self.state.set(None)
         self.filter.set(None)
 
@@ -231,13 +233,13 @@ class OptimTree(BaseModule):
 
         # Each optimizer independently checks if the gradients are None and skips the optimization step if so.
         updates = jtu.tree_map(
-            lambda optim, g, m: optim.step(
+            lambda optim, g, m: None if optim is None else optim.step(
                 m, g, scale_by=scale_by, apply_updates=apply_updates, allow_none=True
             ),
             self.state.get(),
             grads,
             module,
-            is_leaf=lambda x: isinstance(x, Optim),
+            is_leaf=lambda x: x is None or isinstance(x, Optim),
         )
 
         return updates
@@ -253,7 +255,6 @@ class OptimTree(BaseModule):
         )
 
     def clear(self) -> None:
-        """Reset each optimizer state.
-        """
+        """Reset each optimizer state."""
 
         self.state.set(None)

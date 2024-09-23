@@ -1,6 +1,6 @@
 venv_name = venv
 venv_activate_path := ./$(venv_name)/bin/activate
-package_name = pcax
+package_name = pcx
 cov_args := --cov $(package_name)
 
 .PHONY: clean venv lint test slowtest cov slowcov docs
@@ -52,4 +52,4 @@ cov:
 
 checktype:
 	. $(venv_activate_path) ;\
-	mypy pcax/
+	mypy pcx/

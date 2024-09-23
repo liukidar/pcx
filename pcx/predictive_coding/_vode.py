@@ -5,7 +5,7 @@ __all__ = [
 ]
 
 import jax
-from typing import Callable, Any, Tuple, Dict, Sequence
+from typing import Callable, Any, Dict, Sequence
 import re
 
 from ..core._random import RKG, RandomKeyGenerator
@@ -334,18 +334,21 @@ class Vode(EnergyModule):
             jax.Array: Vode energy
         """
         if "E" not in self.cache:
-            _E = self.energy_fn(self, rkg=rkg) if self.energy_fn is not None else 0.0
+            if self.energy_fn.get() is not None:
+                _E = self.energy_fn(self, rkg=rkg)
 
-            if self.h.shape == self.shape:
-                # if the shape is the same as the vode shape,
-                # '.energy' is being called from a vmapped function
-                # otherwise 'h' would have a an extra dimension (batch)
-                _E = _E.sum()
+                if self.h.shape == self.shape:
+                    # if the shape is the same as the vode shape,
+                    # '.energy' is being called from a vmapped function
+                    # otherwise 'h' would have a an extra dimension (batch)
+                    _E = _E.sum()
+                else:
+                    # .energy is being called from a non-vmapped function
+                    # we want to preserve the energy information of each element
+                    _E = jax.numpy.reshape(_E, (self.h.shape[0], -1)).sum(axis=1)
+
+                self.cache["E"] = _E
             else:
-                # .energy is being called from a non-vmapped function
-                # we want to preserve the energy information of each element
-                _E = jax.numpy.reshape(_E, (self.h.shape[0], -1)).sum(axis=1)
-
-            self.cache["E"] = _E
+                return 0.0
 
         return self.cache["E"]
