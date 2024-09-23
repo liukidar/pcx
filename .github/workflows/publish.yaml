@@ -10,6 +10,11 @@ jobs:
     build-n-publish:
         name: Build and publish to PyPI and TestPyPI
         runs-on: ubuntu-22.04
+        environment:
+          name: pypi
+          url: https://pypi.org/p/pcx
+        permissions:
+          id-token: write 
         steps:
             - uses: actions/checkout@master
 
@@ -32,5 +37,6 @@ jobs:
             - name: Build
               run: poetry build
 
-            - name: Publish
-              run: poetry publish
+            - name: pypi-publish
+              uses: pypa/gh-action-pypi-publish@v1.10.2
+            
