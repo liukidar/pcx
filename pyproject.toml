@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pcx"
-version = "0.6.2.post0"
+version = "0.6.2.post1"
 packages = [{ include = "pcx" }]
 description = "PCX is a Python JAX-based library designed to develop highly configurable predictive coding networks."
 authors = ["Luca Pinchetti <luca.pinchetti@cs.ox.ac.uk>"]
