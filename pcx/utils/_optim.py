@@ -107,7 +107,6 @@ class Optim(BaseModule):
             _map_grad,
             self.filter.get(),
             grads,
-            is_leaf=lambda x: isinstance(x, BaseParam),
         )
 
         if _is_valid_grads is False:
@@ -116,10 +115,9 @@ class Optim(BaseModule):
             return None
 
         module = jtu.tree_map(
-            lambda x, y: None if x is None else y,
+            lambda _, x: x,
             self.filter.get(),
             module,
-            is_leaf=lambda x: x is None or isinstance(x, BaseParam),
         )
 
         updates, state = self.optax_opt.update(
@@ -233,13 +231,13 @@ class OptimTree(BaseModule):
 
         # Each optimizer independently checks if the gradients are None and skips the optimization step if so.
         updates = jtu.tree_map(
-            lambda optim, g, m: None if optim is None else optim.step(
+            lambda optim, g, m: optim.step(
                 m, g, scale_by=scale_by, apply_updates=apply_updates, allow_none=True
             ),
             self.state.get(),
             grads,
             module,
-            is_leaf=lambda x: x is None or isinstance(x, Optim),
+            is_leaf=lambda x: isinstance(x, Optim),
         )
 
         return updates
