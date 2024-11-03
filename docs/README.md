@@ -1,10 +1,12 @@
 # Documentation
 
-## Introduction
+The docs are available on [![Documentation Status](https://readthedocs.org/projects/pcx/badge/?version=latest)](https://pcx.readthedocs.io/en/latest/?badge=latest)
+
+## Contribute
 
 You need to compile docs yourself using `Sphinx`. Once, closer to deployment this will be automated.
 
-The docs are in the `/docs` folder. You need the `sphinx` related requirements from `/requirements/requirements-dev.txt` to build it. Once, set up, it will be hosted automatically.
+The docs are in the `/docs` folder. You need the `sphinx` related requirements from the poetry `dev` group to build it.
 
 ## Build
 
