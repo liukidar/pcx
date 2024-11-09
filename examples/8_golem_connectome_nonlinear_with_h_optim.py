@@ -150,33 +150,43 @@ class Complete_Graph(pxc.EnergyModule):
         super().__init__()
 
         self.input_dim = px.static(input_dim)
-        self.n_nodes = px.static(n_nodes)
+        self.n_nodes = px.static(n_nodes) 
         self.hidden_dim = px.static(hidden_dim)
         self.has_bias = has_bias
 
         # Initialize MLPs for each connection (n_nodes x n_nodes matrix of MLPs)
         self.mlp_layers = []
+        # Initialize vodes only for hidden layers of MLPs
+        self.mlp_vodes = []
+        
         for i in range(n_nodes):
             node_layers = []
+            node_vodes = []
             for j in range(n_nodes):
                 # Create MLP: input_dim -> hidden_dim -> input_dim
                 mlp = [
                     pxnn.Linear(input_dim, hidden_dim, bias=has_bias),
                     pxnn.Linear(hidden_dim, input_dim, bias=has_bias)
                 ]
+                # Create vode only for hidden layer
+                vode = pxc.Vode((hidden_dim,))
                 node_layers.append(mlp)
+                node_vodes.append(vode)
 
             self.mlp_layers.append(node_layers)
+            self.mlp_vodes.append(node_vodes)
 
         # Initialize adjacency matrix as a LayerParam
         init_weights = jnp.ones((n_nodes, n_nodes))
         init_weights = jax.numpy.fill_diagonal(init_weights, 0.0, inplace=False)
         self.adj_weights = pxnn.LayerParam(init_weights)
 
-        # Initialize vodes
+        # Initialize main node vode
         self.vodes = [pxc.Vode((n_nodes, input_dim))]
+        #self.vodes = [pxc.Vode((n_nodes, ))]
 
     def freeze_nodes(self, freeze=True):
+        # Only freeze the main node vode
         self.vodes[0].h.frozen = freeze
 
     def are_vodes_frozen(self):
@@ -186,37 +196,96 @@ class Complete_Graph(pxc.EnergyModule):
         """Returns the weighted adjacency matrix."""
         return self.adj_weights.get()
 
+    #def mlp_forward(self, x, i, j):
+    #    """Forward pass through MLP for connection i->j with ReLU activation."""
+    #
+    #    # print shape of x inside mlp_forward
+    #    print(f"The shape of x inside mlp_forward: {x.shape}")
+    #
+    #    # print value of self.hidden_dim then print self.hidden_dim.get()
+    #    #print(f"This is self.hidden_dim: {self.hidden_dim}") # wrong because it is a px.static object
+    #    print(f"The is self.hidden_dim.get(): {self.hidden_dim.get()}") # correct
+    #    
+    #    if i == j:  # Skip self-loops but initialize Vode cache
+    #        # Create a dummy input for the Vode module to initialize the cache
+    #        dummy_input = jnp.zeros((self.hidden_dim.get(),))
+    #        out = self.mlp_vodes[i][j](dummy_input)
+    #        return out
+    #
+    #    # print the shape of x
+    #    print(f"The shape of x in mlp_forward: {x.shape}")
+    #
+    #    # First linear layer
+    #    h = self.mlp_layers[i][j][0](x)
+    #    # Apply activation and vode on hidden layer (vode not frozen)
+    #    h = jax.nn.relu(h)
+    #    h = self.mlp_vodes[i][j](h)
+    #    
+    #    # Final linear layer (no vode on output)
+    #    out = self.mlp_layers[i][j][1](h)
+    #    
+    #    return out
+
     def mlp_forward(self, x, i, j):
-
-        # print the shape of x
-        print(f"The shape of x in mlp_forward: {x.shape}")
-
         """Forward pass through MLP for connection i->j with ReLU activation."""
-        if i == j:  # Skip self-loops
+        if i == j:  # Skip self-loops but initialize Vode cache
+            # Create a dummy input for the Vode module to initialize the cache
+            dummy_input = jnp.zeros((self.hidden_dim.get(),))  # Use hidden_dim instead of input_dim
+            # Ensure hidden_dim.get() returns a concrete integer. If not, hardcode the value.
+            # For example, if hidden_dim is 3:
+            # dummy_input = jnp.zeros((3,))
+            self.mlp_vodes[i][j](dummy_input)
             return 0.0
-        
-        # First layer with ReLU activation
-        h = jax.nn.relu(self.mlp_layers[i][j][0](x))
-        # Second layer
+
+        # First linear layer
+        h = self.mlp_layers[i][j][0](x)
+        # Apply ReLU activation
+        h = jax.nn.relu(h)
+        # Pass through the Vode module
+        h = self.mlp_vodes[i][j](h)
+
+        # Final linear layer
         out = self.mlp_layers[i][j][1](h)
-        
+
         return out
+
 
     def __call__(self, x=None):
         n_nodes = self.n_nodes.get()
         input_dim = self.input_dim.get()
         
         if x is not None:
+
             # Initialize nodes with given data
-            reshaped_x = x.reshape(n_nodes, input_dim)
+            reshaped_x = x.reshape(n_nodes, input_dim)            
+            
+
+            # print the shape of x
+            print(f"The shape of x in __call__ if statement: {x.shape}")
+            # print the shape of reshaped_x
+            print(f"The shape of reshaped_x in __call__ if statement: {reshaped_x.shape}")
+
+
+            for j in range(n_nodes):
+                for i in range(n_nodes):
+                        mlp_out = self.mlp_forward(reshaped_x[i], i, j)      
+
+            # print successfully finished mlp_forward in __call__ for x is not None
+            print("Successfully finished mlp_forward in __call__ for x is not None")
+
             self.vodes[0](reshaped_x)
+
         else:
             # Get current node values
             x_ = self.vodes[0].get('h')
 
-            # print the shape of x_ in __call__ else statement
-            print(f"The shape of x_ in __call__ else statement: {x_.shape}")
+            reshaped_x_ = x_.reshape(n_nodes, input_dim)
             
+            # print the shape of x_
+            print(f"The shape of x_ in __call__ else statement: {x_.shape}")
+            # print the shape of reshaped_x_
+            print(f"The shape of reshaped_x_ in __call__ else statement: {reshaped_x_.shape}")
+
             # Compute weighted sum of MLP outputs for each node
             outputs = []
             for j in range(n_nodes):
@@ -230,6 +299,11 @@ class Complete_Graph(pxc.EnergyModule):
             # Stack outputs and update vodes
             output = jnp.stack(outputs)
             self.vodes[0](output)
+
+            # run the forward pass for each node to have VodeParam values that are not None
+            #for j in range(n_nodes):
+            #    for i in range(n_nodes):
+            #            mlp_out = self.mlp_forward(x_[i], i, j)
 
         return self.vodes[0].get('h')
 
@@ -262,8 +336,8 @@ print(model.are_vodes_frozen())
 # %%
 # TODO: make the below params global or input to the functions in which it is used.
 w_learning_rate = 1e-3 # Notes: 5e-1 is too high
-h_learning_rate = 5e-4
-T = 1
+h_learning_rate = 1e-2
+T = 64
 
 nm_epochs = 1000
 batch_size = 128
@@ -322,34 +396,48 @@ def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
         print("4. Doing forward for initialization")
         forward(x, model=model)
-        print("5. After forward for initialization")
+        print("5. After forward for initialization")    
+
+    # reinitialise the optimiser state between different batches (NOTE: this is just educational and not needed here because the SGD we use is not-stateful due to lack of momentum)
+    print("6. Reinitialising the optimiser state")
+    optim_h.init(pxu.Mask(pxc.VodeParam)(model))
+    print("7. Optimiser state reinitialised")
+
+    print(f"8. Doing {T} inference steps!")
+    for _ in range(T):
+        with pxu.step(model, clear_params=pxc.VodeParam.Cache):
+            _, g = pxf.value_and_grad(pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]), has_aux=True)(energy)(model=model)
+            optim_h.step(model, g["model"], True)
+
+    # print that T inference steps have been done
+    print("9. Done with T inference steps!")
         
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-        print("6. Before computing gradients")
+        print("10. Before computing gradients")
         _, g = pxf.value_and_grad(pxu.Mask(pxnn.LayerParam, [False, True]), has_aux=True)(energy)(model=model)
         print("7. After computing gradients")
         print("Gradient structure:", g)
 
-        print("8. Before zeroing out the diagonal gradients")
+        print("11. Before zeroing out the diagonal gradients")
         # Zero out the diagonal gradients using jax.numpy.fill_diagonal
         weight_grads = g["model"].adj_weights.get()
         weight_grads = jax.numpy.fill_diagonal(weight_grads, 0.0, inplace=False)
         g["model"].adj_weights.set(weight_grads)
-        print("9. After zeroing out the diagonal gradients")
+        print("12. After zeroing out the diagonal gradients")
 
         
-    print("10. Before optimizer step")
+    print("13. Before optimizer step")
     optim_w.step(model, g["model"])
-    print("11. After optimizer step")
+    print("14. After optimizer step")
 
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-        print("12. Before final forward")
+        print("15. Before final forward")
         forward(None, model=model)
         e_avg_per_sample = model.energy()
-        print("13. After final forward")
+        print("16. After final forward")
 
     model.freeze_nodes(freeze=False)
-    print("14. Nodes unfrozen")
+    print("17. Nodes unfrozen")
 
     return e_avg_per_sample
 

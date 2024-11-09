@@ -146,91 +146,79 @@ print(dir(pxu))
 # %%
 # v1: single vode
 class Complete_Graph(pxc.EnergyModule):
-    def __init__(self, input_dim: int, n_nodes: int, hidden_dim: int = 3, has_bias: bool = False) -> None:
+    def __init__(self, input_dim: int, n_nodes: int, has_bias: bool = False) -> None:
         super().__init__()
 
-        self.input_dim = px.static(input_dim)
-        self.n_nodes = px.static(n_nodes)
-        self.hidden_dim = px.static(hidden_dim)
+        self.input_dim = px.static(input_dim)  # Ensure input_dim is static
+        self.n_nodes = px.static(n_nodes)  # Keep n_nodes as a static value
         self.has_bias = has_bias
 
-        # Initialize MLPs for each connection (n_nodes x n_nodes matrix of MLPs)
-        self.mlp_layers = []
+        # Initialize a single linear layer for the weights and wrap it in a list
+        self.layers = [pxnn.Linear(n_nodes * input_dim, n_nodes * input_dim, bias=has_bias)]
+        
+        # Zero out the diagonal weights to avoid self-loops
+        weight_matrix = self.layers[0].nn.weight.get()
+        weight_matrix = weight_matrix.reshape(n_nodes, input_dim, n_nodes, input_dim)
         for i in range(n_nodes):
-            node_layers = []
-            for j in range(n_nodes):
-                # Create MLP: input_dim -> hidden_dim -> input_dim
-                mlp = [
-                    pxnn.Linear(input_dim, hidden_dim, bias=has_bias),
-                    pxnn.Linear(hidden_dim, input_dim, bias=has_bias)
-                ]
-                node_layers.append(mlp)
+            weight_matrix = weight_matrix.at[i, :, i, :].set(jnp.zeros((input_dim, input_dim)))
+        self.layers[0].nn.weight.set(weight_matrix.reshape(n_nodes * input_dim, n_nodes * input_dim))
 
-            self.mlp_layers.append(node_layers)
-
-        # Initialize adjacency matrix as a LayerParam
-        init_weights = jnp.ones((n_nodes, n_nodes))
-        init_weights = jax.numpy.fill_diagonal(init_weights, 0.0, inplace=False)
-        self.adj_weights = pxnn.LayerParam(init_weights)
-
-        # Initialize vodes
+        # Initialize vodes as a list containing a single matrix
         self.vodes = [pxc.Vode((n_nodes, input_dim))]
 
     def freeze_nodes(self, freeze=True):
         self.vodes[0].h.frozen = freeze
 
     def are_vodes_frozen(self):
+        """Check if all vodes in the model are frozen."""
         return self.vodes[0].h.frozen
     
     def get_W(self):
-        """Returns the weighted adjacency matrix."""
-        return self.adj_weights.get()
-
-    def mlp_forward(self, x, i, j):
-
-        # print the shape of x
-        print(f"The shape of x in mlp_forward: {x.shape}")
-
-        """Forward pass through MLP for connection i->j with ReLU activation."""
-        if i == j:  # Skip self-loops
-            return 0.0
-        
-        # First layer with ReLU activation
-        h = jax.nn.relu(self.mlp_layers[i][j][0](x))
-        # Second layer
-        out = self.mlp_layers[i][j][1](h)
-        
-        return out
+        """This function returns the weighted adjacency matrix based on the linear layer in the model."""
+        W = self.layers[0].nn.weight.get()
+        W_T = W.T
+        return W_T
 
     def __call__(self, x=None):
         n_nodes = self.n_nodes.get()
         input_dim = self.input_dim.get()
-        
         if x is not None:
+            # print the shape of x before reshaping when x is not None
+            #print("The shape of x before reshaping when x is not None: ", x.shape)
+
             # Initialize nodes with given data
             reshaped_x = x.reshape(n_nodes, input_dim)
+
+            # print the shape of reshaped_x when x is not None
+            #print("The shape of reshaped_x when x is not None: ", reshaped_x.shape)
+
             self.vodes[0](reshaped_x)
         else:
-            # Get current node values
-            x_ = self.vodes[0].get('h')
+            # Perform forward pass using stored values
+            #x_ = self.vodes[0].get('h').reshape(n_nodes * input_dim, 1)
 
-            # print the shape of x_ in __call__ else statement
-            print(f"The shape of x_ in __call__ else statement: {x_.shape}")
-            
-            # Compute weighted sum of MLP outputs for each node
-            outputs = []
-            for j in range(n_nodes):
-                node_output = 0
-                for i in range(n_nodes):
-                    # Apply MLP and weight by adjacency matrix entry
-                    mlp_out = self.mlp_forward(x_[i], i, j)
-                    node_output += self.adj_weights.get()[i, j] * mlp_out
-                outputs.append(node_output)
-            
-            # Stack outputs and update vodes
-            output = jnp.stack(outputs)
+            x_ = self.vodes[0].get('h')
+            # print the shape of x_ when x is None before reshaping
+            #print("The shape of x_ when x is None before reshaping: ", x_.shape)
+
+            x_ = x_.reshape(n_nodes * input_dim, 1)
+            # print the shape of x_ when x is None after reshaping
+            #print("The shape of x_ when x is None after reshaping: ", x_.shape)
+
+            # Perform the matrix-matrix multiplication
+            #output = self.layers[0](x_).reshape(n_nodes, input_dim)
+
+            output = self.layers[0](x_)
+            # print the shape of output before reshaping
+            #print("The shape of output before reshaping: ", output.shape)
+            #output = output.reshape(n_nodes, input_dim)
+            # print the shape of output after reshaping
+            #print("The shape of output after reshaping: ", output.shape)
+
+            # Set the new values in vodes
             self.vodes[0](output)
 
+        # Return the output directly
         return self.vodes[0].get('h')
 
 # Usage
@@ -238,7 +226,6 @@ input_dim = 1
 n_nodes = X.shape[1]
 #model = Complete_Graph(input_dim, n_nodes, has_bias=False)
 model = Complete_Graph(input_dim, n_nodes, has_bias=True)
-
 # Get weighted adjacency matrix
 W = model.get_W()
 print(W)
@@ -265,91 +252,92 @@ w_learning_rate = 1e-3 # Notes: 5e-1 is too high
 h_learning_rate = 5e-4
 T = 1
 
-nm_epochs = 1000
+nm_epochs = 10000
 batch_size = 128
 
+#lam_h = 5e2 # 2e2 -> 5e2 # this move works well! FIRST MOVE
+#lam_l1 = 3e-2 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
 lam_h = 1 # 2e2 -> 5e2 # this move works well! FIRST MOVE
 lam_l1 = 1e-4 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
+# TODO: check if one can start with 5e-2 for lam_l1 and 5e3 for lam_h directly instead (run for at least 300.000 epochs)
 
 # %%
 # Training and evaluation functions
 @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=(0,), out_axes=0)
 def forward(x, *, model: Complete_Graph):
-    print("Forward: Starting")
-    result = model(x)
-    print("Forward: Completed")
-    return result
+    return model(x)
 
 @pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), out_axes=(None, 0), axis_name="batch")
 def energy(*, model: Complete_Graph):
-    print("Energy: Starting computation")
     x_ = model(None)
-    print("Energy: Got model output")
     
     W = model.get_W()
     d = model.n_nodes.get()
-    print(f"Energy: Got W (shape: {W.shape}) and d: {d}")
 
-    # PC energy term
+    # compute the PC energy term (loss) - equivalent to negative log-likelihood
+    # thus no need to consider the logdet term: -jnp.linalg.slogdet(jnp.eye(d) - W)[1]
     energy = model.energy()
-    print(f"Energy: PC energy term: {energy}")
 
-    # L1 regularization using adjacency matrix
+    # compute L1 regularization term of W (not normalized by batch size)
     l1_reg = jnp.sum(jnp.abs(W))
-    print(f"Energy: L1 reg term: {l1_reg}")
 
-    # DAG constraint
+    # compute the DAG penalty term using the matrix exponential (h_reg)
+    #h_reg = jnp.trace(jax.scipy.linalg.expm(W * W)) - d
     h_reg = jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d
-    print(f"Energy: DAG constraint term: {h_reg}")
     
-    # Combined loss
+    # Combine loss, soft DAG constraint, and L1 regularization
     obj = jax.lax.pmean(energy, axis_name="batch") + lam_h * h_reg + lam_l1 * l1_reg
-    print(f"Energy: Final objective: {obj}")
 
     return obj, x_
 
 @pxf.jit(static_argnums=0)
 def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.Optim, optim_h: pxu.Optim):
-    print("1. Starting train_on_batch")  
 
+    print("Training!")  # this will come in handy later
+
+    # This only sets an internal flag to be "train" (instead of "eval")
     model.train()
-    print("2. Model set to train mode")
 
+    # freeze nodes at the start of training
     model.freeze_nodes(freeze=True)
-    print("3. Nodes frozen")
 
     # init step
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-        print("4. Doing forward for initialization")
         forward(x, model=model)
-        print("5. After forward for initialization")
+
+
+    """
+    # The following code might not be needed as we are keeping the vodes frozen at all times
+    # Reinitialize the optimizer state between different batches
+    optim_h.init(pxu.Mask(pxc.VodeParam)(model))
+
+    for _ in range(T):
+        with pxu.step(model, clear_params=pxc.VodeParam.Cache):
+            (e, x_), g = pxf.value_and_grad(
+                pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]),
+                has_aux=True
+            )(energy)(model=model)
+        optim_h.step(model, g["model"], True)
+    """
         
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-        print("6. Before computing gradients")
         _, g = pxf.value_and_grad(pxu.Mask(pxnn.LayerParam, [False, True]), has_aux=True)(energy)(model=model)
-        print("7. After computing gradients")
-        print("Gradient structure:", g)
-
-        print("8. Before zeroing out the diagonal gradients")
-        # Zero out the diagonal gradients using jax.numpy.fill_diagonal
-        weight_grads = g["model"].adj_weights.get()
-        weight_grads = jax.numpy.fill_diagonal(weight_grads, 0.0, inplace=False)
-        g["model"].adj_weights.set(weight_grads)
-        print("9. After zeroing out the diagonal gradients")
-
         
-    print("10. Before optimizer step")
+        # Zero out the diagonal gradients using jax.numpy.fill_diagonal
+        weight_grads = g["model"].layers[0].nn.weight.get()
+        weight_grads = jax.numpy.fill_diagonal(weight_grads, 0.0, inplace=False)
+        # print the grad values using the syntax jax.debug.print("🤯 {x} 🤯", x=x)
+        #jax.debug.print("{weight_grads}", weight_grads=weight_grads)
+        g["model"].layers[0].nn.weight.set(weight_grads)
+
     optim_w.step(model, g["model"])
-    print("11. After optimizer step")
 
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-        print("12. Before final forward")
         forward(None, model=model)
-        e_avg_per_sample = model.energy()
-        print("13. After final forward")
+        e_avg_per_sample = model.energy() # this returns average value of objective per sample in the batch
 
+    # unfreeze nodes at the end of training
     model.freeze_nodes(freeze=False)
-    print("14. Nodes unfrozen")
 
     return e_avg_per_sample
 
