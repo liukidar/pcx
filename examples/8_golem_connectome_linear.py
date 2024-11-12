@@ -263,13 +263,20 @@ w_learning_rate = 5e-3 # Notes: 5e-1 is too high
 h_learning_rate = 5e-4
 T = 1
 
-nm_epochs = 4000
+nm_epochs = 10000
 batch_size = 128
 
 #lam_h = 5e2 # 2e2 -> 5e2 # this move works well! FIRST MOVE
 #lam_l1 = 3e-2 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
-lam_h = 200 # 2e2 -> 5e2 # this move works well! FIRST MOVE
-lam_l1 = 5e-2 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
+
+# setup that works well for small graphs (d=10 to d=20)
+#lam_h = 200 # 
+#lam_l1 = 5e-2 # 
+
+# setup that works well for large graphs (d=100)
+lam_h = 200 # 
+lam_l1 = 5e-1 # 
+
 # TODO: check if one can start with 5e-2 for lam_l1 and 5e3 for lam_h directly instead (run for at least 300.000 epochs)
 
 # %%
