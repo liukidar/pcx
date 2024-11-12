@@ -219,17 +219,17 @@ def plot_adjacency_matrices(true_matrix, est_matrix, save_path=None):
     """Plot true and estimated adjacency matrices side by side and optionally save the figure."""
     plt.figure(figsize=(20, 8))
 
-    # Plot the true adjacency matrix on the left
+    # Plot the estimated adjacency matrix on the left
     plt.subplot(1, 2, 1)
-    sns.heatmap(true_matrix, cmap='viridis', cbar=True)
-    plt.title('Binary True Graph')
+    sns.heatmap(est_matrix, cmap='viridis', cbar=True)
+    plt.title('Binary Estimated Graph')
     plt.xlabel('Node')
     plt.ylabel('Node')
 
-    # Plot the estimated adjacency matrix on the right
+    # Plot the true adjacency matrix on the right
     plt.subplot(1, 2, 2)
-    sns.heatmap(est_matrix, cmap='viridis', cbar=True)
-    plt.title('Binary Estimated Graph')
+    sns.heatmap(true_matrix, cmap='viridis', cbar=True)
+    plt.title('Binary True Graph')
     plt.xlabel('Node')
     plt.ylabel('Node')
 

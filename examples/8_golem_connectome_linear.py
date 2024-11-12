@@ -9,12 +9,12 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # disable preallocation of memory
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
-# pcax
-import pcax as px
-import pcax.predictive_coding as pxc
-import pcax.nn as pxnn
-import pcax.functional as pxf
-import pcax.utils as pxu
+# pcx
+import pcx as px
+import pcx.predictive_coding as pxc
+import pcx.nn as pxnn
+import pcx.functional as pxf
+import pcx.utils as pxu
 
 # 3rd party
 import jax
@@ -87,10 +87,16 @@ C_true = C_dag_bin
 #B_true = C_dag_bin # if you want to use the connectome-based DAG # best performance so far with 200,000 samples: 0.06 
 #B_true = ER_dag_bin # if you want to use the ER-based DAG
 
-B_true = simulate_dag(d=5, s0=10, graph_type='ER') # ER2
+#B_true = simulate_dag(d=5, s0=10, graph_type='ER') # ER2
+#B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
 #B_true = simulate_dag(d=50, s0=100, graph_type='ER') # ER2
 #B_true = simulate_dag(d=100, s0=200, graph_type='ER') # ER2
 #B_true = simulate_dag(d=279, s0=558, graph_type='ER') # ER2
+
+# create SF2 graph and SF4 graph with d=10 nodes
+#B_true = simulate_dag(d=10, s0=20, graph_type='SF') # SF2
+#B_true = simulate_dag(d=10, s0=40, graph_type='SF') # SF4
+B_true = simulate_dag(d=100, s0=400, graph_type='SF') # SF4
 
 # create equivalent ER4 and ER6 graphs
 #B_true = simulate_dag(d=279, s0=1116, graph_type='ER') # ER4
@@ -137,7 +143,7 @@ X_std = scaler.fit_transform(X)
 print(np.sum(B_true))
 
 # %%
-import pcax.utils as pxu
+import pcx.utils as pxu
 print(dir(pxu))
 
 # %% [markdown]
@@ -163,8 +169,10 @@ class Complete_Graph(pxc.EnergyModule):
             weight_matrix = weight_matrix.at[i, :, i, :].set(jnp.zeros((input_dim, input_dim)))
         self.layers[0].nn.weight.set(weight_matrix.reshape(n_nodes * input_dim, n_nodes * input_dim))
 
-        # Initialize vodes as a list containing a single matrix
-        self.vodes = [pxc.Vode((n_nodes, input_dim))]
+        # Initialize vodes
+        #self.vodes = [pxc.Vode((n_nodes, input_dim))]
+        self.vodes = [pxc.Vode()]
+        
 
     def freeze_nodes(self, freeze=True):
         self.vodes[0].h.frozen = freeze
@@ -184,38 +192,41 @@ class Complete_Graph(pxc.EnergyModule):
         input_dim = self.input_dim.get()
         if x is not None:
             # print the shape of x before reshaping when x is not None
-            #print("The shape of x before reshaping when x is not None: ", x.shape)
+            print("The shape of x before reshaping when x is not None: ", x.shape)
 
             # Initialize nodes with given data
-            reshaped_x = x.reshape(n_nodes, input_dim)
-
+            #reshaped_x = x.reshape(n_nodes, input_dim)
             # print the shape of reshaped_x when x is not None
-            #print("The shape of reshaped_x when x is not None: ", reshaped_x.shape)
+            #print(f"The shape of reshaped_x in __call__ when x is not None: {reshaped_x.shape}")
+            #self.vodes[0](reshaped_x)
+            self.vodes[0](x)
 
-            self.vodes[0](reshaped_x)
         else:
             # Perform forward pass using stored values
             #x_ = self.vodes[0].get('h').reshape(n_nodes * input_dim, 1)
 
+            print(f"The shape of x_ in __call__ else statement before reshaping: {self.vodes[0].get('h').shape}")
+
             x_ = self.vodes[0].get('h')
             # print the shape of x_ when x is None before reshaping
-            #print("The shape of x_ when x is None before reshaping: ", x_.shape)
+            #print(f"The shape of x_ in __call__ else statement: {x_.shape}")
 
-            x_ = x_.reshape(n_nodes * input_dim, 1)
+            #x_ = x_.reshape(n_nodes * input_dim, 1)
             # print the shape of x_ when x is None after reshaping
-            #print("The shape of x_ when x is None after reshaping: ", x_.shape)
+            #print(f"The shape of x_ in __call__ else statement after reshaping: {x_.shape}")
 
             # Perform the matrix-matrix multiplication
             #output = self.layers[0](x_).reshape(n_nodes, input_dim)
 
             output = self.layers[0](x_)
             # print the shape of output before reshaping
-            #print("The shape of output before reshaping: ", output.shape)
+            print("The shape of output before reshaping: ", output.shape)
             #output = output.reshape(n_nodes, input_dim)
             # print the shape of output after reshaping
             #print("The shape of output after reshaping: ", output.shape)
 
             # Set the new values in vodes
+            #print("The shape of output before applying vode: ", output.shape)
             self.vodes[0](output)
 
         # Return the output directly
@@ -231,7 +242,7 @@ W = model.get_W()
 print(W)
 print()
 print(W.shape)
-print(model)
+#print(model)
 
 
 # Freezing all nodes
@@ -248,63 +259,77 @@ print(model.are_vodes_frozen())
 
 # %%
 # TODO: make the below params global or input to the functions in which it is used.
-w_learning_rate = 1e-3 # Notes: 5e-1 is too high
+w_learning_rate = 5e-3 # Notes: 5e-1 is too high
 h_learning_rate = 5e-4
 T = 1
 
-nm_epochs = 10000
+nm_epochs = 4000
 batch_size = 128
 
 #lam_h = 5e2 # 2e2 -> 5e2 # this move works well! FIRST MOVE
 #lam_l1 = 3e-2 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
-lam_h = 1 # 2e2 -> 5e2 # this move works well! FIRST MOVE
-lam_l1 = 1e-4 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
+lam_h = 200 # 2e2 -> 5e2 # this move works well! FIRST MOVE
+lam_l1 = 5e-2 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
 # TODO: check if one can start with 5e-2 for lam_l1 and 5e3 for lam_h directly instead (run for at least 300.000 epochs)
 
 # %%
 # Training and evaluation functions
-@pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=(0,), out_axes=0)
+@pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), in_axes=(0,), out_axes=0)
 def forward(x, *, model: Complete_Graph):
     return model(x)
 
-@pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), out_axes=(None, 0), axis_name="batch")
+@pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), out_axes=(None, 0), axis_name="batch")
 def energy(*, model: Complete_Graph):
+    print("Energy: Starting computation")
     x_ = model(None)
+    print("Energy: Got model output")
     
     W = model.get_W()
     d = model.n_nodes.get()
+    print(f"Energy: Got W (shape: {W.shape}) and d: {d}")
 
-    # compute the PC energy term (loss) - equivalent to negative log-likelihood
-    # thus no need to consider the logdet term: -jnp.linalg.slogdet(jnp.eye(d) - W)[1]
-    energy = model.energy()
+    # PC energy term
+    pc_energy = model.energy()
+    print(f"Energy: PC energy term: {pc_energy}")
 
-    # compute L1 regularization term of W (not normalized by batch size)
-    l1_reg = jnp.sum(jnp.abs(W))
+    # 
 
-    # compute the DAG penalty term using the matrix exponential (h_reg)
-    #h_reg = jnp.trace(jax.scipy.linalg.expm(W * W)) - d
-    h_reg = jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d
+    # L1 regularization using adjacency matrix
+    #l1_reg = jnp.sum(jnp.abs(W))
+    # 11 Nov 2024: try normalizing the L1 regularization term by the number of nodes
+    l1_reg = jnp.sum(jnp.abs(W)) / d
+    print(f"Energy: L1 reg term: {l1_reg}")
+
+    # DAG constraint
+    #h_reg = jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d
+    # 11 Nov 2024: try normalizing the DAG constraint term by the number of nodes
+    h_reg = jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) / d
+    print(f"Energy: DAG constraint term: {h_reg}")
     
-    # Combine loss, soft DAG constraint, and L1 regularization
-    obj = jax.lax.pmean(energy, axis_name="batch") + lam_h * h_reg + lam_l1 * l1_reg
+    # Combined loss
+    obj = jax.lax.pmean(pc_energy, axis_name="batch") + lam_h * h_reg + lam_l1 * l1_reg
+    #obj = jax.lax.psum(pc_energy, axis_name="batch") + lam_h * h_reg + lam_l1 * l1_reg
+    
+    print(f"Energy: Final objective: {obj}")
 
     return obj, x_
 
+
 @pxf.jit(static_argnums=0)
 def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.Optim, optim_h: pxu.Optim):
+    print("1. Starting train_on_batch")  
 
-    print("Training!")  # this will come in handy later
-
-    # This only sets an internal flag to be "train" (instead of "eval")
     model.train()
+    print("2. Model set to train mode")
 
-    # freeze nodes at the start of training
     model.freeze_nodes(freeze=True)
+    print("3. Nodes frozen")
 
     # init step
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
+        print("4. Doing forward for initialization")
         forward(x, model=model)
-
+        print("5. After forward for initialization")
 
     """
     # The following code might not be needed as we are keeping the vodes frozen at all times
@@ -319,25 +344,40 @@ def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.
             )(energy)(model=model)
         optim_h.step(model, g["model"], True)
     """
-        
+
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-        _, g = pxf.value_and_grad(pxu.Mask(pxnn.LayerParam, [False, True]), has_aux=True)(energy)(model=model)
+        print("6. Before computing gradients")
+
+        # 10 Nov 2024: try new library version syntax
+        #_, g = pxf.value_and_grad(pxu.Mask(pxnn.LayerParam, [False, True]), has_aux=True)(energy)(model=model)
+        (obj, x_), g = pxf.value_and_grad(pxu.M(pxnn.LayerParam).to([False, True]), has_aux=True)(energy)(model=model)
         
+        print("7. After computing gradients")
+        #print("Gradient structure:", g)
+
+        print("8. Before zeroing out the diagonal gradients")
         # Zero out the diagonal gradients using jax.numpy.fill_diagonal
         weight_grads = g["model"].layers[0].nn.weight.get()
         weight_grads = jax.numpy.fill_diagonal(weight_grads, 0.0, inplace=False)
         # print the grad values using the syntax jax.debug.print("🤯 {x} 🤯", x=x)
         #jax.debug.print("{weight_grads}", weight_grads=weight_grads)
         g["model"].layers[0].nn.weight.set(weight_grads)
+        print("9. After zeroing out the diagonal gradients")
 
+        
+    print("10. Before optimizer step")
     optim_w.step(model, g["model"])
+    #optim_w.step(model, g["model"], scale_by=1.0/x.shape[0])
+    print("11. After optimizer step")
 
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
+        print("12. Before final forward")
         forward(None, model=model)
-        e_avg_per_sample = model.energy() # this returns average value of objective per sample in the batch
+        e_avg_per_sample = model.energy()
+        print("13. After final forward")
 
-    # unfreeze nodes at the end of training
     model.freeze_nodes(freeze=False)
+    print("14. Nodes unfrozen")
 
     return e_avg_per_sample
 
@@ -530,8 +570,7 @@ dl = TorchDataloader(dataset, batch_size=batch_size, shuffle=True)
 # Initialize the model and optimizers
 with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
     forward(jnp.zeros((batch_size, model.n_nodes.get())), model=model)
-    optim_h = pxu.Optim(optax.sgd(h_learning_rate), pxu.Mask(pxc.VodeParam)(model))
-    #optim_w = pxu.Optim(optax.sgd(w_learning_rate), pxu.Mask(pxnn.LayerParam)(model))
+    optim_h = pxu.Optim(lambda: optax.sgd(h_learning_rate))
 
     """
     optim_w = pxu.Optim(
@@ -542,12 +581,7 @@ with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
     pxu.Mask(pxnn.LayerParam)(model)  # Masking the parameters of the model
 )
     """
-    #optim_w = pxu.Optim(optax.adafactor(w_learning_rate), pxu.Mask(pxnn.LayerParam)(model))
-    #optim_w = pxu.Optim(optax.sgd(w_learning_rate, momentum=0.95), pxu.Mask(pxnn.LayerParam)(model))
-    #optim_w = pxu.Optim(optax.adamw(w_learning_rate, weight_decay=5e-2), pxu.Mask(pxnn.LayerParam)(model))
-    #optim_w = pxu.Optim(optax.adamw(w_learning_rate, nesterov=True), pxu.Mask(pxnn.LayerParam)(model))
-    #optim_w = pxu.Optim(optax.adamw(w_learning_rate, nesterov=False), pxu.Mask(pxnn.LayerParam)(model))
-    optim_w = pxu.Optim(optax.adam(w_learning_rate), pxu.Mask(pxnn.LayerParam)(model))
+    optim_w = pxu.Optim(lambda: optax.adam(w_learning_rate), pxu.M(pxnn.LayerParam)(model))
 
 # Initialize lists to store differences and energies
 MAEs = []
@@ -578,6 +612,10 @@ with tqdm(range(nm_epochs), position=0, leave=True) as pbar:
         MAEs.append(float(MAE(W_true, W)))
         SHDs.append(float(SHD(B_true, compute_binary_adjacency(W))))
         energies.append(float(epoch_energy))
+
+        # show the first 5x5 submatrix of W after each epoch
+        print("\nW matrix (first 5x5):")
+        print(np.array2string(W[:5,:5], precision=3, suppress_small=True, separator=', '))        
         
         # Update progress bar with the current status
         pbar.set_description(f"MAE {MAEs[-1]:.4f}, SHD {SHDs[-1]:.4f} || Energy {energies[-1]:.4f}")
@@ -592,13 +630,15 @@ print(f"An epoch (with compiling and testing) took on average: {average_time_per
 print("The diagonal of the final W: ", jnp.diag(model.get_W()))
 
 # %%
-print(model)
+#print(model)
 print()
 with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-    _, g = pxf.value_and_grad(pxu.Mask(pxnn.LayerParam, [False, True]), has_aux=True)(energy)(model=model)
+    (obj, x_), g = pxf.value_and_grad(pxu.M(pxnn.LayerParam).to([False, True]), has_aux=True)(energy)(model=model)
     print(g["model"])
 
-# %%
+# Create plots directory if it doesn't exist
+os.makedirs('plots/linear', exist_ok=True)
+
 # Set the style and color palette
 sns.set(style="whitegrid")
 palette = sns.color_palette("tab10")
@@ -632,13 +672,13 @@ axs[2].grid(True)
 plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout to fit the suptitle
 plt.show()
 
+# save the figure in the plots directory
+fig.savefig('plots/linear/performance_metrics.png', dpi=300)
+
 # %%
 # Now use a threshold of 0.3 to binarize the weighted adjacency matrix W
 W_est = np.array(model.get_W())
 B_est = compute_binary_adjacency(W_est, threshold=0.3)
-
-W_fix = ensure_DAG(W_est)
-B_fix = 1.0*(W_fix != 0)
 
 # %%
 # Check if B_est is indeed a DAG
@@ -658,15 +698,6 @@ def is_dag(adjacency_matrix):
     # Check if the graph is a DAG
     return nx.is_directed_acyclic_graph(graph)
 
-# Example usage:
-adj_matrix = np.array([
-    [0, 1, 0],
-    [0, 0, 1],
-    [1, 0, 0]
-])
-
-print(is_dag(adj_matrix))  # Output: False, since the graph has a cycle.
-
 # Check if the estimated binary adjacency matrix B_est is a DAG
 is_dag_B_est = is_dag(B_est)
 print(f"Is the estimated binary adjacency matrix a DAG? {is_dag_B_est}")
@@ -680,41 +711,26 @@ def compute_h_reg(W):
 # Compute the h_reg term for the true weighted adjacency matrix W_true
 h_reg_true = compute_h_reg(W_true)
 print(f"The h_reg term for the true weighted adjacency matrix W_true is: {h_reg_true:.4f}")
+
 # Compute the h_reg term for the estimated weighted adjacency matrix W_est
 h_reg_est = compute_h_reg(W_est)
 print(f"The h_reg term for the estimated weighted adjacency matrix W_est is: {h_reg_est:.4f}")
-h_reg_fix = compute_h_reg(W_fix)
-print(f"The h_reg term for the fixed weighted adjacency matrix W_fix is: {h_reg_fix:.4f}")
 
-# We note that B_est is a DAG even though h_reg is not equal to 0.0 (but only close to 0.0). 
-# This is because the matrix exponential is not a perfect measure of the DAG constraint, but it is a good approximation.
-
-# %%
 # print first 5 rows and columsn of W_est and round values to 4 decimal places and show as non-scientific notation
 np.set_printoptions(precision=4, suppress=True)
 
 print("The first 5 rows and columns of the estimated weighted adjacency matrix W_est\n{}".format(W_est[:5, :5]))
 
-# %%
 # now show the adjacency matrix of the true graph and the estimated graph side by side
-plot_adjacency_matrices(B_true, B_est)
+plot_adjacency_matrices(true_matrix=B_true, est_matrix=B_est, save_path='plots/linear/adjacency_matrices.png')
 
-# now show the adjacency matrix of the true graph and the estimated graph side by side
-plot_adjacency_matrices(B_true, B_fix)
-
-# %%
-print(np.sum(B_est))
-print(np.sum(B_fix))
-print(np.sum(B_true))
+# print the number of edges in the true graph and the estimated graph
+print(f"The number of edges in the true graph: {np.sum(B_true)}")
+print(f"The number of edges in the estimated graph: {np.sum(B_est)}")
 
 # %%
 # plot est_dag and true_dag
-GraphDAG(B_est, B_true)
+GraphDAG(B_est, B_true, save_name='plots/linear/est_dag_true_dag.png')
 # calculate accuracy
-met_pcax = MetricsDAG(B_est, B_true)
-print(met_pcax.metrics)
-
-met_pcax_fix = MetricsDAG(B_fix, B_true)
-print(met_pcax_fix.metrics)
-
-
+met_pcx = MetricsDAG(B_est, B_true)
+print(met_pcx.metrics)
