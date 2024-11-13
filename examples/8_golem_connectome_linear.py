@@ -29,11 +29,13 @@ import seaborn as sns
 from tqdm.auto import tqdm
 import torch
 import timeit
+from sklearn.metrics import f1_score
 
 # own
 import causal_helpers
 from causal_helpers import simulate_dag, simulate_parameter, simulate_linear_sem, simulate_linear_sem_cyclic
 from causal_helpers import load_adjacency_matrix, set_random_seed, plot_adjacency_matrices
+from cdt.metrics import SHD
 
 # Set random seed
 seed = 23
@@ -96,7 +98,11 @@ C_true = C_dag_bin
 # create SF2 graph and SF4 graph with d=10 nodes
 #B_true = simulate_dag(d=10, s0=20, graph_type='SF') # SF2
 #B_true = simulate_dag(d=10, s0=40, graph_type='SF') # SF4
-B_true = simulate_dag(d=100, s0=400, graph_type='SF') # SF4
+#B_true = simulate_dag(d=100, s0=400, graph_type='SF') # SF4
+
+# create ER2 and ER4 graphs with d=100 nodes
+#B_true = simulate_dag(d=100, s0=200, graph_type='ER') # ER2
+B_true = simulate_dag(d=100, s0=400, graph_type='ER') # ER4
 
 # create equivalent ER4 and ER6 graphs
 #B_true = simulate_dag(d=279, s0=1116, graph_type='ER') # ER4
@@ -259,11 +265,11 @@ print(model.are_vodes_frozen())
 
 # %%
 # TODO: make the below params global or input to the functions in which it is used.
-w_learning_rate = 5e-3 # Notes: 5e-1 is too high
+w_learning_rate = 5e-3 # Notes: 5e-1 is too high, 5e-3 works well for most cases, 5e-2 is very noise but still works
 h_learning_rate = 5e-4
 T = 1
 
-nm_epochs = 10000
+nm_epochs = 20000
 batch_size = 128
 
 #lam_h = 5e2 # 2e2 -> 5e2 # this move works well! FIRST MOVE
@@ -274,8 +280,8 @@ batch_size = 128
 #lam_l1 = 5e-2 # 
 
 # setup that works well for large graphs (d=100)
-lam_h = 200 # 
-lam_l1 = 5e-1 # 
+lam_h = 1e4
+lam_l1 = 5
 
 # TODO: check if one can start with 5e-2 for lam_l1 and 5e3 for lam_h directly instead (run for at least 300.000 epochs)
 
@@ -285,7 +291,8 @@ lam_l1 = 5e-1 #
 def forward(x, *, model: Complete_Graph):
     return model(x)
 
-@pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), out_axes=(None, 0), axis_name="batch")
+# @pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), out_axes=(None, 0), axis_name="batch") # if only one output
+@pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), out_axes=(None, None, None, None, 0), axis_name="batch") # if multiple outputs
 def energy(*, model: Complete_Graph):
     print("Energy: Starting computation")
     x_ = model(None)
@@ -296,31 +303,27 @@ def energy(*, model: Complete_Graph):
     print(f"Energy: Got W (shape: {W.shape}) and d: {d}")
 
     # PC energy term
-    pc_energy = model.energy()
+    pc_energy = jax.lax.pmean(model.energy(), axis_name="batch")
     print(f"Energy: PC energy term: {pc_energy}")
 
-    # 
-
     # L1 regularization using adjacency matrix
-    #l1_reg = jnp.sum(jnp.abs(W))
-    # 11 Nov 2024: try normalizing the L1 regularization term by the number of nodes
-    l1_reg = jnp.sum(jnp.abs(W)) / d
+    #l1_reg = jnp.sum(jnp.abs(W)) # without normalization
+    l1_reg = jnp.sum(jnp.abs(W)) / d # with normalization
     print(f"Energy: L1 reg term: {l1_reg}")
 
     # DAG constraint
-    #h_reg = jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d
-    # 11 Nov 2024: try normalizing the DAG constraint term by the number of nodes
-    h_reg = jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) / d
+    #h_reg = jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d # without normalization
+    h_reg = (jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d) / d # with normalization
     print(f"Energy: DAG constraint term: {h_reg}")
     
     # Combined loss
-    obj = jax.lax.pmean(pc_energy, axis_name="batch") + lam_h * h_reg + lam_l1 * l1_reg
-    #obj = jax.lax.psum(pc_energy, axis_name="batch") + lam_h * h_reg + lam_l1 * l1_reg
+    obj = pc_energy + lam_h * h_reg + lam_l1 * l1_reg # when not using h_optim (i.e. state nodes) 
+    #obj = pc_energy + lam_h * h_reg + lam_l1 * l1_reg # when using h_optim (i.e. optimize nodes)
     
     print(f"Energy: Final objective: {obj}")
 
-    return obj, x_
-
+    # return obj, x_ # single output without batch dimension
+    return obj, pc_energy, h_reg, l1_reg, x_ # multiple outputs without batch dimension
 
 @pxf.jit(static_argnums=0)
 def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.Optim, optim_h: pxu.Optim):
@@ -354,10 +357,10 @@ def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.
 
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
         print("6. Before computing gradients")
-
-        # 10 Nov 2024: try new library version syntax
-        #_, g = pxf.value_and_grad(pxu.Mask(pxnn.LayerParam, [False, True]), has_aux=True)(energy)(model=model)
-        (obj, x_), g = pxf.value_and_grad(pxu.M(pxnn.LayerParam).to([False, True]), has_aux=True)(energy)(model=model)
+        (obj, (pc_energy, h_reg, l1_reg, x_)), g = pxf.value_and_grad(
+            pxu.M(pxnn.LayerParam).to([False, True]), 
+            has_aux=True
+        )(energy)(model=model) # pxf.value_and_grad returns a tuple structured as ((value, aux), grad), not as six separate outputs.
         
         print("7. After computing gradients")
         #print("Gradient structure:", g)
@@ -386,20 +389,32 @@ def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.
     model.freeze_nodes(freeze=False)
     print("14. Nodes unfrozen")
 
-    return e_avg_per_sample
+    return pc_energy, l1_reg, h_reg, obj
 
 def train(dl, T, *, model: Complete_Graph, optim_w: pxu.Optim, optim_h: pxu.Optim):
-    e_avg_per_sample_energies = []
+    batch_pc_energies = []
+    batch_l1_regs = []
+    batch_h_regs = []
+    batch_objs = []
+    
     for batch in dl:
-
-        e_avg_per_sample = train_on_batch(T, batch, model=model, optim_w=optim_w, optim_h=optim_h)
-        e_avg_per_sample_energies.append(e_avg_per_sample)
+        pc_energy, l1_reg, h_reg, obj = train_on_batch(
+            T, batch, model=model, optim_w=optim_w, optim_h=optim_h
+        )
+        batch_pc_energies.append(pc_energy)
+        batch_l1_regs.append(l1_reg)
+        batch_h_regs.append(h_reg)
+        batch_objs.append(obj)
 
     W = model.get_W()
 
-    # compute epoch energy
-    epoch_energy = jnp.mean(jnp.array(e_avg_per_sample_energies))
-    return W, epoch_energy
+    # Compute epoch averages
+    epoch_pc_energy = jnp.mean(jnp.array(batch_pc_energies))
+    epoch_l1_reg = jnp.mean(jnp.array(batch_l1_regs))
+    epoch_h_reg = jnp.mean(jnp.array(batch_h_regs))
+    epoch_obj = jnp.mean(jnp.array(batch_objs))
+    
+    return W, epoch_pc_energy, epoch_l1_reg, epoch_h_reg, epoch_obj
 
 # %%
 @jit
@@ -593,17 +608,28 @@ with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
 # Initialize lists to store differences and energies
 MAEs = []
 SHDs = []
-energies = []
+F1s = []
+pc_energies = []
+l1_regs = []
+h_regs = []
+objs = []
 
 # Calculate the initial MAE, SID, and SHD
-MAE_init = MAE(W_true, model.get_W())
+
+W_init = model.get_W()
+B_init = compute_binary_adjacency(W_init)
+
+MAE_init = MAE(W_true, W_init)
 print(f"Start difference (cont.) between W_true and W_init: {MAE_init:.4f}")
 
-SHD_init = SHD(B_true, compute_binary_adjacency(model.get_W()))
+SHD_init = SHD(B_true, B_init)
 print(f"Start SHD between B_true and B_init: {SHD_init:.4f}")
 
+F1_init = f1_score(B_true.flatten(), B_init.flatten())
+print(f"Start F1 between B_true and B_init: {F1_init:.4f}")
+
 # print the values of the diagonal of the initial W
-print("The diagonal of the initial W: ", jnp.diag(model.get_W()))
+print("The diagonal of the initial W: ", jnp.diag(W_init))
 
 # Start timing
 start_time = timeit.default_timer()
@@ -612,20 +638,27 @@ start_time = timeit.default_timer()
 with tqdm(range(nm_epochs), position=0, leave=True) as pbar:
     for epoch in pbar:
         # Train for one epoch using the dataloader
-        W, epoch_energy = train(dl, T=T, model=model, optim_w=optim_w, optim_h=optim_h)
+        W, epoch_pc_energy, epoch_l1_reg, epoch_h_reg, epoch_obj = train(dl, T=T, model=model, optim_w=optim_w, optim_h=optim_h)
         
-        # Calculate the metrics and store them
+        # Extract the weighted adjacency matrix W and compute the binary adjacency matrix B
         W = np.array(W)
+        B = compute_binary_adjacency(W)
+
+        # Calculate the metrics and store them
         MAEs.append(float(MAE(W_true, W)))
         SHDs.append(float(SHD(B_true, compute_binary_adjacency(W))))
-        energies.append(float(epoch_energy))
+        F1s.append(float(f1_score(B_true.flatten(), B.flatten())))
+        pc_energies.append(float(epoch_pc_energy))
+        l1_regs.append(float(epoch_l1_reg))
+        h_regs.append(float(epoch_h_reg))
+        objs.append(float(epoch_obj))
 
         # show the first 5x5 submatrix of W after each epoch
         print("\nW matrix (first 5x5):")
         print(np.array2string(W[:5,:5], precision=3, suppress_small=True, separator=', '))        
         
         # Update progress bar with the current status
-        pbar.set_description(f"MAE {MAEs[-1]:.4f}, SHD {SHDs[-1]:.4f} || Energy {energies[-1]:.4f}")
+        pbar.set_description(f"MAE {MAEs[-1]:.4f}, SHD {SHDs[-1]:.4f}, F1 {F1s[-1]:.4f} || PC Energy {pc_energies[-1]:.4f}, L1 Reg {l1_regs[-1]:.4f}, H Reg {h_regs[-1]:.4f}, Obj {objs[-1]:.4f}")
 
 # End timing
 end_time = timeit.default_timer()
@@ -636,51 +669,199 @@ print(f"An epoch (with compiling and testing) took on average: {average_time_per
 # print the values of the diagonal of the final W
 print("The diagonal of the final W: ", jnp.diag(model.get_W()))
 
-# %%
-#print(model)
-print()
-with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-    (obj, x_), g = pxf.value_and_grad(pxu.M(pxnn.LayerParam).to([False, True]), has_aux=True)(energy)(model=model)
-    print(g["model"])
+
+# print in big that training is done
+print("\n\n ###########################  Training is done  ########################### \n\n")
 
 # Create plots directory if it doesn't exist
 os.makedirs('plots/linear', exist_ok=True)
 
-# Set the style and color palette
-sns.set(style="whitegrid")
-palette = sns.color_palette("tab10")
+# Reset to default style and set seaborn style
+plt.style.use('default')
+sns.set_style("whitegrid")
 
-# Create a figure and axis with a 1x3 layout for side-by-side plots
-fig, axs = plt.subplots(1, 3, figsize=(18, 5))  # Adjusting layout to 1 row and 3 columns
-fig.suptitle('Performance Metrics Over Epochs', fontsize=16, weight='bold')
+# Update matplotlib parameters
+plt.rcParams.update({
+    'figure.dpi': 300,
+    'savefig.dpi': 300,
+    'font.size': 12,
+    'axes.titlesize': 14,
+    'axes.labelsize': 12,
+    'xtick.labelsize': 10,
+    'ytick.labelsize': 10,
+    'legend.fontsize': 10,
+    'figure.titlesize': 16,
+    'axes.grid': True,
+    'grid.alpha': 0.3,
+    'axes.spines.top': False,
+    'axes.spines.right': False
+})
 
-# Plot the MAE
-sns.lineplot(x=range(len(MAEs)), y=MAEs, ax=axs[0], color=palette[0])
-axs[0].set_title("Mean Absolute Error (MAE)", fontsize=14)
-axs[0].set_xlabel("Epoch", fontsize=12)
-axs[0].set_ylabel("MAE", fontsize=12)
-axs[0].grid(True)
+# Create a figure and subplots using GridSpec
+fig = plt.figure(figsize=(20, 12))
+gs = fig.add_gridspec(2, 4, height_ratios=[1, 1], width_ratios=[1, 1, 1, 1])
 
-# Plot the SHD
-sns.lineplot(x=range(len(SHDs)), y=SHDs, ax=axs[1], color=palette[2])
-axs[1].set_title("Structural Hamming Distance (SHD)", fontsize=14)
-axs[1].set_xlabel("Epoch", fontsize=12)
-axs[1].set_ylabel("SHD", fontsize=12)
-axs[1].grid(True)
+# Adjust layout to make more room for title and subtitle
+plt.subplots_adjust(top=0.85, hspace=0.4, wspace=0.3)
 
-# Plot the Energy
-sns.lineplot(x=range(len(energies)), y=energies, ax=axs[2], color=palette[3])
-axs[2].set_title("Energy", fontsize=14)
-axs[2].set_xlabel("Epoch", fontsize=12)
-axs[2].set_ylabel("Energy", fontsize=12)
-axs[2].grid(True)
+# Create axes
+ax00 = fig.add_subplot(gs[0, 0])
+ax01 = fig.add_subplot(gs[0, 1])
+ax02 = fig.add_subplot(gs[0, 2])
+ax03 = fig.add_subplot(gs[0, 3])
+ax10 = fig.add_subplot(gs[1, 0])
+ax11 = fig.add_subplot(gs[1, 1])
+ax12 = fig.add_subplot(gs[1, 2:])
+# ax12 spans two columns
 
-# Improve layout and show the plot
-plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout to fit the suptitle
+axes = [ax00, ax01, ax02, ax03, ax10, ax11, ax12]
+
+# Plot configurations
+plot_configs = [
+    {'metric': MAEs, 'title': 'Mean Absolute Error', 'ylabel': 'MAE', 'color': '#2ecc71', 'ax': ax00},
+    {'metric': SHDs, 'title': 'Structural Hamming Distance', 'ylabel': 'SHD', 'color': '#e74c3c', 'ax': ax01},
+    {'metric': F1s, 'title': 'F1 Score', 'ylabel': 'F1', 'color': '#3498db', 'ax': ax02},
+    {'metric': pc_energies, 'title': 'PC Energy', 'ylabel': 'Energy', 'color': '#9b59b6', 'ax': ax03},
+    {'metric': l1_regs, 'title': 'L1 Regularization', 'ylabel': 'L1', 'color': '#f1c40f', 'ax': ax10},
+    {'metric': h_regs, 'title': 'DAG Constraint', 'ylabel': 'h(W)', 'color': '#e67e22', 'ax': ax11},
+    {'metric': objs, 'title': 'Total Objective', 'ylabel': 'Loss', 'color': '#1abc9c', 'ax': ax12}
+]
+
+# Create all subplots
+for config in plot_configs:
+    ax = config['ax']
+    
+    # Plot data with rolling average
+    epochs = range(len(config['metric']))
+    
+    # Determine if we should use log scale and/or scaling factor
+    use_log_scale = config['title'] in ['PC Energy', 'Total Objective']
+    scale_factor = 1e4 if config['title'] == 'DAG Constraint' else 1
+    
+    # Apply scaling and/or log transform to the metric
+    metric_values = np.array(config['metric'])
+    if use_log_scale:
+        # Add small constant to avoid log(0)
+        metric_values = np.log10(np.abs(metric_values) + 1e-10)
+    metric_values = metric_values * scale_factor
+    
+    # Plot raw data
+    raw_line = ax.plot(epochs, metric_values, 
+                      alpha=0.3, 
+                      color=config['color'], 
+                      label='Raw')
+    
+    # Calculate and plot rolling average
+    window_size = 50
+    if len(metric_values) > window_size:
+        rolling_mean = np.convolve(metric_values, 
+                                 np.ones(window_size)/window_size, 
+                                 mode='valid')
+        ax.plot(range(window_size-1, len(metric_values)), 
+                rolling_mean, 
+                color=config['color'], 
+                linewidth=2, 
+                label='Moving Average')
+    
+    # Customize each subplot
+    ax.set_title(config['title'], pad=10)
+    ax.set_xlabel('Epoch', labelpad=10)
+    
+    # Adjust ylabel based on transformations
+    ylabel = config['ylabel']
+    if use_log_scale:
+        ylabel = f'log10({ylabel})'
+    if scale_factor != 1:
+        ylabel = f'{ylabel} (×{int(scale_factor)})'
+    ax.set_ylabel(ylabel, labelpad=10)
+    
+    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    # Add legend if it's the total objective plot
+    if config['title'] == 'Total Objective':
+        ax.legend(loc='upper right')
+        
+    # Add note about scaling if applicable
+    if use_log_scale or scale_factor != 1:
+        transform_text = []
+        if use_log_scale:
+            transform_text.append('log scale')
+        if scale_factor != 1:
+            transform_text.append(f'×{int(scale_factor)}')
+        ax.text(0.02, 0.98, f"({', '.join(transform_text)})", 
+                transform=ax.transAxes, 
+                fontsize=8, 
+                verticalalignment='top',
+                bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
+
+# Add overall title and subtitle with adjusted positions
+fig.suptitle('Training Metrics Over Time', 
+            fontsize=16, 
+            weight='bold', 
+            y=0.98)
+
+subtitle = f'λ_h = {lam_h}, λ_l1 = {lam_l1}, Weights Learning Rate = {w_learning_rate}'
+fig.text(0.5, 0.93, 
+         subtitle, 
+         horizontalalignment='center',
+         fontsize=12,
+         style='italic')
+
+# Save and show the figure
+plt.savefig('plots/linear/training_metrics.png', 
+            bbox_inches='tight', 
+            dpi=300)
 plt.show()
 
-# save the figure in the plots directory
-fig.savefig('plots/linear/performance_metrics.png', dpi=300)
+# Create a separate figure for the adjacency matrices comparison
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+# Use a better colormap - options:
+# 'YlOrBr' - Yellow-Orange-Brown (good for sparse matrices)
+# 'viridis' - Perceptually uniform, colorblind-friendly
+# 'Greys' - Black and white, professional
+# 'YlGnBu' - Yellow-Green-Blue, professional
+cmap = 'YlOrBr'  # Choose one of the above
+
+# Plot estimated adjacency matrix (now on the left)
+im1 = ax1.imshow(compute_binary_adjacency(W), cmap=cmap, interpolation='nearest')
+ax1.set_title('Estimated DAG', pad=10)
+plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
+ax1.set_xlabel('Node', labelpad=10)
+ax1.set_ylabel('Node', labelpad=10)
+
+# Plot true adjacency matrix (now on the right)
+im2 = ax2.imshow(B_true, cmap=cmap, interpolation='nearest')
+ax2.set_title('True DAG', pad=10)
+plt.colorbar(im2, ax=ax2, fraction=0.046, pad=0.04)
+ax2.set_xlabel('Node', labelpad=10)
+ax2.set_ylabel('Node', labelpad=10)
+
+# Add overall title
+fig.suptitle('Estimated vs True DAG Structure', 
+             fontsize=16, 
+             weight='bold', 
+             y=1.05)
+
+# Add grid lines to better separate the nodes
+for ax in [ax1, ax2]:
+    ax.set_xticks(np.arange(-.5, B_true.shape[0], 1), minor=True)
+    ax.set_yticks(np.arange(-.5, B_true.shape[0], 1), minor=True)
+    ax.grid(which="minor", color="w", linestyle='-', linewidth=0.3)
+    ax.tick_params(which="minor", bottom=False, left=False)
+
+# Improve layout
+plt.tight_layout()
+
+# Save the comparison plot with high DPI
+plt.savefig('plots/linear/dag_comparison.png', 
+            bbox_inches='tight', 
+            dpi=300,
+            facecolor='white',
+            edgecolor='none')
+plt.show()
 
 # %%
 # Now use a threshold of 0.3 to binarize the weighted adjacency matrix W
