@@ -3,6 +3,8 @@
 
 # %%
 import os
+# print current working directory
+print("")
 
 # choose the GPU to use
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -123,12 +125,19 @@ B_true = C_dag_bin # if you want to use the connectome-based DAG # best performa
 # examples: d=50 -> s0=49 (works), d=100 -> s0=199, d=200 -> s0=800
 
 # create the weighted adjacency matrix based on the binary adjacency matrix
-W_true = simulate_parameter(B_true, connectome=True)
+#W_true = simulate_parameter(B_true, connectome=True) # this samples params for DAG connectome
+
+X_gaussian, B_sampled_gaussian = sample_cyclic_data(B_given=B_true, n_samples=10000, noise_type='gaussian')
+print("Generated data with Gaussian noise, shape:", X_gaussian.shape)
+print("Sampled B matrix with Gaussian noise:\n", B_sampled_gaussian)
+
+X = X_gaussian
+W_true = B_sampled_gaussian
 
 # sample data from the linear SEM
 # actual data
 #X = simulate_linear_sem(W_true, n=10000, sem_type='gauss')
-X = simulate_linear_sem(W_true, n=10000, sem_type='uniform')
+#X = simulate_linear_sem(W_true, n=10000, sem_type='uniform')
 # for debugging
 #X = simulate_linear_sem(W_true, n=1000, sem_type='gauss')
 #X = simulate_linear_sem(W_true, n=2500, sem_type='gauss')
@@ -293,7 +302,7 @@ batch_size = 512
 
 # setup that works well for large graphs (d=100)
 lam_h = 1e6
-lam_l1 = 0
+lam_l1 = 1e-15
 
 # TODO: check if one can start with 5e-2 for lam_l1 and 5e3 for lam_h directly instead (run for at least 300.000 epochs)
 
@@ -618,7 +627,7 @@ with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
 )
     """
     #optim_w = pxu.Optim(lambda: optax.adam(w_learning_rate), pxu.M(pxnn.LayerParam)(model))
-    optim_w = pxu.Optim(lambda: optax.adamw(w_learning_rate, nesterov=True), pxu.M(pxnn.LayerParam)(model))
+    optim_w = pxu.Optim(lambda: optax.adamw(w_learning_rate), pxu.M(pxnn.LayerParam)(model))
 
 
 # Initialize lists to store differences and energies

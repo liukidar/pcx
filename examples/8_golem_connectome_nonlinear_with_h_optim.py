@@ -9,12 +9,12 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # disable preallocation of memory
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
-# pcax
-import pcax as px
-import pcax.predictive_coding as pxc
-import pcax.nn as pxnn
-import pcax.functional as pxf
-import pcax.utils as pxu
+# pcx
+import pcx as px
+import pcx.predictive_coding as pxc
+import pcx.nn as pxnn
+import pcx.functional as pxf
+import pcx.utils as pxu
 
 # 3rd party
 import jax
@@ -137,7 +137,7 @@ X_std = scaler.fit_transform(X)
 print(np.sum(B_true))
 
 # %%
-import pcax.utils as pxu
+import pcx.utils as pxu
 print(dir(pxu))
 
 # %% [markdown]
@@ -169,7 +169,8 @@ class Complete_Graph(pxc.EnergyModule):
                     pxnn.Linear(hidden_dim, input_dim, bias=has_bias)
                 ]
                 # Create vode only for hidden layer
-                vode = pxc.Vode((hidden_dim,))
+                #vode = pxc.Vode((hidden_dim,))
+                vode = pxc.Vode()
                 node_layers.append(mlp)
                 node_vodes.append(vode)
 
@@ -182,7 +183,8 @@ class Complete_Graph(pxc.EnergyModule):
         self.adj_weights = pxnn.LayerParam(init_weights)
 
         # Initialize main node vode
-        self.vodes = [pxc.Vode((n_nodes, input_dim))]
+        self.vodes = [pxc.Vode()]
+        #self.vodes = [pxc.Vode((n_nodes, input_dim))]
         #self.vodes = [pxc.Vode((n_nodes, ))]
 
     def freeze_nodes(self, freeze=True):
@@ -261,9 +263,9 @@ class Complete_Graph(pxc.EnergyModule):
             
 
             # print the shape of x
-            print(f"The shape of x in __call__ if statement: {x.shape}")
+            #print(f"The shape of x in __call__ if statement: {x.shape}")
             # print the shape of reshaped_x
-            print(f"The shape of reshaped_x in __call__ if statement: {reshaped_x.shape}")
+            #print(f"The shape of reshaped_x in __call__ if statement: {reshaped_x.shape}")
 
 
             for j in range(n_nodes):
@@ -271,7 +273,7 @@ class Complete_Graph(pxc.EnergyModule):
                         mlp_out = self.mlp_forward(reshaped_x[i], i, j)      
 
             # print successfully finished mlp_forward in __call__ for x is not None
-            print("Successfully finished mlp_forward in __call__ for x is not None")
+            #print("Successfully finished mlp_forward in __call__ for x is not None")
 
             self.vodes[0](reshaped_x)
 
@@ -282,9 +284,9 @@ class Complete_Graph(pxc.EnergyModule):
             reshaped_x_ = x_.reshape(n_nodes, input_dim)
             
             # print the shape of x_
-            print(f"The shape of x_ in __call__ else statement: {x_.shape}")
+            #print(f"The shape of x_ in __call__ else statement: {x_.shape}")
             # print the shape of reshaped_x_
-            print(f"The shape of reshaped_x_ in __call__ else statement: {reshaped_x_.shape}")
+            #print(f"The shape of reshaped_x_ in __call__ else statement: {reshaped_x_.shape}")
 
             # Compute weighted sum of MLP outputs for each node
             outputs = []
@@ -347,97 +349,112 @@ lam_l1 = 1e-4 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
 
 # %%
 # Training and evaluation functions
-@pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), in_axes=(0,), out_axes=0)
+@pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), in_axes=(0,), out_axes=0)
 def forward(x, *, model: Complete_Graph):
-    print("Forward: Starting")
+    #print("Forward: Starting")
     result = model(x)
-    print("Forward: Completed")
+    #print("Forward: Completed")
     return result
 
-@pxf.vmap(pxu.Mask(pxc.VodeParam | pxc.VodeParam.Cache, (None, 0)), out_axes=(None, 0), axis_name="batch")
+@pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), out_axes=(None, 0), axis_name="batch")
 def energy(*, model: Complete_Graph):
-    print("Energy: Starting computation")
+    #print("Energy: Starting computation")
     x_ = model(None)
-    print("Energy: Got model output")
+    #print("Energy: Got model output")
     
     W = model.get_W()
     d = model.n_nodes.get()
-    print(f"Energy: Got W (shape: {W.shape}) and d: {d}")
+    #print(f"Energy: Got W (shape: {W.shape}) and d: {d}")
 
     # PC energy term
-    energy = model.energy()
-    print(f"Energy: PC energy term: {energy}")
+    pc_energy = jax.lax.pmean(model.energy(), axis_name="batch")
+    #print(f"Energy: PC energy term: {pc_energy}")
 
     # L1 regularization using adjacency matrix
-    l1_reg = jnp.sum(jnp.abs(W))
-    print(f"Energy: L1 reg term: {l1_reg}")
+    #l1_reg = jnp.sum(jnp.abs(W)) # without normalization
+    #l1_reg = jnp.sum(jnp.abs(W)) / (d**2) # with normalization
+    l1_reg = jnp.sum(jnp.abs(W)) / d # with normalization
+    #print(f"Energy: L1 reg term: {l1_reg}")
 
     # DAG constraint
-    h_reg = jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d
-    print(f"Energy: DAG constraint term: {h_reg}")
+    #h_reg = jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d # without normalization
+    #h_reg = (jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d) / (d**2) # with normalization
+    h_reg = (jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d) / d # with normalization
+    #print(f"Energy: DAG constraint term: {h_reg}")
     
     # Combined loss
-    obj = jax.lax.pmean(energy, axis_name="batch") + lam_h * h_reg + lam_l1 * l1_reg
-    print(f"Energy: Final objective: {obj}")
+    obj = pc_energy + lam_h * h_reg + lam_l1 * l1_reg # when not using h_optim (i.e. state nodes) 
+    #obj = pc_energy + lam_h * h_reg + lam_l1 * l1_reg # when using h_optim (i.e. optimize nodes)
+    
+    #print(f"Energy: Final objective: {obj}")
 
+    # return obj, x_ # single output without batch dimension
     return obj, x_
 
 @pxf.jit(static_argnums=0)
 def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.Optim, optim_h: pxu.Optim):
-    print("1. Starting train_on_batch")  
+    #print("1. Starting train_on_batch")
 
     model.train()
-    print("2. Model set to train mode")
+    #print("2. Model set to train mode")
 
     model.freeze_nodes(freeze=True)
-    print("3. Nodes frozen")
+    #print("3. Nodes frozen")
 
     # init step
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-        print("4. Doing forward for initialization")
+        #print("4. Doing forward for initialization")
         forward(x, model=model)
-        print("5. After forward for initialization")    
+        #print("5. After forward for initialization")    
 
     # reinitialise the optimiser state between different batches (NOTE: this is just educational and not needed here because the SGD we use is not-stateful due to lack of momentum)
-    print("6. Reinitialising the optimiser state")
-    optim_h.init(pxu.Mask(pxc.VodeParam)(model))
-    print("7. Optimiser state reinitialised")
+    #print("6. Reinitialising the optimiser state")
+    optim_h.init(pxu.M_hasnot(pxc.VodeParam, frozen=True)(model))
+    #print("7. Optimiser state reinitialised")
 
-    print(f"8. Doing {T} inference steps!")
+    #print(f"8. Doing {T} inference steps!")
     for _ in range(T):
         with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-            _, g = pxf.value_and_grad(pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]), has_aux=True)(energy)(model=model)
-            optim_h.step(model, g["model"], True)
+             
+            (obj, (x_,)), g = pxf.value_and_grad(
+                pxu.M_hasnot(pxc.VodeParam, frozen=True).to([False, True]),
+                has_aux=True
+            )(energy)(model=model)
+
+            #optim_w.step(model, g["model"], scale_by=x.shape[0], allow_none=True)
+            optim_h.step(model, g["model"], scale_by=x.shape[0])
 
     # print that T inference steps have been done
-    print("9. Done with T inference steps!")
+    #print("9. Done with T inference steps!")
         
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-        print("10. Before computing gradients")
-        _, g = pxf.value_and_grad(pxu.Mask(pxnn.LayerParam, [False, True]), has_aux=True)(energy)(model=model)
-        print("7. After computing gradients")
+        #print("10. Before computing gradients")
+        (obj, (x_,)), g = pxf.value_and_grad(pxu.M(pxnn.LayerParam).to([False, True]), has_aux=True)(energy)(model=model) # pxf.value_and_grad returns a tuple structured as ((value, aux), grad), not as six separate outputs.
+        #print("11. After computing gradients")
         print("Gradient structure:", g)
 
-        print("11. Before zeroing out the diagonal gradients")
+        #print("12. Before zeroing out the diagonal gradients")
         # Zero out the diagonal gradients using jax.numpy.fill_diagonal
         weight_grads = g["model"].adj_weights.get()
         weight_grads = jax.numpy.fill_diagonal(weight_grads, 0.0, inplace=False)
         g["model"].adj_weights.set(weight_grads)
-        print("12. After zeroing out the diagonal gradients")
+        #print("13. After zeroing out the diagonal gradients")
 
         
-    print("13. Before optimizer step")
+    #print("14. Before optimizer step")
     optim_w.step(model, g["model"])
-    print("14. After optimizer step")
+    #print("15. After optimizer step")
+    
+    #print("Successfully ran T inference steps and weight update inside train_on_batch()")
 
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-        print("15. Before final forward")
+        #print("16. Before final forward")
         forward(None, model=model)
         e_avg_per_sample = model.energy()
-        print("16. After final forward")
+        #print("17. After final forward")
 
     model.freeze_nodes(freeze=False)
-    print("17. Nodes unfrozen")
+    #print("18. Nodes unfrozen")
 
     return e_avg_per_sample
 
@@ -630,8 +647,7 @@ dl = TorchDataloader(dataset, batch_size=batch_size, shuffle=True)
 # Initialize the model and optimizers
 with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
     forward(jnp.zeros((batch_size, model.n_nodes.get())), model=model)
-    optim_h = pxu.Optim(optax.sgd(h_learning_rate), pxu.Mask(pxc.VodeParam)(model))
-    #optim_w = pxu.Optim(optax.sgd(w_learning_rate), pxu.Mask(pxnn.LayerParam)(model))
+    optim_h = pxu.Optim(lambda: optax.sgd(h_learning_rate))
 
     """
     optim_w = pxu.Optim(
@@ -642,12 +658,8 @@ with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
     pxu.Mask(pxnn.LayerParam)(model)  # Masking the parameters of the model
 )
     """
-    #optim_w = pxu.Optim(optax.adafactor(w_learning_rate), pxu.Mask(pxnn.LayerParam)(model))
-    #optim_w = pxu.Optim(optax.sgd(w_learning_rate, momentum=0.95), pxu.Mask(pxnn.LayerParam)(model))
-    #optim_w = pxu.Optim(optax.adamw(w_learning_rate, weight_decay=5e-2), pxu.Mask(pxnn.LayerParam)(model))
-    #optim_w = pxu.Optim(optax.adamw(w_learning_rate, nesterov=True), pxu.Mask(pxnn.LayerParam)(model))
-    #optim_w = pxu.Optim(optax.adamw(w_learning_rate, nesterov=False), pxu.Mask(pxnn.LayerParam)(model))
-    optim_w = pxu.Optim(optax.adam(w_learning_rate), pxu.Mask(pxnn.LayerParam)(model))
+
+    optim_w = pxu.Optim(lambda: optax.adamw(w_learning_rate, nesterov=True), pxu.M(pxnn.LayerParam)(model))
 
 # Initialize lists to store differences and energies
 MAEs = []
@@ -695,7 +707,7 @@ print("The diagonal of the final W: ", jnp.diag(model.get_W()))
 print(model)
 print()
 with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-    _, g = pxf.value_and_grad(pxu.Mask(pxnn.LayerParam, [False, True]), has_aux=True)(energy)(model=model)
+    _, g = pxf.value_and_grad(pxu.M(pxnn.LayerParam).to([False, True]), has_aux=True)(energy)(model=model)
     print(g["model"])
 
 # %%
@@ -816,5 +828,3 @@ print(met_pcax.metrics)
 
 met_pcax_fix = MetricsDAG(B_fix, B_true)
 print(met_pcax_fix.metrics)
-
-
