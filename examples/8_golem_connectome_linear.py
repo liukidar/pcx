@@ -39,7 +39,7 @@ from causal_helpers import load_graph, load_adjacency_matrix
 from connectome_cyclic_data_generator import sample_cyclic_data
 
 # Set random seed
-seed = 23
+seed = 42
 set_random_seed(seed)
 
 # causal libraries
@@ -60,7 +60,7 @@ from causallearn.graph.SHD import SHD as SHD_causallearn
 # Specify the folder where the adjacency matrices were saved
 folder = '../data/'
 
-# Specify the folder where the cyclic connectome data was saved
+# Specify the folder where the acyclic positive integer weighted connectome data was saved
 folder_cyclic = '/home/amine.mcharrak/connectome/data/'
 
 # Example usage to load the saved adjacency matrices
@@ -90,11 +90,11 @@ C_true = C_dag_bin
 #B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
 
 
-B_true = C_dag_bin # if you want to use the connectome-based DAG # best performance so far with 200,000 samples: 0.06 
+#B_true = C_dag_bin # if you want to use the connectome-based DAG # best performance so far with 200,000 samples: 0.06 
 #B_true = ER_dag_bin # if you want to use the ER-based DAG
 
 #B_true = simulate_dag(d=5, s0=10, graph_type='ER') # ER2
-#B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
+B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
 #B_true = simulate_dag(d=50, s0=100, graph_type='ER') # ER2
 #B_true = simulate_dag(d=100, s0=200, graph_type='ER') # ER2
 #B_true = simulate_dag(d=279, s0=558, graph_type='ER') # ER2
@@ -123,20 +123,21 @@ B_true = C_dag_bin # if you want to use the connectome-based DAG # best performa
 # examples: d=50 -> s0=49 (works), d=100 -> s0=199, d=200 -> s0=800
 
 # create the weighted adjacency matrix based on the binary adjacency matrix
-W_true = simulate_parameter(B_true, connectome=True)
+#W_true = simulate_parameter(B_true, connectome=True)
+W_true = simulate_parameter(B_true)
 
 # sample data from the linear SEM
 # actual data
 #X = simulate_linear_sem(W_true, n=10000, sem_type='gauss')
-X = simulate_linear_sem(W_true, n=10000, sem_type='uniform')
+#X = simulate_linear_sem(W_true, n=10000, sem_type='uniform')
 # for debugging
-#X = simulate_linear_sem(W_true, n=1000, sem_type='gauss')
+X = simulate_linear_sem(W_true, n=1000, sem_type='gauss')
 #X = simulate_linear_sem(W_true, n=2500, sem_type='gauss')
 #X = simulate_linear_sem(W_true, n=6250, sem_type='gauss')
 #X = simulate_linear_sem(W_true, n=50000, sem_type='gauss')
 #X = simulate_linear_sem(W_true, n=100000, sem_type='gauss') # 1000*(279**2)/(20**2) = 194602
 
-# load the cyclic connectome data
+# load the cyclic integer weighted connectome data adjacency matrix
 #B_true_weighted = load_adjacency_matrix(os.path.join(folder_cyclic, 'A_init_t_ordered_adj_matrix_with_cycles.npy'))
 #X, W_true = sample_cyclic_data(B_true_weighted, n_samples=10000, noise_type='non-gaussian')
 #B_true = (W_true != 0).astype(int)
@@ -277,12 +278,15 @@ print(model.are_vodes_frozen())
 
 # %%
 # TODO: make the below params global or input to the functions in which it is used.
-w_learning_rate = 5e-3 # Notes: 5e-1 is too high, 5e-3 works well for most cases, 5e-2 is very noise but still works
-h_learning_rate = 5e-4
-T = 1
+w_learning_rate = 1e-3 # Notes: 5e-1 is too high
+h_learning_rate = 1e-4
+T = 64
 
-nm_epochs = 5000
-batch_size = 512
+nm_epochs = 10000
+batch_size = 128
+
+lam_h = 1e-2 # 2e2 -> 5e2 # this move works well! FIRST MOVE
+lam_l1 = 1e-8 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
 
 #lam_h = 5e2 # 2e2 -> 5e2 # this move works well! FIRST MOVE
 #lam_l1 = 3e-2 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
@@ -292,8 +296,8 @@ batch_size = 512
 #lam_l1 = 5e-2 # 
 
 # setup that works well for large graphs (d=100)
-lam_h = 1e6
-lam_l1 = 0
+#lam_h = 1e6
+#lam_l1 = 0
 
 # TODO: check if one can start with 5e-2 for lam_l1 and 5e3 for lam_h directly instead (run for at least 300.000 epochs)
 

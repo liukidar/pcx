@@ -3,14 +3,6 @@
 
 # %%
 import os
-import sys
-
-# Get the directory of the current script
-script_dir = os.path.dirname(os.path.abspath(__file__))
-
-# Add the script directory to sys.path if not already present
-if script_dir not in sys.path:
-    sys.path.insert(0, script_dir)
 
 # choose the GPU to use
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -26,12 +18,10 @@ import pcx.utils as pxu
 
 # 3rd party
 import jax
-jax.config.update("jax_debug_nans", True)
 from jax import jit
 import jax.numpy as jnp
 import optax
 import numpy as np
-import math
 
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -41,8 +31,9 @@ import torch
 import timeit
 
 # own
-from causal_helpers import simulate_dag, simulate_parameter, simulate_linear_sem, simulate_linear_sem_cyclic, load_adjacency_matrix, set_random_seed, plot_adjacency_matrices,load_graph, load_adjacency_matrix
-from connectome_cyclic_data_generator import sample_cyclic_data
+import causal_helpers
+from causal_helpers import simulate_dag, simulate_parameter, simulate_linear_sem, simulate_linear_sem_cyclic
+from causal_helpers import load_adjacency_matrix, set_random_seed, plot_adjacency_matrices
 
 # Set random seed
 seed = 42
@@ -64,24 +55,24 @@ from causallearn.graph.SHD import SHD as SHD_causallearn
 # load the weighted adjacency matrices for ER and connectome
 
 # Specify the folder where the adjacency matrices were saved
-# folder = '../data/'
+folder = '../data/'
 
 # Example usage to load the saved adjacency matrices
-# G_A_init_t_ordered_adj_matrix = load_adjacency_matrix(os.path.join(folder, 'G_A_init_t_ordered_adj_matrix.npy'))
-# G_A_init_t_ordered_dag_adj_matrix = load_adjacency_matrix(os.path.join(folder, 'G_A_init_t_ordered_dag_adj_matrix.npy'))
-# ER = load_adjacency_matrix(os.path.join(folder, 'ER_adj_matrix.npy'))
-# ER_dag = load_adjacency_matrix(os.path.join(folder, 'ER_dag_adj_matrix.npy'))
+G_A_init_t_ordered_adj_matrix = load_adjacency_matrix(os.path.join(folder, 'G_A_init_t_ordered_adj_matrix.npy'))
+G_A_init_t_ordered_dag_adj_matrix = load_adjacency_matrix(os.path.join(folder, 'G_A_init_t_ordered_dag_adj_matrix.npy'))
+ER = load_adjacency_matrix(os.path.join(folder, 'ER_adj_matrix.npy'))
+ER_dag = load_adjacency_matrix(os.path.join(folder, 'ER_dag_adj_matrix.npy'))
 
 # Change name of the connectome adjacency matrix to C and C_dag
-# C = G_A_init_t_ordered_adj_matrix
-# C_dag = G_A_init_t_ordered_dag_adj_matrix
+C = G_A_init_t_ordered_adj_matrix
+C_dag = G_A_init_t_ordered_dag_adj_matrix
 
 # Now ensure that both DAG adjacency matrices are binary, if they aren't already
-# ER_dag_bin = (ER_dag != 0).astype(int)
-# C_dag_bin = (C_dag != 0).astype(int)
+ER_dag_bin = (ER_dag != 0).astype(int)
+C_dag_bin = (C_dag != 0).astype(int)
 
-# ER_true = ER_dag_bin
-# C_true = C_dag_bin
+ER_true = ER_dag_bin
+C_true = C_dag_bin
 
 # %% [markdown]
 # ## Create data to debug and implement the pcax version of NOTEARS
@@ -93,17 +84,11 @@ from causallearn.graph.SHD import SHD as SHD_causallearn
 #B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
 
 
-# Specify the folder where the acyclic positive integer weighted connectome data was saved
-folder_acyclic = '/home/amine.mcharrak/connectome/data/'
-
-# load the acyclic integer weighted connectome data adjacency matrix
-B_true_weighted = load_adjacency_matrix(os.path.join(folder_acyclic, 'A_init_t_ordered_adj_matrix_no_cycles.npy'))
-print("B_true_weighted:\n", np.array_str(B_true_weighted, precision=4, suppress_small=True))
-#X, W_true = sample_cyclic_data(B_true_weighted, n_samples=10000, noise_type='non-gaussian')
-#B_true = (W_true != 0).astype(int)
+#B_true = C_dag_bin # if you want to use the connectome-based DAG # best performance so far with 200,000 samples: 0.06 
+#B_true = ER_dag_bin # if you want to use the ER-based DAG
 
 #B_true = simulate_dag(d=5, s0=10, graph_type='ER') # ER2
-#B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
+B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
 #B_true = simulate_dag(d=50, s0=100, graph_type='ER') # ER2
 #B_true = simulate_dag(d=100, s0=200, graph_type='ER') # ER2
 #B_true = simulate_dag(d=279, s0=558, graph_type='ER') # ER2
@@ -117,26 +102,11 @@ print("B_true_weighted:\n", np.array_str(B_true_weighted, precision=4, suppress_
 #B_true = simulate_dag(d=279, s0=1116, graph_type='SF') # SF4
 #B_true = simulate_dag(d=279, s0=1674, graph_type='SF') # SF6
 
+
 # create simple data using simulate_dag method from causal_helpers with expected number of edges (s0) and number of nodes (d)
 #B_true = simulate_dag(d=100, s0=199, graph_type='ER') # we use p≈0.040226 for the connectome-based ER_dag graph. This means that the expected number of edges is 0.040226 * d * (d-1) / 2
 # examples: d=50 -> s0=49 (works), d=100 -> s0=199, d=200 -> s0=800
-
-#B_true = C_dag_bin # if you want to use the connectome-based DAG # best performance so far with 200,000 samples: 0.06 
-#B_true = ER_dag_bin # if you want to use the ER-based DAG
-print("B_true_weighted:\n", np.array_str(B_true_weighted, precision=4, suppress_small=True))
-
-# use this for regular DAGs
-#W_true = simulate_parameter(B_true)
-# use this for connectome-based DAGs
-W_true = simulate_parameter(B_true_weighted, connectome=True)
-B_true = (W_true != 0).astype(int)
-print("W_true:\n", np.array_str(W_true, precision=4, suppress_small=True))
-
-# print("W_true:\n", np.array_str(W_true, precision=4, suppress_small=True))
-print("Mean of W_true:", np.mean(W_true))
-print("Variance of W_true:", np.var(W_true))
-print("Max value in W_true:", np.max(W_true))
-print("Min value in W_true:", np.min(W_true))
+W_true = simulate_parameter(B_true)
 
 # sample data from the linear SEM
 # actual data
@@ -181,137 +151,164 @@ class Complete_Graph(pxc.EnergyModule):
         super().__init__()
 
         self.input_dim = px.static(input_dim)
-        self.n_nodes = px.static(n_nodes)
+        self.n_nodes = px.static(n_nodes) 
         self.hidden_dim = px.static(hidden_dim)
-        self.has_bias = has_bias  # Keep this as a standard Python attribute
+        self.has_bias = has_bias
 
-        # Initialize weights and biases for all edges as batched parameters
-        key = jax.random.PRNGKey(np.random.randint(0, 1000000))
+        # Initialize MLPs for each connection (n_nodes x n_nodes matrix of MLPs)
+        self.mlp_layers = []
+        # Initialize vodes only for hidden layers of MLPs
+        self.mlp_vodes = []
         
-        # Calculate limits for uniform distribution
-        lim1 = 1.0 / math.sqrt(input_dim)
-        lim2 = 1.0 / math.sqrt(hidden_dim)
-        
-        self.W1 = pxnn.LayerParam(
-            jax.random.uniform(key, (n_nodes, n_nodes, input_dim, hidden_dim), 
-                             minval=-lim1, maxval=lim1)
-        )
-        if has_bias:
-            self.b1 = pxnn.LayerParam(
-                jnp.zeros((n_nodes, n_nodes, hidden_dim))
-            )
-        else:
-            self.b1 = None  # Set biases to None when has_bias is False
+        for i in range(n_nodes):
+            node_layers = []
+            node_vodes = []
+            for j in range(n_nodes):
+                # Create MLP: input_dim -> hidden_dim -> input_dim
+                mlp = [
+                    pxnn.Linear(input_dim, hidden_dim, bias=has_bias),
+                    pxnn.Linear(hidden_dim, input_dim, bias=has_bias)
+                ]
+                # Create vode only for hidden layer
+                #vode = pxc.Vode((hidden_dim,))
+                vode = pxc.Vode()
+                node_layers.append(mlp)
+                node_vodes.append(vode)
 
-        key = jax.random.PRNGKey(np.random.randint(0, 1000000))
-        self.W2 = pxnn.LayerParam(
-            jax.random.uniform(key, (n_nodes, n_nodes, hidden_dim, input_dim),
-                             minval=-lim2, maxval=lim2)
-        )
-        if has_bias:
-            self.b2 = pxnn.LayerParam(
-                jnp.zeros((n_nodes, n_nodes, input_dim))
-            )
-        else:
-            self.b2 = None  # Set biases to None when has_bias is False
+            self.mlp_layers.append(node_layers)
+            self.mlp_vodes.append(node_vodes)
 
-        # Initialize adjacency matrix with zeros on the diagonal
-        lim = 1.0 / math.sqrt(n_nodes)
-        key = jax.random.PRNGKey(np.random.randint(0, 1000000))
-        init_weights = jax.random.uniform(key, (n_nodes, n_nodes), minval=-lim, maxval=lim)
-        init_weights = init_weights * (1 - jnp.eye(n_nodes))  # Set diagonal to zero
+        # Initialize adjacency matrix as a LayerParam
+        init_weights = jnp.ones((n_nodes, n_nodes))
+        init_weights = jax.numpy.fill_diagonal(init_weights, 0.0, inplace=False)
         self.adj_weights = pxnn.LayerParam(init_weights)
 
-        # Initialize main node VODE
+        # Initialize main node vode
         self.vodes = [pxc.Vode()]
-        self.hidden_vodes = [pxc.Vode()]
+        #self.vodes = [pxc.Vode((n_nodes, input_dim))]
+        #self.vodes = [pxc.Vode((n_nodes, ))]
 
     def freeze_nodes(self, freeze=True):
+        # Only freeze the main node vode
         self.vodes[0].h.frozen = freeze
 
     def are_vodes_frozen(self):
         return self.vodes[0].h.frozen
-
+    
     def get_W(self):
         """Returns the weighted adjacency matrix."""
         return self.adj_weights.get()
 
+    #def mlp_forward(self, x, i, j):
+    #    """Forward pass through MLP for connection i->j with ReLU activation."""
+    #
+    #    # print shape of x inside mlp_forward
+    #    print(f"The shape of x inside mlp_forward: {x.shape}")
+    #
+    #    # print value of self.hidden_dim then print self.hidden_dim.get()
+    #    #print(f"This is self.hidden_dim: {self.hidden_dim}") # wrong because it is a px.static object
+    #    print(f"The is self.hidden_dim.get(): {self.hidden_dim.get()}") # correct
+    #    
+    #    if i == j:  # Skip self-loops but initialize Vode cache
+    #        # Create a dummy input for the Vode module to initialize the cache
+    #        dummy_input = jnp.zeros((self.hidden_dim.get(),))
+    #        out = self.mlp_vodes[i][j](dummy_input)
+    #        return out
+    #
+    #    # print the shape of x
+    #    print(f"The shape of x in mlp_forward: {x.shape}")
+    #
+    #    # First linear layer
+    #    h = self.mlp_layers[i][j][0](x)
+    #    # Apply activation and vode on hidden layer (vode not frozen)
+    #    h = jax.nn.relu(h)
+    #    h = self.mlp_vodes[i][j](h)
+    #    
+    #    # Final linear layer (no vode on output)
+    #    out = self.mlp_layers[i][j][1](h)
+    #    
+    #    return out
+
+    def mlp_forward(self, x, i, j):
+        """Forward pass through MLP for connection i->j with ReLU activation."""
+        if i == j:  # Skip self-loops but initialize Vode cache
+            # Create a dummy input for the Vode module to initialize the cache
+            dummy_input = jnp.zeros((self.hidden_dim.get(),))  # Use hidden_dim instead of input_dim
+            # Ensure hidden_dim.get() returns a concrete integer. If not, hardcode the value.
+            # For example, if hidden_dim is 3:
+            # dummy_input = jnp.zeros((3,))
+            self.mlp_vodes[i][j](dummy_input)
+            return 0.0
+
+        # First linear layer
+        h = self.mlp_layers[i][j][0](x)
+        # Apply ReLU activation
+        h = jax.nn.relu(h)
+        # Pass through the Vode module
+        h = self.mlp_vodes[i][j](h)
+
+        # Final linear layer
+        out = self.mlp_layers[i][j][1](h)
+
+        return out
+
+
     def __call__(self, x=None):
         n_nodes = self.n_nodes.get()
         input_dim = self.input_dim.get()
-        hidden_dim = self.hidden_dim.get()
         
         if x is not None:
+
             # Initialize nodes with given data
-            x_nodes = x.reshape(n_nodes, input_dim)
-            self.vodes[0](x_nodes)
+            reshaped_x = x.reshape(n_nodes, input_dim)            
+            
 
-            # Get current node values
-            x_nodes = self.vodes[0].get('h')  # Shape: (n_nodes, input_dim)
+            # print the shape of x
+            #print(f"The shape of x in __call__ if statement: {x.shape}")
+            # print the shape of reshaped_x
+            #print(f"The shape of reshaped_x in __call__ if statement: {reshaped_x.shape}")
 
-            # Vectorized computation over nodes
-            x_nodes_i = x_nodes[:, None, :]
-            x_nodes_i = jnp.broadcast_to(x_nodes_i, (n_nodes, n_nodes, input_dim))
 
-            # First linear layer
-            h = jnp.einsum('ijkl,ijl->ijk', self.W1.get(), x_nodes_i)
-            if self.b1 is not None:
-                h += self.b1.get()
+            for j in range(n_nodes):
+                for i in range(n_nodes):
+                        mlp_out = self.mlp_forward(reshaped_x[i], i, j)      
 
-            # Activation
-            h = jax.nn.relu(h)
+            # print successfully finished mlp_forward in __call__ for x is not None
+            #print("Successfully finished mlp_forward in __call__ for x is not None")
 
-            # Apply VODE to h
-            h = self.hidden_vodes[0](h)
-
-            # Second linear layer
-            out = jnp.einsum('ijkl,ijk->ijl', self.W2.get(), h)
-            if self.b2 is not None:
-                out += self.b2.get()
-
-            # Apply adjacency weights
-            adj_weights = self.adj_weights.get()[:, :, None]
-            out_weighted = adj_weights * out
-
-            # Sum over incoming edges for each node
-            outputs = jnp.sum(out_weighted, axis=0)
+            self.vodes[0](reshaped_x)
 
         else:
             # Get current node values
-            x_nodes = self.vodes[0].get('h')  # Shape: (n_nodes, input_dim)
+            x_ = self.vodes[0].get('h')
 
-            # Vectorized computation over nodes
-            x_nodes_i = x_nodes[:, None, :]
-            x_nodes_i = jnp.broadcast_to(x_nodes_i, (n_nodes, n_nodes, input_dim))
+            reshaped_x_ = x_.reshape(n_nodes, input_dim)
+            
+            # print the shape of x_
+            #print(f"The shape of x_ in __call__ else statement: {x_.shape}")
+            # print the shape of reshaped_x_
+            #print(f"The shape of reshaped_x_ in __call__ else statement: {reshaped_x_.shape}")
 
-            # First linear layer
-            h = jnp.einsum('ijkl,ijl->ijk', self.W1.get(), x_nodes_i)
-            if self.b1 is not None:
-                h += self.b1.get()
+            # Compute weighted sum of MLP outputs for each node
+            outputs = []
+            for j in range(n_nodes):
+                node_output = 0
+                for i in range(n_nodes):
+                    # Apply MLP and weight by adjacency matrix entry
+                    mlp_out = self.mlp_forward(x_[i], i, j)
+                    node_output += self.adj_weights.get()[i, j] * mlp_out
+                outputs.append(node_output)
+            
+            # Stack outputs and update vodes
+            output = jnp.stack(outputs)
+            self.vodes[0](output)
 
-            # Activation
-            h = jax.nn.relu(h)
-
-            # Apply VODE to h
-            h = self.hidden_vodes[0](h)
-
-            # Second linear layer
-            out = jnp.einsum('ijkl,ijk->ijl', self.W2.get(), h)
-            if self.b2 is not None:
-                out += self.b2.get()
-
-            # Apply adjacency weights
-            adj_weights = self.adj_weights.get()[:, :, None]
-            out_weighted = adj_weights * out
-
-            # Sum over incoming edges for each node
-            outputs = jnp.sum(out_weighted, axis=0)
-
-            # Update VODE
-            self.vodes[0](outputs)
+            # run the forward pass for each node to have VodeParam values that are not None
+            #for j in range(n_nodes):
+            #    for i in range(n_nodes):
+            #            mlp_out = self.mlp_forward(x_[i], i, j)
 
         return self.vodes[0].get('h')
-
 
 # Usage
 input_dim = 1
@@ -341,15 +338,15 @@ print(model.are_vodes_frozen())
 
 # %%
 # TODO: make the below params global or input to the functions in which it is used.
-w_learning_rate = 1e-2 # Notes: 5e-1 is too high
-h_learning_rate = 1e-3
-T = 4
+w_learning_rate = 1e-3 # Notes: 5e-1 is too high
+h_learning_rate = 1e-2
+T = 16
 
-nm_epochs = 1000
+nm_epochs = 20000
 batch_size = 128
 
-lam_h = 1e4 # 2e2 -> 5e2 # this move works well! FIRST MOVE
-lam_l1 = 1 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
+lam_h = 1e-1 # 2e2 -> 5e2 # this move works well! FIRST MOVE
+lam_l1 = 1e-4 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
 
 # %%
 # Training and evaluation functions
@@ -380,20 +377,12 @@ def energy(*, model: Complete_Graph):
     l1_reg = jnp.sum(jnp.abs(W)) / d # with normalization
     #print(f"Energy: L1 reg term: {l1_reg}")
 
-    # Replace your NaN and Inf checks with jax.debug.print
-    #jax.debug.print("Max absolute value of W: {}", jnp.max(jnp.abs(W)))
-    #jax.debug.print("NaNs detected in W before computing h_reg: {}", jnp.isnan(W).any())
-    #jax.debug.print("Infs detected in W before computing h_reg: {}", jnp.isinf(W).any())
-
-    # print all clear in case there are no NaNs or Infs
-    #jax.debug.print("All clear before computing h_reg")
-
     # DAG constraint
     #h_reg = jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d # without normalization
     #h_reg = (jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d) / (d**2) # with normalization
-    h_reg = (jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W), max_squarings=64)) - d) / d # with normalization
+    h_reg = (jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d) / d # with normalization
     #print(f"Energy: DAG constraint term: {h_reg}")
-
+    
     # Combined loss
     obj = pc_energy + lam_h * h_reg + lam_l1 * l1_reg # when not using h_optim (i.e. state nodes) 
     #obj = pc_energy + lam_h * h_reg + lam_l1 * l1_reg # when using h_optim (i.e. optimize nodes)
@@ -436,10 +425,9 @@ def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.
             #optim_w.step(model, g["model"], scale_by=x.shape[0], allow_none=True)
             optim_h.step(model, g["model"], scale_by=x.shape[0])
 
-
-    optim_h.clear() # optim_h.clear() is necessary if you use things like momentum where you do not want to carry that over from one batch to the next
     # print that T inference steps have been done
     #print("9. Done with T inference steps!")
+    optim_h.clear() # optim_h.clear() is necessary if you use things like momentum where you do not want to carry that over from one batch to the next
         
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
         #print("10. Before computing gradients")
@@ -489,7 +477,7 @@ def train(dl, T, *, model: Complete_Graph, optim_w: pxu.Optim, optim_h: pxu.Opti
 @jit
 def MAE(W_true, W):
     """This function returns the Mean Absolute Error for the difference between the true weighted adjacency matrix W_true and th estimated one, W."""
-    MAE_ = jnp.mean(jnp.abs(W_true - W))
+    MAE_ = jnp.mean(jnp.abs(W - W_true))
     return MAE_
 
 def compute_binary_adjacency(W, threshold=0.3):
@@ -512,6 +500,74 @@ def compute_binary_adjacency(W, threshold=0.3):
     B_est = np.array(np.abs(W) > threshold)
     
     return B_est
+
+
+def ensure_DAG(W):
+    """
+    Ensure that the weighted adjacency matrix corresponds to a DAG.
+
+    Inputs:
+        W: numpy.ndarray - a weighted adjacency matrix representing a directed graph
+
+    Outputs:
+        W: numpy.ndarray - a weighted adjacency matrix without cycles (DAG)
+    """
+    # Convert the adjacency matrix to a directed graph
+    g = nx.DiGraph(W)
+
+    # Make a copy of the graph to modify
+    gg = g.copy()
+
+    # Remove cycles by removing edges
+    while not nx.is_directed_acyclic_graph(gg):
+        h = gg.copy()
+
+        # Remove all the sources and sinks
+        while True:
+            finished = True
+
+            for node, in_degree in nx.in_degree_centrality(h).items():
+                if in_degree == 0:
+                    h.remove_node(node)
+                    finished = False
+
+            for node, out_degree in nx.out_degree_centrality(h).items():
+                if out_degree == 0:
+                    h.remove_node(node)
+                    finished = False
+
+            if finished:
+                break
+
+        # Find a cycle with a random walk starting at a random node
+        node = list(h.nodes)[0]
+        cycle = [node]
+        while True:
+            edges = list(h.out_edges(node))
+            _, node = edges[np.random.choice(len(edges))]
+
+            if node in cycle:
+                break
+
+            cycle.append(node)
+
+        # Extract the cycle path and adjust it to start at the first occurrence of the repeated node
+        cycle = np.array(cycle)
+        i = np.argwhere(cycle == node)[0][0]
+        cycle = cycle[i:]
+        cycle = cycle.tolist() + [node]
+
+        # Find edges in that cycle
+        edges = list(zip(cycle[:-1], cycle[1:]))
+
+        # Randomly pick an edge to remove
+        edge = edges[np.random.choice(len(edges))]
+        gg.remove_edge(*edge)
+
+    # Convert the modified graph back to a weighted adjacency matrix
+    W_acyclic = nx.to_numpy_array(gg)
+
+    return W_acyclic
 
 # %%
 # for reference compute the MAE, SID, and SHD between the true adjacency matrix and an all-zero matrix and then print it
@@ -594,7 +650,7 @@ dl = TorchDataloader(dataset, batch_size=batch_size, shuffle=True)
 with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
     forward(jnp.zeros((batch_size, model.n_nodes.get())), model=model)
     #optim_h = pxu.Optim(lambda: optax.sgd(h_learning_rate))
-    optim_h = pxu.Optim(lambda: optax.sgd(h_learning_rate, momentum=0.99, nesterov=True)) # this requires optim_h.clear() after each batch
+    optim_h = pxu.Optim(lambda: optax.sgd(h_learning_rate, momentum=0.5, nesterov=True)) # this requires optim_h.clear() after each batch
 
     """
     optim_w = pxu.Optim(
@@ -607,8 +663,6 @@ with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
     """
 
     optim_w = pxu.Optim(lambda: optax.adamw(w_learning_rate, nesterov=True), pxu.M(pxnn.LayerParam)(model))
-    #optim_w = pxu.Optim(lambda: optax.adam(w_learning_rate), pxu.M(pxnn.LayerParam)(model))
-    #optim_w = pxu.Optim(lambda: optax.adam(w_learning_rate, nesterov=True), pxu.M(pxnn.LayerParam)(model))
 
 # Initialize lists to store differences and energies
 MAEs = []
@@ -653,11 +707,11 @@ print(f"An epoch (with compiling and testing) took on average: {average_time_per
 print("The diagonal of the final W: ", jnp.diag(model.get_W()))
 
 # %%
-# print(model)
-# print()
-# with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-#     _, g = pxf.value_and_grad(pxu.M(pxnn.LayerParam).to([False, True]), has_aux=True)(energy)(model=model)
-#     print(g["model"])
+print(model)
+print()
+with pxu.step(model, clear_params=pxc.VodeParam.Cache):
+    _, g = pxf.value_and_grad(pxu.M(pxnn.LayerParam).to([False, True]), has_aux=True)(energy)(model=model)
+    print(g["model"])
 
 # %%
 # Set the style and color palette
@@ -692,13 +746,16 @@ axs[2].grid(True)
 # Improve layout and show the plot
 plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout to fit the suptitle
 # Now store the plot in the folder /plots folder as a pdf file
-plt.savefig("plots/nonlinear_fast/metrics_nonlinear_h_optim_A.pdf")
+plt.savefig("plots/nonlinear_slow/metrics_nonlinear_h_optim.pdf")
 plt.show()
 
 # %%
 # Now use a threshold of 0.3 to binarize the weighted adjacency matrix W
 W_est = np.array(model.get_W())
 B_est = compute_binary_adjacency(W_est, threshold=0.3)
+
+W_fix = ensure_DAG(W_est)
+B_fix = 1.0*(W_fix != 0)
 
 # %%
 # Check if B_est is indeed a DAG
@@ -743,6 +800,8 @@ print(f"The h_reg term for the true weighted adjacency matrix W_true is: {h_reg_
 # Compute the h_reg term for the estimated weighted adjacency matrix W_est
 h_reg_est = compute_h_reg(W_est)
 print(f"The h_reg term for the estimated weighted adjacency matrix W_est is: {h_reg_est:.4f}")
+h_reg_fix = compute_h_reg(W_fix)
+print(f"The h_reg term for the fixed weighted adjacency matrix W_fix is: {h_reg_fix:.4f}")
 
 # We note that B_est is a DAG even though h_reg is not equal to 0.0 (but only close to 0.0). 
 # This is because the matrix exponential is not a perfect measure of the DAG constraint, but it is a good approximation.
@@ -757,13 +816,19 @@ print("The first 5 rows and columns of the estimated weighted adjacency matrix W
 # now show the adjacency matrix of the true graph and the estimated graph side by side
 plot_adjacency_matrices(B_true, B_est)
 
+# now show the adjacency matrix of the true graph and the estimated graph side by side
+plot_adjacency_matrices(B_true, B_fix)
+
 # %%
 print(f"The number of edges in the true graph: {np.sum(B_true)}")
 print(f"The number of edges in the estimated graph: {np.sum(B_est)}")
 
 # %%
 # plot est_dag and true_dag
-GraphDAG(B_est, B_true, save_name='plots/nonlinear_fast/est_dag_true_dag_A.png')
+GraphDAG(B_est, B_true, save_name='plots/nonlinear_slow/est_dag_true_dag.png')
 # calculate accuracy
 met_pcax = MetricsDAG(B_est, B_true)
 print(met_pcax.metrics)
+
+met_pcax_fix = MetricsDAG(B_fix, B_true)
+print(met_pcax_fix.metrics)
