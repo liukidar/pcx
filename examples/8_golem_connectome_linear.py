@@ -62,39 +62,41 @@ folder = '../data/'
 
 # Specify the folder where the acyclic positive integer weighted connectome data was saved
 folder_cyclic = '/home/amine.mcharrak/connectome/data/'
+# Specify the folder where the acyclic positive integer weighted connectome data was saved
+folder_acyclic = '/home/amine.mcharrak/connectome/data/'
 
 # Example usage to load the saved adjacency matrices
-G_A_init_t_ordered_adj_matrix = load_adjacency_matrix(os.path.join(folder, 'G_A_init_t_ordered_adj_matrix.npy'))
-G_A_init_t_ordered_dag_adj_matrix = load_adjacency_matrix(os.path.join(folder, 'G_A_init_t_ordered_dag_adj_matrix.npy'))
-ER = load_adjacency_matrix(os.path.join(folder, 'ER_adj_matrix.npy'))
-ER_dag = load_adjacency_matrix(os.path.join(folder, 'ER_dag_adj_matrix.npy'))
+# G_A_init_t_ordered_adj_matrix = load_adjacency_matrix(os.path.join(folder, 'G_A_init_t_ordered_adj_matrix.npy'))
+# G_A_init_t_ordered_dag_adj_matrix = load_adjacency_matrix(os.path.join(folder, 'G_A_init_t_ordered_dag_adj_matrix.npy'))
+# ER = load_adjacency_matrix(os.path.join(folder, 'ER_adj_matrix.npy'))
+# ER_dag = load_adjacency_matrix(os.path.join(folder, 'ER_dag_adj_matrix.npy'))
 
 # Change name of the connectome adjacency matrix to C and C_dag
-C = G_A_init_t_ordered_adj_matrix
-C_dag = G_A_init_t_ordered_dag_adj_matrix
+# C = G_A_init_t_ordered_adj_matrix
+# C_dag = G_A_init_t_ordered_dag_adj_matrix
 
 # Now ensure that both DAG adjacency matrices are binary, if they aren't already
-ER_dag_bin = (ER_dag != 0).astype(int)
-C_dag_bin = (C_dag != 0).astype(int)
+# ER_dag_bin = (ER_dag != 0).astype(int)
+# C_dag_bin = (C_dag != 0).astype(int)
 
-ER_true = ER_dag_bin
-C_true = C_dag_bin
+# ER_true = ER_dag_bin
+# C_true = C_dag_bin
 
 # %% [markdown]
 # ## Create data to debug and implement the pcax version of NOTEARS
 
 # %%
 # actual data
-#B_true = simulate_dag(d=100, s0=400, graph_type='ER') # ER4
+# B_true = simulate_dag(d=100, s0=400, graph_type='ER') # ER4
 # debugging data
-#B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
+# B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
 
 
-#B_true = C_dag_bin # if you want to use the connectome-based DAG # best performance so far with 200,000 samples: 0.06 
+# B_true = C_dag_bin # if you want to use the connectome-based DAG # best
 #B_true = ER_dag_bin # if you want to use the ER-based DAG
 
 #B_true = simulate_dag(d=5, s0=10, graph_type='ER') # ER2
-B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
+#B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
 #B_true = simulate_dag(d=50, s0=100, graph_type='ER') # ER2
 #B_true = simulate_dag(d=100, s0=200, graph_type='ER') # ER2
 #B_true = simulate_dag(d=279, s0=558, graph_type='ER') # ER2
@@ -117,21 +119,20 @@ B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
 #B_true = simulate_dag(d=279, s0=1116, graph_type='SF') # SF4
 #B_true = simulate_dag(d=279, s0=1674, graph_type='SF') # SF6
 
-
 # create simple data using simulate_dag method from causal_helpers with expected number of edges (s0) and number of nodes (d)
 #B_true = simulate_dag(d=100, s0=199, graph_type='ER') # we use p≈0.040226 for the connectome-based ER_dag graph. This means that the expected number of edges is 0.040226 * d * (d-1) / 2
 # examples: d=50 -> s0=49 (works), d=100 -> s0=199, d=200 -> s0=800
 
 # create the weighted adjacency matrix based on the binary adjacency matrix
 #W_true = simulate_parameter(B_true, connectome=True)
-W_true = simulate_parameter(B_true)
+#W_true = simulate_parameter(B_true)
 
 # sample data from the linear SEM
 # actual data
 #X = simulate_linear_sem(W_true, n=10000, sem_type='gauss')
 #X = simulate_linear_sem(W_true, n=10000, sem_type='uniform')
 # for debugging
-X = simulate_linear_sem(W_true, n=1000, sem_type='gauss')
+#X = simulate_linear_sem(W_true, n=1000, sem_type='gauss')
 #X = simulate_linear_sem(W_true, n=2500, sem_type='gauss')
 #X = simulate_linear_sem(W_true, n=6250, sem_type='gauss')
 #X = simulate_linear_sem(W_true, n=50000, sem_type='gauss')
@@ -141,6 +142,26 @@ X = simulate_linear_sem(W_true, n=1000, sem_type='gauss')
 #B_true_weighted = load_adjacency_matrix(os.path.join(folder_cyclic, 'A_init_t_ordered_adj_matrix_with_cycles.npy'))
 #X, W_true = sample_cyclic_data(B_true_weighted, n_samples=10000, noise_type='non-gaussian')
 #B_true = (W_true != 0).astype(int)
+
+# load the acyclic integer weighted connectome data adjacency matrix
+B_true_weighted = load_adjacency_matrix(os.path.join(folder_acyclic, 'A_init_t_ordered_adj_matrix_no_cycles.npy'))
+print("B_true_weighted:\n", np.array_str(B_true_weighted, precision=4, suppress_small=True))
+
+# use this for regular DAGs
+#W_true = simulate_parameter(B_true)
+# use this for connectome-based DAGs
+W_true = simulate_parameter(B_true_weighted, connectome=True)
+B_true = (W_true != 0).astype(int)
+print("W_true:\n", np.array_str(W_true, precision=4, suppress_small=True))
+
+# print("W_true:\n", np.array_str(W_true, precision=4, suppress_small=True))
+print("Mean of W_true:", np.mean(W_true))
+print("Variance of W_true:", np.var(W_true))
+print("Max value in W_true:", np.max(W_true))
+print("Min value in W_true:", np.min(W_true))
+
+# sample data from the linear SEM
+X = simulate_linear_sem(W_true, n=1000, sem_type='gauss')
 
 # now standardized data, where each variable is normalized to unit variance
 from sklearn.preprocessing import StandardScaler
@@ -280,13 +301,16 @@ print(model.are_vodes_frozen())
 # TODO: make the below params global or input to the functions in which it is used.
 w_learning_rate = 1e-3 # Notes: 5e-1 is too high
 h_learning_rate = 1e-4
-T = 64
+T = 1
 
-nm_epochs = 10000
+nm_epochs = 50000
 batch_size = 128
 
-lam_h = 1e-2 # 2e2 -> 5e2 # this move works well! FIRST MOVE
-lam_l1 = 1e-8 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
+lam_h = 1e3 # 2e2 -> 5e2 # this move works well! FIRST MOVE
+lam_l1 = 1e-12 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
+# Create a file name string for the hyperparameters
+exp_name = f"bs_{batch_size}_lrw_{w_learning_rate}_lrh_{h_learning_rate}_lamh_{lam_h}_laml1_{lam_l1}"
+print("Name of the experiment: ", exp_name)
 
 #lam_h = 5e2 # 2e2 -> 5e2 # this move works well! FIRST MOVE
 #lam_l1 = 3e-2 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
@@ -693,8 +717,12 @@ print("The diagonal of the final W: ", jnp.diag(model.get_W()))
 # print in big that training is done
 print("\n\n ###########################  Training is done  ########################### \n\n")
 
-# Create plots directory if it doesn't exist
-os.makedirs('plots/linear', exist_ok=True)
+# Define experiment name
+exp_name = f"bs_{batch_size}_lrw_{w_learning_rate}_lrh_{h_learning_rate}_lamh_{lam_h}_laml1_{lam_l1}"
+
+# Create subdirectory in linear folder with the name stored in exp_name
+save_path = os.path.join('plots/linear', exp_name)
+os.makedirs(save_path, exist_ok=True)
 
 # Reset to default style and set seaborn style
 plt.style.use('default')
@@ -829,8 +857,8 @@ fig.text(0.5, 0.93,
          fontsize=12,
          style='italic')
 
-# Save and show the figure
-plt.savefig('plots/linear/training_metrics.png', 
+# Save and show the figure as a .pdf file at the specified location
+plt.savefig(os.path.join(save_path, 'training_metrics.pdf'), 
             bbox_inches='tight', 
             dpi=300)
 plt.show()
@@ -875,8 +903,8 @@ for ax in [ax1, ax2]:
 # Improve layout
 plt.tight_layout()
 
-# Save the comparison plot with high DPI
-plt.savefig('plots/linear/dag_comparison.png', 
+# Save the comparison plot as a .pdf file at the specified location
+plt.savefig(os.path.join(save_path, 'dag_comparison.pdf'), 
             bbox_inches='tight', 
             dpi=300,
             facecolor='white',
@@ -930,7 +958,7 @@ np.set_printoptions(precision=4, suppress=True)
 print("The first 5 rows and columns of the estimated weighted adjacency matrix W_est\n{}".format(W_est[:5, :5]))
 
 # now show the adjacency matrix of the true graph and the estimated graph side by side
-plot_adjacency_matrices(true_matrix=B_true, est_matrix=B_est, save_path='plots/linear/adjacency_matrices.png')
+plot_adjacency_matrices(true_matrix=B_true, est_matrix=B_est, save_path=os.path.join(save_path, 'adjacency_matrices.png'))
 
 # print the number of edges in the true graph and the estimated graph
 print(f"The number of edges in the true graph: {np.sum(B_true)}")
@@ -938,7 +966,7 @@ print(f"The number of edges in the estimated graph: {np.sum(B_est)}")
 
 # %%
 # plot est_dag and true_dag
-GraphDAG(B_est, B_true, save_name='plots/linear/est_dag_true_dag.png')
+GraphDAG(B_est, B_true, save_name=os.path.join(save_path, 'est_dag_true_dag.png'))
 # calculate accuracy
 met_pcx = MetricsDAG(B_est, B_true)
 print(met_pcx.metrics)

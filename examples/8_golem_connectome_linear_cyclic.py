@@ -3,11 +3,8 @@
 
 # %%
 import os
-# print current working directory
-print("")
-
 # choose the GPU to use
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # disable preallocation of memory
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
@@ -65,90 +62,15 @@ folder = '../data/'
 # Specify the folder where the cyclic connectome data was saved
 folder_cyclic = '/home/amine.mcharrak/connectome/data/'
 
-# Example usage to load the saved adjacency matrices
-G_A_init_t_ordered_adj_matrix = load_adjacency_matrix(os.path.join(folder, 'G_A_init_t_ordered_adj_matrix.npy'))
-G_A_init_t_ordered_dag_adj_matrix = load_adjacency_matrix(os.path.join(folder, 'G_A_init_t_ordered_dag_adj_matrix.npy'))
-ER = load_adjacency_matrix(os.path.join(folder, 'ER_adj_matrix.npy'))
-ER_dag = load_adjacency_matrix(os.path.join(folder, 'ER_dag_adj_matrix.npy'))
 
-# Change name of the connectome adjacency matrix to C and C_dag
-C = G_A_init_t_ordered_adj_matrix
-C_dag = G_A_init_t_ordered_dag_adj_matrix
-
-# Now ensure that both DAG adjacency matrices are binary, if they aren't already
-ER_dag_bin = (ER_dag != 0).astype(int)
-C_dag_bin = (C_dag != 0).astype(int)
-
-ER_true = ER_dag_bin
-C_true = C_dag_bin
-
-# %% [markdown]
-# ## Create data to debug and implement the pcax version of NOTEARS
-
-# %%
-# actual data
-#B_true = simulate_dag(d=100, s0=400, graph_type='ER') # ER4
-# debugging data
-#B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
-
-
-B_true = C_dag_bin # if you want to use the connectome-based DAG # best performance so far with 200,000 samples: 0.06 
-#B_true = ER_dag_bin # if you want to use the ER-based DAG
-
-#B_true = simulate_dag(d=5, s0=10, graph_type='ER') # ER2
-#B_true = simulate_dag(d=10, s0=20, graph_type='ER') # ER2
-#B_true = simulate_dag(d=50, s0=100, graph_type='ER') # ER2
-#B_true = simulate_dag(d=100, s0=200, graph_type='ER') # ER2
-#B_true = simulate_dag(d=279, s0=558, graph_type='ER') # ER2
-
-# create SF2 graph and SF4 graph with d=10 nodes
-#B_true = simulate_dag(d=10, s0=20, graph_type='SF') # SF2
-#B_true = simulate_dag(d=10, s0=40, graph_type='SF') # SF4
-#B_true = simulate_dag(d=100, s0=400, graph_type='SF') # SF4
-
-# create ER2 and ER4 graphs with d=100 nodes
-#B_true = simulate_dag(d=100, s0=200, graph_type='ER') # ER2
-#B_true = simulate_dag(d=100, s0=400, graph_type='ER') # ER4
-
-# create equivalent ER4 and ER6 graphs
-#B_true = simulate_dag(d=279, s0=1116, graph_type='ER') # ER4
-#B_true = simulate_dag(d=279, s0=1674, graph_type='ER') # ER6
-
-# create equivalent SF4 and SF6 graphs
-#B_true = simulate_dag(d=100, s0=600, graph_type='SF') # SF6
-#B_true = simulate_dag(d=279, s0=1116, graph_type='SF') # SF4
-#B_true = simulate_dag(d=279, s0=1674, graph_type='SF') # SF6
-
-
-# create simple data using simulate_dag method from causal_helpers with expected number of edges (s0) and number of nodes (d)
-#B_true = simulate_dag(d=100, s0=199, graph_type='ER') # we use p≈0.040226 for the connectome-based ER_dag graph. This means that the expected number of edges is 0.040226 * d * (d-1) / 2
-# examples: d=50 -> s0=49 (works), d=100 -> s0=199, d=200 -> s0=800
-
-# create the weighted adjacency matrix based on the binary adjacency matrix
-#W_true = simulate_parameter(B_true, connectome=True) # this samples params for DAG connectome
-
-X_gaussian, B_sampled_gaussian = sample_cyclic_data(B_given=B_true, n_samples=10000, noise_type='gaussian')
-print("Generated data with Gaussian noise, shape:", X_gaussian.shape)
-print("Sampled B matrix with Gaussian noise:\n", B_sampled_gaussian)
-
-X = X_gaussian
-W_true = B_sampled_gaussian
-
-# sample data from the linear SEM
-# actual data
-#X = simulate_linear_sem(W_true, n=10000, sem_type='gauss')
-#X = simulate_linear_sem(W_true, n=10000, sem_type='uniform')
-# for debugging
-#X = simulate_linear_sem(W_true, n=1000, sem_type='gauss')
-#X = simulate_linear_sem(W_true, n=2500, sem_type='gauss')
-#X = simulate_linear_sem(W_true, n=6250, sem_type='gauss')
-#X = simulate_linear_sem(W_true, n=50000, sem_type='gauss')
-#X = simulate_linear_sem(W_true, n=100000, sem_type='gauss') # 1000*(279**2)/(20**2) = 194602
-
-# load the cyclic connectome data
-#B_true_weighted = load_adjacency_matrix(os.path.join(folder_cyclic, 'A_init_t_ordered_adj_matrix_with_cycles.npy'))
+# load the cyclic integer weighted connectome data adjacency matrix
+B_true_weighted = load_adjacency_matrix(os.path.join(folder_cyclic, 'A_init_t_ordered_adj_matrix_with_cycles.npy'))
+X, W_true = sample_cyclic_data(B_true_weighted, n_samples=1000, noise_type='gaussian')
 #X, W_true = sample_cyclic_data(B_true_weighted, n_samples=10000, noise_type='non-gaussian')
-#B_true = (W_true != 0).astype(int)
+B_true = (W_true != 0).astype(int)
+
+print("Generated data with Gaussian noise, shape:", X.shape)
+print("Sampled B matrix with Gaussian noise:\n", B_true)
 
 # now standardized data, where each variable is normalized to unit variance
 from sklearn.preprocessing import StandardScaler
@@ -191,6 +113,14 @@ class Complete_Graph(pxc.EnergyModule):
         
         # Zero out the diagonal weights to avoid self-loops
         weight_matrix = self.layers[0].nn.weight.get()
+
+        key = jax.random.PRNGKey(np.random.randint(0, 1000000))
+        weight_matrix = jax.random.normal(key, shape=weight_matrix.shape, dtype=weight_matrix.dtype) * 0.1 + 1.0
+        # show what the weight matrix looks like by printing the first 5x5 submatrix and the diagonal
+        #print("The first 5x5 submatrix of the weight matrix: ", weight_matrix[:5, :5])
+        #print("The diagonal of the weight matrix: ", jnp.diag(weight_matrix))
+        #print("The shape of the weight matrix: ", weight_matrix.shape)
+
         weight_matrix = weight_matrix.reshape(n_nodes, input_dim, n_nodes, input_dim)
         for i in range(n_nodes):
             weight_matrix = weight_matrix.at[i, :, i, :].set(jnp.zeros((input_dim, input_dim)))
@@ -286,23 +216,14 @@ print(model.are_vodes_frozen())
 
 # %%
 # TODO: make the below params global or input to the functions in which it is used.
-w_learning_rate = 5e-3 # Notes: 5e-1 is too high, 5e-3 works well for most cases, 5e-2 is very noise but still works
+w_learning_rate = 1e-3 # Notes: 5e-1 is too high, 5e-3 works well for most cases, 5e-2 is very noise but still works
 h_learning_rate = 5e-4
 T = 1
 
 nm_epochs = 5000
-batch_size = 512
+batch_size = 128
 
-#lam_h = 5e2 # 2e2 -> 5e2 # this move works well! FIRST MOVE
-#lam_l1 = 3e-2 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
-
-# setup that works well for small graphs (d=10 to d=20)
-#lam_h = 200 # 
-#lam_l1 = 5e-2 # 
-
-# setup that works well for large graphs (d=100)
-lam_h = 1e6
-lam_l1 = 1e-15
+lam_l1 = 1e1
 
 # TODO: check if one can start with 5e-2 for lam_l1 and 5e3 for lam_h directly instead (run for at least 300.000 epochs)
 
@@ -313,7 +234,7 @@ def forward(x, *, model: Complete_Graph):
     return model(x)
 
 # @pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), out_axes=(None, 0), axis_name="batch") # if only one output
-@pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), out_axes=(None, None, None, None, 0), axis_name="batch") # if multiple outputs
+@pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), out_axes=(None, None, None, 0), axis_name="batch") # if multiple outputs
 def energy(*, model: Complete_Graph):
     print("Energy: Starting computation")
     x_ = model(None)
@@ -332,21 +253,14 @@ def energy(*, model: Complete_Graph):
     #l1_reg = jnp.sum(jnp.abs(W)) / (d**2) # with normalization
     l1_reg = jnp.sum(jnp.abs(W)) / d # with normalization
     print(f"Energy: L1 reg term: {l1_reg}")
-
-    # DAG constraint
-    #h_reg = jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d # without normalization
-    #h_reg = (jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d) / (d**2) # with normalization
-    h_reg = (jnp.trace(jax.scipy.linalg.expm(jnp.multiply(W, W))) - d) / d # with normalization
-    print(f"Energy: DAG constraint term: {h_reg}")
     
     # Combined loss
-    obj = pc_energy + lam_h * h_reg + lam_l1 * l1_reg # when not using h_optim (i.e. state nodes) 
-    #obj = pc_energy + lam_h * h_reg + lam_l1 * l1_reg # when using h_optim (i.e. optimize nodes)
+    obj = pc_energy + lam_l1 * l1_reg # when not using h_optim (i.e. state nodes) 
     
     print(f"Energy: Final objective: {obj}")
 
     # return obj, x_ # single output without batch dimension
-    return obj, pc_energy, h_reg, l1_reg, x_ # multiple outputs without batch dimension
+    return obj, pc_energy, l1_reg, x_ # multiple outputs without batch dimension
 
 @pxf.jit(static_argnums=0)
 def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.Optim, optim_h: pxu.Optim):
@@ -380,7 +294,7 @@ def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.
 
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
         print("6. Before computing gradients")
-        (obj, (pc_energy, h_reg, l1_reg, x_)), g = pxf.value_and_grad(
+        (obj, (pc_energy, l1_reg, x_)), g = pxf.value_and_grad(
             pxu.M(pxnn.LayerParam).to([False, True]), 
             has_aux=True
         )(energy)(model=model) # pxf.value_and_grad returns a tuple structured as ((value, aux), grad), not as six separate outputs.
@@ -412,21 +326,19 @@ def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.
     model.freeze_nodes(freeze=False)
     print("14. Nodes unfrozen")
 
-    return pc_energy, l1_reg, h_reg, obj
+    return pc_energy, l1_reg, obj
 
 def train(dl, T, *, model: Complete_Graph, optim_w: pxu.Optim, optim_h: pxu.Optim):
     batch_pc_energies = []
     batch_l1_regs = []
-    batch_h_regs = []
     batch_objs = []
     
     for batch in dl:
-        pc_energy, l1_reg, h_reg, obj = train_on_batch(
+        pc_energy, l1_reg, obj = train_on_batch(
             T, batch, model=model, optim_w=optim_w, optim_h=optim_h
         )
         batch_pc_energies.append(pc_energy)
         batch_l1_regs.append(l1_reg)
-        batch_h_regs.append(h_reg)
         batch_objs.append(obj)
 
     W = model.get_W()
@@ -434,10 +346,9 @@ def train(dl, T, *, model: Complete_Graph, optim_w: pxu.Optim, optim_h: pxu.Opti
     # Compute epoch averages
     epoch_pc_energy = jnp.mean(jnp.array(batch_pc_energies))
     epoch_l1_reg = jnp.mean(jnp.array(batch_l1_regs))
-    epoch_h_reg = jnp.mean(jnp.array(batch_h_regs))
     epoch_obj = jnp.mean(jnp.array(batch_objs))
     
-    return W, epoch_pc_energy, epoch_l1_reg, epoch_h_reg, epoch_obj
+    return W, epoch_pc_energy, epoch_l1_reg, epoch_obj
 
 # %%
 @jit
@@ -446,7 +357,7 @@ def MAE(W_true, W):
     MAE_ = jnp.mean(jnp.abs(W - W_true))
     return MAE_
 
-def compute_binary_adjacency(W, threshold=0.3):
+def compute_binary_adjacency(W, threshold=0.1):
     """
     Compute the binary adjacency matrix by thresholding the input matrix.
 
@@ -626,8 +537,9 @@ with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
     pxu.Mask(pxnn.LayerParam)(model)  # Masking the parameters of the model
 )
     """
-    #optim_w = pxu.Optim(lambda: optax.adam(w_learning_rate), pxu.M(pxnn.LayerParam)(model))
-    optim_w = pxu.Optim(lambda: optax.adamw(w_learning_rate), pxu.M(pxnn.LayerParam)(model))
+    #optim_w = pxu.Optim(lambda: optax.adamw(w_learning_rate), pxu.M(pxnn.LayerParam)(model))
+    #optim_w = pxu.Optim(lambda: optax.adamw(w_learning_rate, nesterov=True), pxu.M(pxnn.LayerParam)(model))
+    optim_w = pxu.Optim(lambda: optax.sgd(w_learning_rate, momentum=0.9, nesterov=True), pxu.M(pxnn.LayerParam)(model))
 
 
 # Initialize lists to store differences and energies
@@ -636,7 +548,6 @@ SHDs = []
 F1s = []
 pc_energies = []
 l1_regs = []
-h_regs = []
 objs = []
 
 # Calculate the initial MAE, SID, and SHD
@@ -663,7 +574,7 @@ start_time = timeit.default_timer()
 with tqdm(range(nm_epochs), position=0, leave=True) as pbar:
     for epoch in pbar:
         # Train for one epoch using the dataloader
-        W, epoch_pc_energy, epoch_l1_reg, epoch_h_reg, epoch_obj = train(dl, T=T, model=model, optim_w=optim_w, optim_h=optim_h)
+        W, epoch_pc_energy, epoch_l1_reg, epoch_obj = train(dl, T=T, model=model, optim_w=optim_w, optim_h=optim_h)
         
         # Extract the weighted adjacency matrix W and compute the binary adjacency matrix B
         W = np.array(W)
@@ -675,7 +586,6 @@ with tqdm(range(nm_epochs), position=0, leave=True) as pbar:
         F1s.append(float(f1_score(B_true.flatten(), B.flatten())))
         pc_energies.append(float(epoch_pc_energy))
         l1_regs.append(float(epoch_l1_reg))
-        h_regs.append(float(epoch_h_reg))
         objs.append(float(epoch_obj))
 
         # show the first 5x5 submatrix of W after each epoch
@@ -683,7 +593,7 @@ with tqdm(range(nm_epochs), position=0, leave=True) as pbar:
         print(np.array2string(W[:5,:5], precision=3, suppress_small=True, separator=', '))        
         
         # Update progress bar with the current status
-        pbar.set_description(f"MAE {MAEs[-1]:.4f}, SHD {SHDs[-1]:.4f}, F1 {F1s[-1]:.4f} || PC Energy {pc_energies[-1]:.4f}, L1 Reg {l1_regs[-1]:.4f}, H Reg {h_regs[-1]:.4f}, Obj {objs[-1]:.4f}")
+        pbar.set_description(f"MAE {MAEs[-1]:.4f}, SHD {SHDs[-1]:.4f}, F1 {F1s[-1]:.4f} || PC Energy {pc_energies[-1]:.4f}, L1 Reg {l1_regs[-1]:.4f}, Obj {objs[-1]:.4f}")
 
 # End timing
 end_time = timeit.default_timer()
@@ -698,8 +608,12 @@ print("The diagonal of the final W: ", jnp.diag(model.get_W()))
 # print in big that training is done
 print("\n\n ###########################  Training is done  ########################### \n\n")
 
-# Create plots directory if it doesn't exist
-os.makedirs('plots/linear', exist_ok=True)
+# Define experiment name
+exp_name = f"bs_{batch_size}_lrw_{w_learning_rate}_lrh_{h_learning_rate}_laml1_{lam_l1}"
+
+# Create subdirectory in linear folder with the name stored in exp_name
+save_path = os.path.join('plots/linear_cyclic', exp_name)
+os.makedirs(save_path, exist_ok=True)
 
 # Reset to default style and set seaborn style
 plt.style.use('default')
@@ -732,23 +646,22 @@ plt.subplots_adjust(top=0.85, hspace=0.4, wspace=0.3)
 # Create axes
 ax00 = fig.add_subplot(gs[0, 0])
 ax01 = fig.add_subplot(gs[0, 1])
-ax02 = fig.add_subplot(gs[0, 2])
-ax03 = fig.add_subplot(gs[0, 3])
+ax02 = fig.add_subplot(gs[0, 2:])
 ax10 = fig.add_subplot(gs[1, 0])
 ax11 = fig.add_subplot(gs[1, 1])
 ax12 = fig.add_subplot(gs[1, 2:])
+# ax02 spans two columns
 # ax12 spans two columns
 
-axes = [ax00, ax01, ax02, ax03, ax10, ax11, ax12]
+axes = [ax00, ax01, ax02, ax10, ax11, ax12]
 
 # Plot configurations
 plot_configs = [
     {'metric': MAEs, 'title': 'Mean Absolute Error', 'ylabel': 'MAE', 'color': '#2ecc71', 'ax': ax00},
     {'metric': SHDs, 'title': 'Structural Hamming Distance', 'ylabel': 'SHD', 'color': '#e74c3c', 'ax': ax01},
     {'metric': F1s, 'title': 'F1 Score', 'ylabel': 'F1', 'color': '#3498db', 'ax': ax02},
-    {'metric': pc_energies, 'title': 'PC Energy', 'ylabel': 'Energy', 'color': '#9b59b6', 'ax': ax03},
-    {'metric': l1_regs, 'title': 'L1 Regularization', 'ylabel': 'L1', 'color': '#f1c40f', 'ax': ax10},
-    {'metric': h_regs, 'title': 'DAG Constraint', 'ylabel': 'h(W)', 'color': '#e67e22', 'ax': ax11},
+    {'metric': pc_energies, 'title': 'PC Energy', 'ylabel': 'Energy', 'color': '#9b59b6', 'ax': ax10},
+    {'metric': l1_regs, 'title': 'L1 Regularization', 'ylabel': 'L1', 'color': '#f1c40f', 'ax': ax11},
     {'metric': objs, 'title': 'Total Objective', 'ylabel': 'Loss', 'color': '#1abc9c', 'ax': ax12}
 ]
 
@@ -827,15 +740,15 @@ fig.suptitle('Training Metrics Over Time',
             weight='bold', 
             y=0.98)
 
-subtitle = f'λ_h = {lam_h}, λ_l1 = {lam_l1}, Weights Learning Rate = {w_learning_rate}'
+subtitle = f'λ_l1 = {lam_l1}, Weights Learning Rate = {w_learning_rate}'
 fig.text(0.5, 0.93, 
          subtitle, 
          horizontalalignment='center',
          fontsize=12,
          style='italic')
 
-# Save and show the figure
-plt.savefig('plots/linear/training_metrics.png', 
+# Save and show the figure as a .pdf file at the specified location
+plt.savefig(os.path.join(save_path, 'training_metrics.pdf'), 
             bbox_inches='tight', 
             dpi=300)
 plt.show()
@@ -880,8 +793,8 @@ for ax in [ax1, ax2]:
 # Improve layout
 plt.tight_layout()
 
-# Save the comparison plot with high DPI
-plt.savefig('plots/linear/dag_comparison.png', 
+# Save the comparison plot as a .pdf file at the specified location
+plt.savefig(os.path.join(save_path, 'dag_comparison.pdf'), 
             bbox_inches='tight', 
             dpi=300,
             facecolor='white',
@@ -891,7 +804,7 @@ plt.show()
 # %%
 # Now use a threshold of 0.3 to binarize the weighted adjacency matrix W
 W_est = np.array(model.get_W())
-B_est = compute_binary_adjacency(W_est, threshold=0.3)
+B_est = compute_binary_adjacency(W_est, threshold=0.1)
 
 # %%
 # Check if B_est is indeed a DAG
@@ -915,27 +828,13 @@ def is_dag(adjacency_matrix):
 is_dag_B_est = is_dag(B_est)
 print(f"Is the estimated binary adjacency matrix a DAG? {is_dag_B_est}")
 
-# Define fucntion to compute h_reg based W with h_reg = jnp.trace(jax.scipy.linalg.expm(W * W)) - d, here * denotes the hadamard product
-def compute_h_reg(W):
-    """This function computes the h_reg term based on the matrix W."""
-    h_reg = jnp.trace(jax.scipy.linalg.expm(W * W)) - W.shape[0]
-    return h_reg
-
-# Compute the h_reg term for the true weighted adjacency matrix W_true
-h_reg_true = compute_h_reg(W_true)
-print(f"The h_reg term for the true weighted adjacency matrix W_true is: {h_reg_true:.4f}")
-
-# Compute the h_reg term for the estimated weighted adjacency matrix W_est
-h_reg_est = compute_h_reg(W_est)
-print(f"The h_reg term for the estimated weighted adjacency matrix W_est is: {h_reg_est:.4f}")
-
 # print first 5 rows and columsn of W_est and round values to 4 decimal places and show as non-scientific notation
 np.set_printoptions(precision=4, suppress=True)
 
 print("The first 5 rows and columns of the estimated weighted adjacency matrix W_est\n{}".format(W_est[:5, :5]))
 
 # now show the adjacency matrix of the true graph and the estimated graph side by side
-plot_adjacency_matrices(true_matrix=B_true, est_matrix=B_est, save_path='plots/linear/adjacency_matrices.png')
+plot_adjacency_matrices(true_matrix=B_true, est_matrix=B_est, save_path=os.path.join(save_path, 'adjacency_matrices.png'))
 
 # print the number of edges in the true graph and the estimated graph
 print(f"The number of edges in the true graph: {np.sum(B_true)}")
@@ -943,7 +842,12 @@ print(f"The number of edges in the estimated graph: {np.sum(B_est)}")
 
 # %%
 # plot est_dag and true_dag
-GraphDAG(B_est, B_true, save_name='plots/linear/est_dag_true_dag.png')
+GraphDAG(B_est, B_true, save_name=os.path.join(save_path, 'est_dag_true_dag.png'))
 # calculate accuracy
 met_pcx = MetricsDAG(B_est, B_true)
 print(met_pcx.metrics)
+# now print the SHD computed via cdt as a comparison
+shd_cdt = SHD(B_true, B_est, double_for_anticausal=True)
+print(f"The SHD computed via cdt with double_for_anticausal=True is: {shd_cdt}")
+shd_cdt = SHD(B_true, B_est, double_for_anticausal=False)
+print(f"The SHD computed via cdt with double_for_anticausal=False is: {shd_cdt}")

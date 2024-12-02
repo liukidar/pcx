@@ -218,8 +218,10 @@ class Complete_Graph(pxc.EnergyModule):
         # Initialize adjacency matrix with zeros on the diagonal
         lim = 1.0 / math.sqrt(n_nodes)
         key = jax.random.PRNGKey(np.random.randint(0, 1000000))
-        init_weights = jax.random.uniform(key, (n_nodes, n_nodes), minval=-lim, maxval=lim)
-        init_weights = init_weights * (1 - jnp.eye(n_nodes))  # Set diagonal to zero
+        #init_weights = jax.random.uniform(key, (n_nodes, n_nodes), minval=-lim, maxval=lim)
+        #init_weights = init_weights * (1 - jnp.eye(n_nodes))  # Set diagonal to zero
+        # create init weights such that we have matrix of ones with zeros on the diagonal
+        init_weights = jnp.ones((n_nodes, n_nodes)) - jnp.eye(n_nodes) # feedback from Tommaso
         self.adj_weights = pxnn.LayerParam(init_weights)
 
         # Initialize main node VODE
@@ -341,15 +343,15 @@ print(model.are_vodes_frozen())
 
 # %%
 # TODO: make the below params global or input to the functions in which it is used.
-w_learning_rate = 1e-2 # Notes: 5e-1 is too high
-h_learning_rate = 1e-3
+w_learning_rate = 5e-2 # Notes: 5e-1 is too high
+h_learning_rate = 1e-1
 T = 4
 
 nm_epochs = 1000
 batch_size = 128
 
-lam_h = 1e4 # 2e2 -> 5e2 # this move works well! FIRST MOVE
-lam_l1 = 1 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
+lam_h = 1e2 # 2e2 -> 5e2 # this move works well! FIRST MOVE
+lam_l1 = 1e2 # 1e-2 -> 3e-2 # this move works well! SECOND MOVE
 
 # %%
 # Training and evaluation functions
