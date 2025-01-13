@@ -303,7 +303,7 @@ w_learning_rate = 1e-3 # Notes: 5e-1 is too high
 h_learning_rate = 1e-4
 T = 1
 
-nm_epochs = 50000
+nm_epochs = 5000
 batch_size = 128
 
 lam_h = 1e3 # 2e2 -> 5e2 # this move works well! FIRST MOVE
@@ -386,12 +386,12 @@ def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.
     """
     # The following code might not be needed as we are keeping the vodes frozen at all times
     # Reinitialize the optimizer state between different batches
-    optim_h.init(pxu.Mask(pxc.VodeParam)(model))
+    optim_h.init(pxu.M(pxc.VodeParam)(model))
 
     for _ in range(T):
         with pxu.step(model, clear_params=pxc.VodeParam.Cache):
             (e, x_), g = pxf.value_and_grad(
-                pxu.Mask(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]),
+                pxu.M(pxu.m(pxc.VodeParam).has_not(frozen=True), [False, True]),
                 has_aux=True
             )(energy)(model=model)
         optim_h.step(model, g["model"], True)
@@ -642,7 +642,7 @@ with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
         optax.clip_by_global_norm(clip_value),  # Clip gradients by global norm
         optax.sgd(w_learning_rate)  # Apply SGD optimizer
     ),
-    pxu.Mask(pxnn.LayerParam)(model)  # Masking the parameters of the model
+    pxu.M(pxnn.LayerParam)(model)  # Masking the parameters of the model
 )
     """
     #optim_w = pxu.Optim(lambda: optax.adam(w_learning_rate), pxu.M(pxnn.LayerParam)(model))
