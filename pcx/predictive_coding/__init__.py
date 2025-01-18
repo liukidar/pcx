@@ -2,6 +2,7 @@ __all__ = [
     "zero_energy",
     "se_energy",
     "ce_energy",
+    "bce_energy",
     "EnergyModule",
     "VodeParam",
     "STATUS",
@@ -9,7 +10,7 @@ __all__ = [
     "Ruleset",
 ]
 
-from ._energy import zero_energy, se_energy, ce_energy
+from ._energy import zero_energy, se_energy, ce_energy, bce_energy
 
 
 from ._energy_module import EnergyModule

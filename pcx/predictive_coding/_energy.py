@@ -1,4 +1,4 @@
-__all__ = ["zero_energy", "se_energy", "ce_energy"]
+__all__ = ["zero_energy", "se_energy", "ce_energy", "bce_energy"]
 
 
 import jax
@@ -32,3 +32,10 @@ def se_energy(vode, rkg: RandomKeyGenerator = RKG):
 def ce_energy(vode, rkg: RandomKeyGenerator = RKG):
     """Cross entropy energy function derived from a categorical distribution."""
     return -(vode.get("h") * jax.nn.log_softmax(vode.get("u")))
+
+
+def bce_energy(vode, rkg: RandomKeyGenerator = RKG):
+    """Binary cross entropy energy function derived from a Bernoulli distribution."""
+    h = vode.get("h")  # Observed binary variable (0 or 1)
+    u = vode.get("u")  # Logits
+    return -(h * jax.nn.log_sigmoid(u) + (1 - h) * jax.nn.log_sigmoid(-u))
