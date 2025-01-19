@@ -2,7 +2,7 @@
 
 import numpy as np
 
-def erdos_random_graph(n_vars, max_degree, max_cycle):
+def sample_er_dcg(n_vars, max_degree, max_cycle):
     """
     Randomly sample a Directed Cyclic Graph (DCG) with a maximum degree and cycle length.
 
@@ -69,15 +69,15 @@ def erdos_random_graph(n_vars, max_degree, max_cycle):
 
     return support
 
-def sample_param_unif(B_support, B_low=0.5, B_high=2.0, var_low=0.5, var_high=1.5,
-                      flip_sign=True, max_eig=1.0, max_cond_number=20):
+def sample_W(B, B_low=1.0, B_high=2.0, var_low=0.5, var_high=1.5,
+                      flip_sign=True, max_eig=1.0, max_cond_number=100):
     """
     Generate graph parameters given the support matrix by sampling uniformly in a range.
 
-    Edge weights are sampled independently from Unif[-2, -0.5] ∪ [0.5, 2].
+    Edge weights are sampled independently from Unif[-2, -1.0] ∪ [1.0, 2.0].
 
     Args:
-        B_support (np.ndarray): Support (adjacency) matrix of the graph.
+        B (np.ndarray): Support (adjacency) matrix of the graph.
         B_low (float): Lower bound for edge weights.
         B_high (float): Upper bound for edge weights.
         var_low (float): Lower bound for error variances.
@@ -88,38 +88,40 @@ def sample_param_unif(B_support, B_low=0.5, B_high=2.0, var_low=0.5, var_high=1.
 
     Returns:
         tuple: Tuple containing:
-            - B_sampled (np.ndarray): Weighted adjacency matrix with sampled edge weights.
-            - s_sampled (np.ndarray): Log variances for each variable.
+            - W (np.ndarray): Weighted adjacency matrix with sampled edge weights.
+            - noise_scales (np.ndarray): Noise variances for each variable.
     """
-    n_variables = B_support.shape[0]
+    assert B.shape[0] == B.shape[1]
+    n_variables = B.shape[0]
 
     stable = False
     while not stable:
-        B_sampled = B_support * np.random.uniform(B_low, B_high, size=B_support.shape)
+        W = B * np.random.uniform(B_low, B_high, size=B.shape)
         if flip_sign:
-            signs = np.random.choice([-1, 1], size=B_sampled.shape)
-            B_sampled *= signs
-        eigenvalues = np.linalg.eigvals(B_sampled)
+            signs = np.random.choice([-1, 1], size=W.shape)
+            W *= signs
+        eigenvalues = np.linalg.eigvals(W)
         max_abs_eigenvalue = np.max(np.abs(eigenvalues))
-        cond_number = np.linalg.cond(np.eye(n_variables) - B_sampled)
+        cond_number = np.linalg.cond(np.eye(n_variables) - W)
         stable = max_abs_eigenvalue < max_eig and cond_number < max_cond_number
 
-    s_sampled = np.log(np.random.uniform(var_low, var_high, size=n_variables))
-    return B_sampled, s_sampled
+    noise_scales = np.random.uniform(var_low, var_high, size=n_variables)
+    return W, noise_scales
 
-def sample_graph(B, logvars, n_samp):
+def sample_data(B, noise_scales, num_samples):
     """
-    Generate data given the B matrix and log variances.
+    Generate data given the B matrix and noise scales.
 
     Args:
         B (np.ndarray): Weighted adjacency matrix.
-        logvars (np.ndarray): Logarithms of the error variances.
-        n_samp (int): Number of samples to generate.
+        noise_scales (np.ndarray): Noise variances for each variable.
+        num_samples (int): Number of samples to generate.
 
     Returns:
         np.ndarray: Data matrix of shape (n_samp, n_variables).
     """
-    n_variables = len(logvars)
-    N = np.random.normal(0, np.exp(0.5 * logvars), size=(n_samp, n_variables))
-    X = np.linalg.solve(np.eye(n_variables) - B.T, N.T).T
+    n_var = len(noise_scales)
+    noise = (np.random.uniform(-np.array(noise_scales)[:, None], np.array(noise_scales)[:, None], size=(n_var, num_samples)).T)**5 # here we reshape 1D noise_scales vector (n_var,) to 2D noise_scales matrix (n_var, 1)
+    X = np.linalg.solve(np.eye(n_var) - B.T, noise.T).T # solves AX = B, where A = I - B.T and B = N.T, numerically stable
+    #X = (np.linalg.inv(np.eye(n_variables) - B.T) @ N.T).T # inverts A = I - B.T and multiplies by B = N.T
     return X
