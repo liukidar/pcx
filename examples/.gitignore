@@ -1,1 +1,4 @@
+# ignore all files in the plots directory
 plots/
+# ignore all files that are pdf
+*.pdf
