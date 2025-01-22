@@ -194,7 +194,7 @@ def sample_W(B, B_low=0.5, B_high=0.9, var_low=0.75, var_high=1.25,
     noise_scales = np.random.uniform(var_low, var_high, size=n_variables)
     return W, noise_scales
 
-def sample_data(B, noise_scales, num_samples):
+def sample_data(B, noise_scales=None, num_samples=5000, softplus = False):
     """
     Generate data given the B matrix and noise scales.
 
@@ -206,10 +206,20 @@ def sample_data(B, noise_scales, num_samples):
     Returns:
         np.ndarray: Data matrix of shape (n_samp, n_variables).
     """
+    # check if softplus is True, we overwrite potentially given noise_scales
+    if softplus:
+        noise_scales = np.ones(B.shape[0])
+
     n_var = len(noise_scales)
-    #noise = (np.random.uniform(-np.array(noise_scales)[:, None], np.array(noise_scales)[:, None], size=(n_var, num_samples)).T)**5 # here we reshape 1D noise_scales vector (n_var,) to 2D noise_scales matrix (n_var, 1)
-    noise = np.random.normal(scale=noise_scales, size=(num_samples, n_var))
-    noise = np.log(1 + np.exp(noise))
+    # option A: generate noise from uniform distribution
+    if not softplus:
+        noise = (np.random.uniform(-np.array(noise_scales)[:, None], np.array(noise_scales)[:, None], size=(n_var, num_samples)).T)**5 # here we reshape 1D noise_scales vector (n_var,) to 2D noise_scales matrix (n_var, 1)
+
+    # option B: generate noise from softplus( normal(0, noise_scales) )
+    else:        
+        noise = np.random.normal(scale=noise_scales, size=(num_samples, n_var))
+        noise = np.log(1 + np.exp(noise))
+    
     X = np.linalg.solve(np.eye(n_var) - B.T, noise.T).T # solves AX = B, where A = I - B.T and B = N.T, numerically stable
     #X = (np.linalg.inv(np.eye(n_variables) - B.T) @ N.T).T # inverts A = I - B.T and multiplies by B = N.T
     return X
