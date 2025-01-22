@@ -113,7 +113,7 @@ def compute_auprc(B_true, W_est, n_points=50):
 
     return baseline, area
 
-def cycle_f1(B_true, B_est):
+def cycle_f1(B_true, B_est, verbose = False):
     """
     Compute the F1 score based on all edges involved in cycles in B_true and B_est.
 
@@ -136,7 +136,12 @@ def cycle_f1(B_true, B_est):
     # Ensure B_est contains cycles
     est_cycles = list(nx.simple_cycles(G_est))
     if not est_cycles:
+        print("B_est is not cyclic. Returning 0 F1-score.")
         return 0.0  # No cycles in B_est means 0 F1-score
+
+    if verbose:
+        print(f"True cycles: {true_cycles}")
+        print(f"Estimated cycles: {est_cycles}")
 
     # Merge all edges from cycles in B_true into a single set
     true_cycle_edges = set()
