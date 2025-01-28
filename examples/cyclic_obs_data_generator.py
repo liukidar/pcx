@@ -307,47 +307,45 @@ def sample_data(W, num_samples=5000, noise_type='gauss-ev', scale=None, scales=N
     Generate data given the weighted adjacency matrix and noise type.
 
     Args:
-        W (np.ndarray): Weighted adjacency matrix.
+        W (np.ndarray): Weighted adjacency matrix of shape (d, d).
         num_samples (int): Number of samples to generate.
-        noise_type (str): Type of noise to use ('gauss-ev', 'exp', 'softplus').
-        scale (float): Scale of the noise, essentially the standard deviation/sigma.
-        scales (np.ndarray): Scales of the noise for each variable.
+        noise_type (str): Type of noise to use ('gauss-ev', 'exp', 'softplus', 'uniform').
+        scale (float): Baseline noise scale.
+        scales (np.ndarray): Per-variable noise scales (diagonal of SIGMA).
 
     Returns:
         np.ndarray: Data matrix of shape (n_samples, n_variables).
-        np.ndarray: Precision matrix if Gaussian noise; otherwise None.
+        np.ndarray: Precision matrix for Gaussian noise, otherwise None.
     """
-
-    # raise an error if noise_type is 'gauss-ev' and not all scales are the same
-    if noise_type == 'gauss-ev' and scales is not None and not np.allclose(scales, scales[0]):
-        raise ValueError("Gaussian noise requires equal scales for all variables.")
-
     d = W.shape[0]
 
-    # if neither scale nor scales are provided, use scales all 1.0
+    # Set default scales
     if scales is None and scale is None:
         scales = np.ones(d)
     elif scales is None:
         scales = np.ones(d) * scale
     elif scale is not None:
         raise ValueError("Provide either 'scale' or 'scales', not both.")
+    if np.any(scales <= 0):
+        raise ValueError("All scales must be positive.")
 
     # Construct SIGMA
-    SIGMA = np.diag(scales)  # Variance or scale matrix (diagonal)
+    SIGMA = np.diag(scales)
 
     # Generate standardized noise
     if noise_type == 'gauss-ev':
-        std_noise = np.random.randn(num_samples, d)  # Gaussian noise with mean 0, std 1
+        std_noise = np.random.randn(num_samples, d)
     elif noise_type == 'exp':
-        #std_noise = np.random.exponential(scale=1.0, size=(num_samples, d)) - 1  # Centered exponential noise with mean 0
-        std_noise = np.random.exponential(scale=1.0, size=(num_samples, d))
+        std_noise = np.random.exponential(scale=1.0, size=(num_samples, d)) - 1
     elif noise_type == 'softplus':
         std_noise = np.random.normal(scale=scales, size=(num_samples, d))
         std_noise = np.log(1 + np.exp(std_noise))
+    elif noise_type == 'uniform':
+        std_noise = np.random.uniform(-1, 1, size=(num_samples, d))
     else:
-        raise ValueError(f"Invalid noise type: {noise_type}. Must be 'gauss-ev', 'exp', or 'softplus'.")
+        raise ValueError(f"Invalid noise type: {noise_type}. Must be 'gauss-ev', 'exp', 'softplus', or 'uniform'.")
 
-    # Apply scaling by SIGMA**0.5
+    # Apply scaling by SIGMA
     scaled_noise = std_noise @ np.sqrt(SIGMA)
 
     # Solve for X using np.linalg.solve for numerical stability
@@ -355,20 +353,21 @@ def sample_data(W, num_samples=5000, noise_type='gauss-ev', scale=None, scales=N
         raise ValueError("Matrix (I - W.T) is nearly singular. Adjust W.")
     X = np.linalg.solve(np.eye(d) - W.T, scaled_noise.T).T
 
-    # requires transposing W to get the correct X
-    # # Solve for X using np.linalg.solve for numerical stability
-    # if np.linalg.cond(np.eye(d) - W) > 1e10:
-    #     raise ValueError("Matrix (I - W) is nearly singular. Adjust W.")
-    # X = np.linalg.solve(np.eye(d) - W, scaled_noise.T).T
-
-    # Compute precision matrix for Gaussian noise
+    # Compute precision matrix
+    prec_matrix = None
     if noise_type == 'gauss-ev':
-        print("Generating precision matrix for Gaussian noise.")
-        #prec_matrix = (np.eye(d) - W.T) @ np.linalg.inv(SIGMA) @ (np.eye(d) - W.T).T
-        prec_matrix = (np.eye(d) - W.T) @ np.diag(1 / np.diag(SIGMA)) @ (np.eye(d) - W.T).T # computationally more efficient than using np.linalg.inv
-        
-    else:
-        prec_matrix = None
+        prec_matrix = (np.eye(d) - W.T) @ np.linalg.inv(SIGMA) @ (np.eye(d) - W.T).T
+    elif noise_type == 'exp':
+        noise_cov = np.diag(scales**2)  # Approximation for exponential noise
+        prec_matrix = (np.eye(d) - W.T) @ np.linalg.inv(noise_cov) @ (np.eye(d) - W.T).T
+    elif noise_type == 'softplus':
+        softplus_samples = np.random.normal(scale=scales, size=(100000, d))
+        softplus_transformed = np.log(1 + np.exp(softplus_samples))
+        noise_cov = np.cov(softplus_transformed, rowvar=False)
+        prec_matrix = (np.eye(d) - W.T) @ np.linalg.inv(noise_cov) @ (np.eye(d) - W.T).T
+    elif noise_type == 'uniform':
+        noise_cov = np.diag(scales**2 / 3)  # Variance of U(-a, a) is a^2 / 3
+        prec_matrix = (np.eye(d) - W.T) @ np.linalg.inv(noise_cov) @ (np.eye(d) - W.T).T
 
     return X, prec_matrix
 

@@ -3,7 +3,7 @@ import networkx as nx
 import numpy as np
 from gadjid import ancestor_aid, parent_aid, shd
 from dglearn.evaluation.evaluation_shd import min_colperm_shd as _compute_cycle_SHD
-
+from scipy.optimize import minimize, Bounds, basinhopping
 
 
 def error_metrics(B_true, B_est):
@@ -231,6 +231,76 @@ def compute_CSS(shd_cyclic, cycle_f1, epsilon=1e-8):
         float: Cyclic Structural Score (CSS). A perfect score is 1, and worse scores are greater than 1.
     """
     return (shd_cyclic + 1) / (cycle_f1 + epsilon)
+
+def compute_cycle_KLD(prec_mat_true, B_est, thresh=1e-6, max_iters=50, patience=10, Q_init: np.ndarray = None):
+
+    """
+        KLD-based evaluation of learned structure. Find parameters for a fixed graph structure (B_est) 
+        in order to minimize KLD with the ground truth distribution (precision matrix prec_mat_true). 
+        If B_est is in the equivalence class of the structure generating the precision matrix prec_mat_true, 
+        then the minimum kld should be theoretically zero.
+
+    Inputs:
+        prec_mat_true: The precision matrix of the ground truth distribution.
+        B_est: The estimated adjacency matrix.
+        thresh: The threshold for convergence.
+        max_iters: The maximum number of iterations.
+        patience: The number of iterations to wait before early stopping.
+        Q_init: Initial value Q such that Q @ Q.T = prec_mat_est. Q is a parameter matrix to construct the precision matrix.
+        Note: Q is lower triangular matrix st Q @ Q.T is symmetric positive definite.
+
+    Returns:
+        float: Best KLD value.
+        np.ndarray: The best Q matrix that minimizes the KLD.
+    """
+
+    assert prec_mat_true.shape[0] == prec_mat_true.shape[1]
+    dim = prec_mat_true.shape[0]
+
+    (prec_sgn, prec_logdet) = np.linalg.slogdet(prec_mat_true)
+    true_logdet = prec_sgn * prec_logdet
+    prec_inv = np.linalg.inv(prec_mat_true)
+
+    # objective function
+    def _obj_kld(x):
+        Q = x.reshape((dim, dim))
+        prec_x = Q @ Q.T
+        (x_sgn, x_uslogdet) = np.linalg.slogdet(prec_x)
+        prec_x_logdet = x_sgn * x_uslogdet
+        return 0.5 * (true_logdet - prec_x_logdet - dim + np.trace(prec_x @ prec_inv))
+
+    # gradient for first order methods
+    def _grad_kld(x):
+        Q = x.reshape((dim, dim))
+        return (-np.linalg.inv(Q).T + prec_inv @ Q).ravel()
+
+    # make bounds based on supp matrix
+    Q_support = (B_est + np.eye(dim)).astype(int)
+
+    lb = [-np.inf if i != 0 else 0 for i in Q_support.ravel()]
+    ub = [np.inf if i != 0 else 0 for i in Q_support.ravel()]
+
+    best_KLD = np.inf
+    Q_best = None
+    wait = 0
+    n_iters = 0
+    while wait <= patience and best_KLD > thresh and n_iters <= max_iters:
+        x0 = np.random.randn(dim**2)
+        if n_iters == 0 and Q_init is not None:
+            x0 = (Q_init * Q_support).ravel()
+        res = minimize(
+            _obj_kld, x0, jac=_grad_kld, method="L-BFGS-B", bounds=Bounds(lb, ub)
+        )
+        if res.fun < best_KLD:
+            best_KLD = res.fun
+            Q_best = res.x.reshape((dim, dim)).copy()
+            wait = 0
+        else:
+            wait += 1
+
+        n_iters += 1
+
+    return best_KLD, Q_best
 
 #################################### MIXED DATA METRICS ######################################
 
