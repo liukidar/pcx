@@ -7,15 +7,16 @@ import networkx as nx
 ########################## graph sampling functions ##########################
 
 # ER cycle graph sampling
-def sample_er_dcg(n_vars, max_degree, max_cycle, p=0.3):
+def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.3):
     """
     Sample a Directed Cyclic Graph (DCG) with an Erdős-Rényi degree distribution.
 
     Args:
-        n_vars (int): Number of variables (nodes) in the graph.
+        d (int): Number of variables (nodes) in the graph.
         max_degree (int): Maximum degree (number of edges) per node.
         max_cycle (int): Maximum allowed length of any cycle in the graph.
         p (float): Probability of edge creation in the Erdős-Rényi graph.
+        n_edges (int): Number of edges in the graph. If provided, take precedence over p in random graph generation.
 
     Returns:
         np.ndarray: Adjacency matrix representing the graph structure.
@@ -48,11 +49,20 @@ def sample_er_dcg(n_vars, max_degree, max_cycle, p=0.3):
             return scc
 
         # Generate an Erdős-Rényi directed acyclic graph
-        G = nx.erdos_renyi_graph(n_vars, p, directed=True)
-        G = nx.DiGraph([(u, v) for u, v in G.edges() if u < v])  # Ensure DAG property
+        if n_edges is not None:
+            _G = nx.gnm_random_graph(d, n_edges, directed=True)  # Use number of edges parameter
+        elif n_edges is None and p is not None:
+            _G = nx.erdos_renyi_graph(d, p=p, directed=True)  # Use density parameter
+        else:
+            raise ValueError("Provide either 'n_edges' or 'p'.")
 
-        # Add any missing nodes to ensure the graph has exactly n_vars nodes
-        for node in range(n_vars):
+        # Remove cycles by ensuring edges are only added in topological order
+        G_edges = [(u, v) for u, v in _G.edges() if u < v]
+        G = nx.DiGraph(G_edges)
+        G.remove_edges_from(nx.selfloop_edges(G))
+
+        # Add any missing nodes to ensure the graph has exactly d nodes
+        for node in range(d):
             if node not in G.nodes:
                 G.add_node(node)
 
@@ -60,8 +70,8 @@ def sample_er_dcg(n_vars, max_degree, max_cycle, p=0.3):
         B = nx.to_numpy_array(G)
 
         # Add cycles randomly while respecting constraints
-        for i in range(n_vars):
-            for j in np.random.permutation(n_vars):
+        for i in range(d):
+            for j in np.random.permutation(d):
                 if i == j or B[i, j] == 1 or B[j, i] == 1:  # No self-loops or duplicate edges
                     continue
                 if degree(i) >= max_degree:
@@ -81,30 +91,32 @@ def sample_er_dcg(n_vars, max_degree, max_cycle, p=0.3):
                         B[j, i] = 0
 
         # Validate degrees
-        for i in range(n_vars):
+        for i in range(d):
             assert degree(i) <= max_degree, f"Node {i} exceeds max degree."
-
+        
         # Check if the graph is cyclic using NetworkX
         G = nx.DiGraph(B)
-        is_cyclic = not nx.is_directed_acyclic_graph(G)
+        is_cyclic = not nx.is_directed_acyclic_graph(G) # from the previous line we know the graph is directed, thus nx.is_directed_acyclic_graph(G) is equivalent to nx.is_cyclic(G)
         if is_cyclic:
             return B
 
 # SF cycle graph sampling
-def sample_sf_dcg(n_vars, max_degree, max_cycle):
+def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.3):
     """
     Sample a Directed Cyclic Graph (DCG) with a scale-free degree distribution.
 
     Args:
-        n_vars (int): Number of variables (nodes) in the graph.
+        d (int): Number of variables (nodes) in the graph.
         max_degree (int): Maximum degree (number of edges) per node.
         max_cycle (int): Maximum allowed length of any cycle in the graph.
+        n_edges (int): Number of edges in the graph. If provided, take precedence over p in random graph generation.
+        p (float): Probability value for beta in the scale-free graph such that alpha+beta+gamma=1.
 
     Returns:
         np.ndarray: Adjacency matrix representing the graph structure.
     """
     while True:  # Repeat until a cyclic graph is generated
-        B = np.zeros((n_vars, n_vars))
+        B = np.zeros((d, d))
 
         def degree(var):
             return len(np.where(B[:, var])[0]) + len(np.where(B[var, :])[0])
@@ -132,15 +144,34 @@ def sample_sf_dcg(n_vars, max_degree, max_cycle):
             return scc
 
         # Generate a scale-free graph using NetworkX's scale_free_graph
-        G = nx.scale_free_graph(n_vars)
-        G = nx.DiGraph(G)  # Ensure it is directed
+        if n_edges is not None:
+            #m = int(round(n_edges / d))  # average degree
+            m = n_edges // d  # average degree (alternative definition which is equivalent to the previous line)
+            _G = nx.barabasi_albert_graph(d, m) # returns an undirected scale-free graph
+        elif n_edges is None and p is not None:
+            beta = p
+            gamma = 0.05
+            alpha = 1 - beta - gamma
+            _G = nx.scale_free_graph(d, alpha=alpha, beta=beta, gamma=gamma) # returns a directed scale-free directed graph
+        else:
+            raise ValueError("Provide either 'n_edges' or 'p (beta value)'.")
+
+        # Remove cycles by ensuring edges are only added in topological order
+        G_edges = [(u, v) for u, v in _G.edges() if u < v]
+        G = nx.DiGraph(G_edges)
+        G.remove_edges_from(nx.selfloop_edges(G))
+
+        # Add any missing nodes to ensure the graph has exactly d nodes
+        for node in range(d):
+            if node not in G.nodes:
+                G.add_node(node)
 
         # Convert to adjacency matrix
         B = nx.to_numpy_array(G)
 
         # Add cycles randomly while respecting constraints
-        for i in range(n_vars):
-            for j in np.random.permutation(n_vars):
+        for i in range(d):
+            for j in np.random.permutation(d):
                 if i == j or B[i, j] == 1 or B[j, i] == 1:  # No self-loops or duplicate edges
                     continue
                 if degree(i) >= max_degree:
@@ -160,25 +191,22 @@ def sample_sf_dcg(n_vars, max_degree, max_cycle):
                         B[j, i] = 0
 
         # Validate degrees
-        for i in range(n_vars):
+        for i in range(d):
             assert degree(i) <= max_degree, f"Node {i} exceeds max degree."
 
         # Check if the graph is cyclic using NetworkX
         G = nx.DiGraph(B)
-        is_cyclic = not nx.is_directed_acyclic_graph(G)
+        is_cyclic = not nx.is_directed_acyclic_graph(G) # from the previous line we know the graph is directed, thus nx.is_directed_acyclic_graph(G) is equivalent to nx.is_cyclic(G)
         if is_cyclic:
             return B
 
-# NWS cycle graph sampling     
-import numpy as np
-import networkx as nx
-
-def sample_nws_dcg(n_vars, max_degree, max_cycle, k=2, p=0.5):
+# NWS cycle graph sampling
+def sample_NWS_dcg(d, max_degree, max_cycle, k=2, p=0.3):
     """
     Sample a Directed Cyclic Graph (DCG) using the Newman-Watts-Strogatz model.
 
     Args:
-        n_vars (int): Number of variables (nodes) in the graph.
+        d (int): Number of variables (nodes) in the graph.
         max_degree (int): Maximum degree (in + out) per node.
         max_cycle (int): Maximum allowed length of any cycle.
         k (int): Each node is connected to k nearest neighbors in the ring. Default is 2.
@@ -209,18 +237,18 @@ def sample_nws_dcg(n_vars, max_degree, max_cycle, k=2, p=0.5):
         def find_scc(var):
             """Find variables in the strongly connected component (SCC) of 'var'."""
             scc = {var}
-            for i in range(n_vars):
+            for i in range(d):
                 if i != var and reachable(var, i) and reachable(i, var):
                     scc.add(i)
             return scc
 
         # Generate undirected Newman-Watts-Strogatz graph
-        G = nx.newman_watts_strogatz_graph(n_vars, k, p)
+        G = nx.newman_watts_strogatz_graph(d, k, p) # returns an undirected graph
 
         # Initialize adjacency matrix
-        B = np.zeros((n_vars, n_vars), dtype=int)
+        B = np.zeros((d, d), dtype=int)
 
-        # Randomly assign directions to the edges
+        # Randomly assign directions to the edges, which will make the graph directed and probably cyclic
         for u, v in G.edges():
             if np.random.rand() < 0.5:
                 B[u, v] = 1
@@ -228,8 +256,8 @@ def sample_nws_dcg(n_vars, max_degree, max_cycle, k=2, p=0.5):
                 B[v, u] = 1
 
         # Add additional edges while respecting constraints
-        for i in range(n_vars):
-            for j in np.random.permutation(n_vars):
+        for i in range(d):
+            for j in np.random.permutation(d):
                 if i == j or B[i, j] or B[j, i]:  # No self-loops or duplicate edges
                     continue
                 if degree(i) >= max_degree:
@@ -249,16 +277,16 @@ def sample_nws_dcg(n_vars, max_degree, max_cycle, k=2, p=0.5):
                         B[j, i] = 0
 
         # Validate degrees
-        if any(degree(i) > max_degree for i in range(n_vars)):
+        if any(degree(i) > max_degree for i in range(d)):
             continue
 
         # Check cyclicity
         G = nx.DiGraph(B)
-        if nx.is_directed_acyclic_graph(G):  # Ensure the graph contains cycles
-            continue
+        is_cyclic = not nx.is_directed_acyclic_graph(G) # from the previous line we know the graph is directed, thus nx.is_directed_acyclic_graph(G) is equivalent to nx.is_cyclic(G)
+        if is_cyclic:
+            return B
 
         return B
-
 
 ####################### data generation functions #######################
 
@@ -267,7 +295,7 @@ def sample_W(B, B_low=0.6, B_high=1.0, var_low=0.75, var_high=1.25,
     """
     Generate graph parameters given the B matrix by sampling uniformly in a range.
 
-    Edge weights are sampled independently from Unif[-2, -1.0] ∪ [1.0, 2.0].
+    Edge weights are sampled independently from Unif[-1.0, -0.6] or Unif[0.6, 1.0].
 
     Args:
         B (np.ndarray): B binary adjacency matrix of the graph.
@@ -299,17 +327,16 @@ def sample_W(B, B_low=0.6, B_high=1.0, var_low=0.75, var_high=1.25,
         stable = max_abs_eigenvalue < max_eig and cond_number < max_cond_number
 
     sigmas = np.random.uniform(var_low, var_high, size=n_variables)
-    #return W.T, sigmas
     return W, sigmas
 
-def sample_data(W, num_samples=5000, noise_type='gauss-ev', scale=None, scales=None):
+def sample_data(W, num_samples=5000, noise_type='GAUSS-EV', scale=None, scales=None):
     """
     Generate data given the weighted adjacency matrix and noise type.
 
     Args:
         W (np.ndarray): Weighted adjacency matrix of shape (d, d).
         num_samples (int): Number of samples to generate.
-        noise_type (str): Type of noise to use ('gauss-ev', 'exp', 'softplus', 'uniform').
+        noise_type (str): Type of noise to use ('GAUSS-EV', 'EXP', 'SOFTPLUS', 'UNIFORM').
         scale (float): Baseline noise scale.
         scales (np.ndarray): Per-variable noise scales (diagonal of SIGMA).
 
@@ -333,17 +360,26 @@ def sample_data(W, num_samples=5000, noise_type='gauss-ev', scale=None, scales=N
     SIGMA = np.diag(scales)
 
     # Generate standardized noise
-    if noise_type == 'gauss-ev':
+    if noise_type == 'GAUSS-EV':
         std_noise = np.random.randn(num_samples, d)
-    elif noise_type == 'exp':
+    elif noise_type == 'EXP':
         std_noise = np.random.exponential(scale=1.0, size=(num_samples, d)) - 1
-    elif noise_type == 'softplus':
+    elif noise_type == 'SOFTPLUS':
         std_noise = np.random.normal(scale=scales, size=(num_samples, d))
-        std_noise = np.log(1 + np.exp(std_noise))
-    elif noise_type == 'uniform':
+        std_noise = np.log(1 + np.exp(std_noise))  # Apply softplus
+
+        # Correct the mean to center the noise around zero
+        expected_mean = np.log(2) + (scales**2 / 2)  # E[softplus(X)]
+        std_noise -= expected_mean  # Centering transformation
+
+        # Compute variance of softplus-transformed noise
+        softplus_variance = (np.pi**2 / 24) + (scales**4 / 4)
+        SIGMA = np.diag(softplus_variance)  # Adjust SIGMA for correct scaling
+
+    elif noise_type == 'UNIFORM':
         std_noise = np.random.uniform(-1, 1, size=(num_samples, d))
     else:
-        raise ValueError(f"Invalid noise type: {noise_type}. Must be 'gauss-ev', 'exp', 'softplus', or 'uniform'.")
+        raise ValueError(f"Invalid noise type: {noise_type}. Must be 'GAUSS-EV', 'EXP', 'SOFTPLUS', or 'UNIFORM'.")
 
     # Apply scaling by SIGMA
     scaled_noise = std_noise @ np.sqrt(SIGMA)
@@ -355,62 +391,18 @@ def sample_data(W, num_samples=5000, noise_type='gauss-ev', scale=None, scales=N
 
     # Compute precision matrix
     prec_matrix = None
-    if noise_type == 'gauss-ev':
-        prec_matrix = (np.eye(d) - W.T) @ np.linalg.inv(SIGMA) @ (np.eye(d) - W.T).T
-    elif noise_type == 'exp':
+    Q = np.eye(d) - W
+    if noise_type == 'GAUSS-EV':
+        noise_cov = np.diag(scales**2)
+        prec_matrix = Q @ np.linalg.inv(noise_cov) @ Q.T
+    elif noise_type == 'EXP':
         noise_cov = np.diag(scales**2)  # Approximation for exponential noise
-        prec_matrix = (np.eye(d) - W.T) @ np.linalg.inv(noise_cov) @ (np.eye(d) - W.T).T
-    elif noise_type == 'softplus':
-        softplus_samples = np.random.normal(scale=scales, size=(100000, d))
-        softplus_transformed = np.log(1 + np.exp(softplus_samples))
-        noise_cov = np.cov(softplus_transformed, rowvar=False)
-        prec_matrix = (np.eye(d) - W.T) @ np.linalg.inv(noise_cov) @ (np.eye(d) - W.T).T
-    elif noise_type == 'uniform':
+        prec_matrix = Q @ np.linalg.inv(noise_cov) @ Q.T
+    elif noise_type == 'SOFTPLUS':
+        noise_cov = np.diag(softplus_variance)  # Use the analytical variance
+        prec_matrix = Q @ np.linalg.inv(noise_cov) @ Q.T
+    elif noise_type == 'UNIFORM':
         noise_cov = np.diag(scales**2 / 3)  # Variance of U(-a, a) is a^2 / 3
-        prec_matrix = (np.eye(d) - W.T) @ np.linalg.inv(noise_cov) @ (np.eye(d) - W.T).T
-
-    return X, prec_matrix
-
-def _sample_data(W, sigmas=None, num_samples=5000, softplus=False):
-    """
-    Generate data given the B matrix and noise scales.
-
-    Args:
-        W (np.ndarray): Weighted adjacency matrix.
-        sigmas (np.ndarray): These are standard deviations of the noise for each variable.
-        num_samples (int): Number of samples to generate.
-
-    Returns:
-        np.ndarray: Data matrix of shape (n_samp, n_variables).
-    """
-    # number of variables
-    d = W.shape[0]
-
-    # check if softplus is True, we overwrite potentially given sigmas
-    if softplus:
-        sigmas = np.ones(W.shape[0]) # here we use standard deviation of 1 for each variable because we will apply softplus transformation to vanilla Gaussian noise
-
-    n_var = len(sigmas)
-    # TODO: change this to sampling Gaussian EV noise because it is an identifiable SEM by causal identification theorems (see Peters et al. 2014)
-
-    # option A: generate noise from normal(0, sigmas) (Gaussian noise with equal variance for all variables meaning sigmas = [sigma, sigma, ..., sigma])
-    if not softplus:
-        #noise = (np.random.uniform(-np.array(sigmas)[:, None], np.array(sigmas)[:, None], size=(n_var, num_samples)).T)**5 # here we reshape 1D sigmas vector (n_var,) to 2D sigmas matrix (n_var, 1)
-        #noise = np.random.normal(scale=sigmas, size=(num_samples, n_var))
-        noise = np.random.normal(scale=sigmas, size=(num_samples, n_var))
-
-    # option B: generate noise from softplus(normal(0, sigmas))
-    else:        
-        noise = np.random.normal(scale=sigmas, size=(num_samples, n_var))
-        noise = np.log(1 + np.exp(noise))
-    
-    # compute X = noise @ (I - W.T)^(-1)
-    # original using W.T
-    #X = np.linalg.solve(np.eye(n_var) - W.T, noise.T).T # solves linear system A @ X.T = noise.T s.t. X.T = A^(-1) @ noise.T, where A = I - W.T. We traonspose result to get X instead of X.T
-    # modified using W
-    X = np.linalg.solve(np.eye(d) - W, noise.T).T # solves linear system A @ X = noise s.t. X = A^(-1) @ noise, where A = I - W
-
-    # compute the ground truth precision matrix using the true W matrix and sigmas
-    prec_matrix = (np.eye(d) - W) @ np.diag(1 / sigmas) @ (np.eye(d) - W).T
+        prec_matrix = Q @ np.linalg.inv(noise_cov) @ Q.T
 
     return X, prec_matrix
