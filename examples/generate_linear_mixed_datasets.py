@@ -1,7 +1,4 @@
 import os
-# Set up JAX environment to prevent CUDA errors
-os.environ["JAX_PLATFORM_NAME"] = "cpu"  # Forces JAX to use CPU
-os.environ["CUDA_VISIBLE_DEVICES"] = ""  # Hides all GPUs from CUDA
 import sys
 import itertools
 import networkx as nx
@@ -9,6 +6,7 @@ import numpy as np
 import random
 import pandas as pd
 import concurrent.futures
+from tqdm import tqdm
 
 # Set up paths
 examples_dir = os.path.abspath(os.path.join(os.getcwd(), '..', 'examples'))
@@ -19,7 +17,7 @@ from cyclic_obs_data_generator import sample_ER_dcg, sample_SF_dcg, sample_NWS_d
 from cyclic_obs_data_generator import sample_W, sample_data
 
 # Set up data directory
-data_dir = "/share/amine.mcharrak/cyclic_data"
+data_dir = "/share/amine.mcharrak/cyclic_data2"
 os.makedirs(data_dir, exist_ok=True)
 
 # dglearn
@@ -29,7 +27,6 @@ from dglearn.dg.graph_equivalence_search import GraphEquivalenceSearch, TooManyV
 
 ############################## HELPER FUNCTIONS ##############################
 
-# Function to set random seed
 def set_random_seed(seed):
     """Set the seed for NumPy and Python random functions, avoiding JAX."""
     np.random.seed(seed)
@@ -74,10 +71,9 @@ def save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samp
     if prec_matrix is not None:
         pd.DataFrame(prec_matrix).to_csv(f"{dataset_dir}/prec_matrix.csv", header=False, index=False)
 
-
 ############################## MAIN SCRIPT ##################################
 
-def generate_dataset(seed, num_samples, d, graph_type, noise_type):
+def generate_dataset(seed, num_samples, d, graph_type, noise_type, progress_bar=None):
     """Generate dataset for a given combination of parameters."""
     set_random_seed(seed)
     max_degree = d - 1  # Max out-degree per node
@@ -125,7 +121,9 @@ def generate_dataset(seed, num_samples, d, graph_type, noise_type):
                 except TooManyVisitedGraphsError:
                     print(f"⚠️ Resampling B for {graph_type} with e_to_d_ratio={e_to_d_ratio} due to large equivalence class")
             save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samples)
-
+    
+    if progress_bar:
+        progress_bar.update(1)
 
 # Define parameter ranges
 seeds = [1, 2, 3, 4, 5]  # Different seeds for different datasets
@@ -143,13 +141,14 @@ total_datasets = (
 )
 print(f"Generating {total_datasets} datasets...")
 
-# Parallel processing
+# Parallel processing with progress bar
 parameter_combinations = list(itertools.product(seeds, num_samples_list, num_vars_list, graph_types, noise_types))
 num_workers = min(200, len(parameter_combinations))  # Limit to 200 workers or available tasks
 
-with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-    futures = [executor.submit(generate_dataset, *params) for params in parameter_combinations]
-    for future in concurrent.futures.as_completed(futures):
-        future.result()  # Ensure all errors are caught
+with tqdm(total=len(parameter_combinations), desc="Dataset Generation Progress") as progress_bar:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+        futures = [executor.submit(generate_dataset, *params, progress_bar) for params in parameter_combinations]
+        for future in concurrent.futures.as_completed(futures):
+            future.result()  # Ensure all errors are caught
 
 print("✅ Dataset generation complete!")

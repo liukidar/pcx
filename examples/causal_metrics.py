@@ -327,7 +327,26 @@ def compute_causal_order(adjacency_matrix):
     G = nx.DiGraph(adjacency_matrix)
     return list(nx.topological_sort(G))
 
-def compute_TE(X, W, from_index, to_index):
+def compute_TE(W, from_index, to_index):
+    """
+    Compute total effect from source to target using matrix inversion.
+    
+    Args:
+        W (np.ndarray): Weighted adjacency matrix.
+        from_index (int): Index of source variable (source).
+        to_index (int): Index of target variable (target).
+    
+    Returns:
+        float: Total effect from source to target.
+    """
+    try:
+        I = np.eye(W.shape[0])
+        T = np.linalg.inv(I - W) - I  # Compute total effect matrix
+        return T[from_index, to_index]
+    except np.linalg.LinAlgError:
+        raise ValueError("Matrix inversion failed, likely due to cycles (I - W is singular).")
+
+def _compute_TE(X, W, from_index, to_index):
     """
     Compute the total effect of an intervention on a variable in a causal graph.
 
@@ -367,21 +386,19 @@ def compute_TE(X, W, from_index, to_index):
     total_effect = lingam_object.estimate_total_effect(X=X, from_index=from_index, to_index=to_index)
     return total_effect
 
-def compute_TEE(X, B_true, B_est, interv_node_idx, target_node_idx):
+def compute_TEE(W_true, W_est, from_index, to_index):
     """
     Compute Total Effect Estimation Error (TEE).
 
     Parameters:
     ----------
-    X : np.ndarray
-        Observational data of shape (n_samples, n_features).
-    B_true : np.ndarray
-        Ground truth adjacency matrix.
-    B_est : np.ndarray
-        Estimated adjacency matrix.
-    interv_node_idx : int
-        Index of intervention/treatment variable.
-    target_node_idx : int
+    W_true : np.ndarray
+        Ground truth weighted adjacency matrix.
+    W_est : np.ndarray
+        Estimated weighted adjacency matrix.
+    from_index : int
+        Index of intervention/treatment/source variable.
+    to_index : int
         Index of target/response variable.
 
     Returns:
@@ -393,10 +410,10 @@ def compute_TEE(X, B_true, B_est, interv_node_idx, target_node_idx):
         - TEE: The Total Effect Estimation Error (TEE).
     """
     # Compute the true total effect using compute_TE
-    true_total_effect = compute_TE(X, B_true, interv_node_idx, target_node_idx)
+    true_total_effect = compute_TE(W_true, from_index, to_index)
 
     # Compute the estimated total effect using compute_TE
-    est_total_effect = compute_TE(X, B_est, interv_node_idx, target_node_idx)
+    est_total_effect = compute_TE(W_est, from_index, to_index)
 
     # Compute the Total Effect Estimation Error (TEE)
     TEE = abs(est_total_effect - true_total_effect) / max(abs(true_total_effect), 1e-8)
