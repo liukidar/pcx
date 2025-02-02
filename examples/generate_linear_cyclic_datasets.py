@@ -23,9 +23,8 @@ data_dir = "/share/amine.mcharrak/cyclic_data"
 os.makedirs(data_dir, exist_ok=True)
 
 # dglearn
-sys.path.append('/home/amine.mcharrak/clear2025/')  # Add parent directory of `dglearn`
-from dglearn.dg.adjacency_structure import AdjacencyStucture  # Ensure class name matches exactly
-from dglearn.dg.graph_equivalence_search import GraphEquivalenceSearch, TooManyVisitedGraphsError
+from dglearn.dglearn.dg.adjacency_structure import AdjacencyStucture
+from dglearn.dglearn.dg.graph_equivalence_search import GraphEquivalenceSearch
 
 ############################## HELPER FUNCTIONS ##############################
 
@@ -94,12 +93,8 @@ def generate_dataset(seed, num_samples, d, graph_type, noise_type):
                 edges_list = list(G_true.edges())
 
                 true_graph = AdjacencyStucture(n_vars=d, edge_list=edges_list)
-                search = GraphEquivalenceSearch(true_graph)
-                try:
-                    search.search_dfs()
-                    break  # Exit loop if no error
-                except TooManyVisitedGraphsError:
-                    print(f"⚠️ Resampling B for {graph_type} with p_density={p_density} due to large equivalence class")
+                search = GraphEquivalenceSearch(true_graph, report_too_large_class=True)
+                
             save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samples)
 
     else:  # ER or SF
@@ -118,12 +113,8 @@ def generate_dataset(seed, num_samples, d, graph_type, noise_type):
                 edges_list = list(G_true.edges())
                 
                 true_graph = AdjacencyStucture(n_vars=d, edge_list=edges_list)
-                search = GraphEquivalenceSearch(true_graph)
-                try:
-                    search.search_dfs()
-                    break  # Exit loop if no error
-                except TooManyVisitedGraphsError:
-                    print(f"⚠️ Resampling B for {graph_type} with e_to_d_ratio={e_to_d_ratio} due to large equivalence class")
+                search = GraphEquivalenceSearch(true_graph, report_too_large_class=True)
+
             save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samples)
 
 
@@ -134,7 +125,7 @@ num_vars_list = [10, 15, 20]  # Number of nodes in the graph
 graph_types = ["ER", "SF", "NWS"]  # Graph models
 noise_types = ["GAUSS-EV", "SOFTPLUS", "EXP", "UNIFORM"]  # Noise types
 p_densities = [0.3, 0.5, 0.7]  # For NWS graphs
-e_to_d_ratios = [2, 4, 6]  # For ER and SF graphs
+e_to_d_ratios = [2, 4]  # For ER and SF graphs
 max_cycle = 3  # Max cycle length
 
 # Compute total number of datasets

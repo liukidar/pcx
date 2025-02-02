@@ -2,7 +2,7 @@ import lingam
 import networkx as nx
 import numpy as np
 from gadjid import ancestor_aid, parent_aid, shd
-from dglearn.evaluation.evaluation_shd import min_colperm_shd as _compute_cycle_SHD
+from dglearn.dglearn.evaluation.evaluation_shd import min_colperm_shd as _compute_cycle_SHD
 from scipy.optimize import minimize, Bounds, basinhopping
 
 
