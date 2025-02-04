@@ -45,7 +45,7 @@ def sample_B(n_nodes, n_edges, graph_type, ws_nei=None, ws_p=None):
         return np.array(G.get_adjacency().data)
 
     if graph_type == "ER":
-        G_und = ig.Graph.Erdos_Renyi(n=n_nodes, m=n_edges, directed=True)
+        G_und = ig.Graph.Erdos_Renyi(n=n_nodes, m=n_edges) # can have n_nodes*(n_nodes-1)/2 edges at most
         B_und = _graph_to_adjmat(G_und)
         B = _random_acyclic_orientation(B_und)
 

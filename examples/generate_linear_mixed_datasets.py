@@ -80,7 +80,12 @@ num_vars_list = [10, 15, 20]  # Number of nodes `d`
 graph_types = ["ER", "SF", "WS"]  # Graph models
 e_to_d_ratios = [2, 4, 6]  # Edge-to-node ratio, this determines number of edges
 
-parameter_combinations = list(itertools.product(seeds, num_samples_list, num_vars_list, graph_types, e_to_d_ratios))
+# Generate parameter combinations
+parameter_combinations = [
+    (seed, n_samples, d, graph_type, e_to_d_ratio)
+    for seed, n_samples, d, graph_type, e_to_d_ratio in itertools.product(seeds, num_samples_list, num_vars_list, graph_types, e_to_d_ratios)
+    if not (graph_type == "ER" and d == 10 and e_to_d_ratio == 6)
+]
 total_datasets = len(parameter_combinations)
 
 for i, params in enumerate(parameter_combinations, start=1):
