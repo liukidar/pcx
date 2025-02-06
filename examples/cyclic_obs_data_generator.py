@@ -393,8 +393,11 @@ def sample_data(W, num_samples=5000, noise_type='GAUSS-EV', scale=None, scales=N
     prec_matrix = None
     Q = np.eye(d) - W
     if noise_type == 'GAUSS-EV':
-        noise_cov = np.diag(scales**2)
-        prec_matrix = Q @ np.linalg.inv(noise_cov) @ Q.T
+        # option A:
+        # noise_cov = np.diag(scales**2)
+        # prec_matrix = Q @ np.linalg.inv(noise_cov) @ Q.T
+        # option B:
+        prec_matrix = Q @ np.diag(1 / scales**2) @ Q.T
     elif noise_type == 'EXP':
         noise_cov = np.diag(scales**2)  # Approximation for exponential noise
         prec_matrix = Q @ np.linalg.inv(noise_cov) @ Q.T
