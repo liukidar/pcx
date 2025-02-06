@@ -75,11 +75,6 @@ from frp.run_causal_discovery import  run_filter_rank_prune, run_dglearn
 
 #####################################################
 
-# Set random seed
-#seed = 44 # main seed for reproducibility
-seed = 33
-set_random_seed(seed)
-
 # causal libraries
 import cdt, castle
 from castle.algorithms import GOLEM, Notears
@@ -97,12 +92,13 @@ parser = argparse.ArgumentParser(description="Run ICML Cyclic Data Experiment")
 parser.add_argument("--seed", type=int, default=1, help="Random seed for experiment")
 args = parser.parse_args()
 
-# Use the parsed seed
-seed = args.seed
-print(f"Running experiment with seed: {seed}")    
+# # Use the parsed seed
+# seed = args.seed
+# set_random_seed(seed)
+# print(f"Running experiment with seed: {seed}")    
 
 # Define output directory
-output_dir = "experiment_results_cyclic_data"
+output_dir = "experiment_results_cyclic_data_new"
 os.makedirs(output_dir, exist_ok=True)
 output_file = os.path.join(output_dir, "results_all_seeds.json")
 
@@ -137,16 +133,14 @@ def safe_compute(func, *args, default_value=None, **kwargs):
 def run_experiment(seed, data_path):
     """Runs the experiment for a given seed and returns results as a dictionary."""
 
+    set_random_seed(seed)
     print(f"🔄 Running experiment with seed {seed}")
 
-    # Load adjacency matrix and data as pandas dataframe
+    # Load adjacency matrices, data, and prec_matrix as pandas dataframe
     adj_matrix = pd.read_csv(os.path.join(path, 'adj_matrix.csv'), header=None)
     data = pd.read_csv(os.path.join(path, 'train.csv'), header=None)
     weighted_adj_matrix = pd.read_csv(os.path.join(path, 'W_adj_matrix.csv'), header=None)
-    prec_matrix_path = os.path.join(path, 'prec_matrix.csv')
-
-    if os.path.exists(prec_matrix_path):
-        prec_matrix = pd.read_csv(prec_matrix_path, header=None)
+    prec_matrix = pd.read_csv(os.path.join(path, 'prec_matrix.csv'), header=None)
 
     n_vars = data.shape[1]
 
@@ -837,6 +831,9 @@ def run_experiment(seed, data_path):
     # print experiment name
     print(exp_name)
 
+    ############################################################################################
+    # benchmark model 1 nodags
+
     # the below setup is taken from the nodags-flows/validation /run_synthetic_benchmark.py file which runs on linear data
 
     X_torch = torch.tensor(X, dtype=torch.float64)
@@ -875,7 +872,9 @@ def run_experiment(seed, data_path):
     met_nodags = MetricsDAG(B_est_nodags, B_true) # expects first arg to be the predicted labels and the second arg to be the true labels
     print(met_nodags.metrics)
 
-    # benchmark model 1 LiNG
+    ############################################################################################
+    # benchmark model 2 LiNGD
+    
     ling = LiNGD(k=1)
     ling.fit(X)
     W_ling = ling._adjacency_matrices[0].T # 0 because we are using k=1, Transpose to make each row correspond to parents
@@ -887,13 +886,14 @@ def run_experiment(seed, data_path):
     met_ling = MetricsDAG(B_est_ling, B_true)
     print(met_ling.metrics)
 
-    # benchmark model 2 dglearn
+    ############################################################################################
+    # benchmark model 3 DGLearn
 
     # learn structure using tabu search, plot learned structure
     tabu_length = 4
     patience = 4
-    max_iter = 10
-    #max_iter = 7
+    #max_iter = 10
+    max_iter = np.inf
 
     manager = CyclicManager(X, bic_coef=0.5)
     B_est_dglearn, best_score, log = tabu_search(manager, tabu_length, patience, max_iter=max_iter, first_ascent=False, verbose=1) # returns a binary matrix as learned support
@@ -912,7 +912,9 @@ def run_experiment(seed, data_path):
     met_dglearn = MetricsDAG(B_est_dglearn, B_true)
     print(met_dglearn.metrics)
 
-    # benchmark model 3 FRP
+    ############################################################################################
+    # benchmark model 4 FRP
+
     edge_penalty = 0.5 * np.log(X.shape[0]) / X.shape[0] # BIC choice
     # Run FRP
     frp_result = run_filter_rank_prune(
@@ -937,7 +939,9 @@ def run_experiment(seed, data_path):
     met_frp = MetricsDAG(B_est_frp, B_true)
     print(met_frp.metrics)
 
-    # NOTEARS
+    ############################################################################################
+    # benchmark model 5 NOTEARS
+
     nt = Notears(lambda1=1e-5, h_tol=1e-5, max_iter=1000, no_dag_constraint=True, loss_type='laplace') # default loss_type is 'l2', F1 of 27%
     #nt = Notears(lambda1=1e-2, h_tol=1e-5, max_iter=10000, loss_type='logistic')
     #nt = Notears(lambda1=1e-2, h_tol=1e-5, max_iter=10000, loss_type='poisson')
@@ -952,7 +956,9 @@ def run_experiment(seed, data_path):
     met_nt = MetricsDAG(B_est_nt, B_true)
     print(met_nt.metrics)
 
-    # GOLEM
+    ############################################################################################
+    # benchmark model 6 GOLEM
+
     #gol = GOLEM(num_iter=2e4, lambda_2=0.0)  setting h_reg to 0 still allows model to be fit (no error thrown)
     #gol = GOLEM(num_iter=20000, equal_variances=True, non_equal_variances=False, lambda_2=0.0, device_type='gpu') # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
     gol = GOLEM(num_iter=20000, lambda_1=1e-5, lambda_2=0.0, non_equal_variances=False, device_type='gpu', no_dag_constraint=True) # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper

@@ -519,7 +519,7 @@ def simulate_linear_sem_cyclic(W, n, sem_type, noise_scale=None, max_iter=1000, 
     return X
 
 
-################################ PLotting functions ################################
+################################ PLotting and other analysing functions ################################
 
 def plot_adjacency_matrices(true_matrix, est_matrix, save_path=None):
     """Plot true and estimated adjacency matrices side by side and optionally save the figure."""
@@ -544,6 +544,60 @@ def plot_adjacency_matrices(true_matrix, est_matrix, save_path=None):
         plt.savefig(save_path, bbox_inches='tight')  # Save the plot to the specified path
 
     plt.show()  # Display the combined plot
+
+def plot_weights_distribution(W_est, bins=np.arange(0, 2.1, 0.1), title="Histogram of Absolute Values in Weight Matrix"):
+    """
+    Plots a histogram of the absolute values in the weight matrix W_est.
+
+    Parameters:
+    - W_est (np.ndarray): Estimated weight matrix.
+    - bins (np.ndarray): Bins for histogram plotting.
+    - title (str): Title for the histogram plot.
+
+    Usage Example:
+    ```python
+    plot_weights_distribution(W_est)
+    ```
+    """
+    abs_values = np.abs(W_est).flatten()
+
+    plt.hist(abs_values, bins=bins, edgecolor='black')
+    plt.xlabel('Absolute Value')
+    plt.ylabel('Frequency')
+    plt.title(title)
+    plt.grid(True)
+    plt.show()
+
+def analyze_weight_thresholds(W_est, B_est, threshold_values=[0.1, 0.2, 0.3]):
+    """
+    Analyzes the weight matrix W_est by counting values exceeding given thresholds
+    and comparing them to the number of edges in the adjacency matrix B_est.
+
+    Parameters:
+    - W_est (np.ndarray): Estimated weight matrix.
+    - B_est (np.ndarray): Binary adjacency matrix indicating edges.
+    - threshold_values (list of float): Thresholds for counting significant absolute values.
+
+    Returns:
+    - counts (dict): Dictionary mapping each threshold to its count of exceeding values.
+    - num_edges (int): Total number of edges in B_est.
+
+    Usage Example:
+    ```python
+    counts, num_edges = analyze_weight_thresholds(W_est, B_est, threshold_values=[0.1, 0.2, 0.3])
+    ```
+    """
+    abs_values = np.abs(W_est).flatten()
+
+    counts = {threshold: np.sum(abs_values > threshold) for threshold in threshold_values}
+
+    for threshold, count in counts.items():
+        print(f"Number of absolute values in W_est larger than {threshold}: {count}")
+
+    num_edges = np.sum(B_est)
+    print("Number of edges in B_est:", num_edges)
+
+    return counts, num_edges
 
 ################################ Saving and Loading Graphs ################################
 
