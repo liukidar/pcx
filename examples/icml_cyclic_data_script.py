@@ -227,8 +227,10 @@ def run_experiment(seed, data_path):
     #every_n_epochs = 1
     batch_size = 256
 
-    lam_h = 1e-1
-    lam_l1 = 1e-3
+    # NOTE: small lam_l1 (1e-5) and larger lam_h (1e1) seem to work well
+    # NOTE: for any graph type, the best way to select lam_h is such that one increases it until the graph becomes acyclic, a value right before that is the best value
+    lam_h = 1e1
+    lam_l1 = 1e-5
 
     # SHD cyclic and cycle F1 using our method: 45, 0.4838709677419355
     #lam_h = 2e0
@@ -835,7 +837,6 @@ def run_experiment(seed, data_path):
     # print experiment name
     print(exp_name)
 
-    # %%
     # the below setup is taken from the nodags-flows/validation /run_synthetic_benchmark.py file which runs on linear data
 
     X_torch = torch.tensor(X, dtype=torch.float64)
@@ -849,7 +850,7 @@ def run_experiment(seed, data_path):
         act_fun='none', # No activation function
         lr=1e-3,
         lip_const=0.99,
-        epochs=2,
+        epochs=100,
         optim='adam',
         n_hidden=0,
         thresh_val=0.05,
@@ -891,8 +892,8 @@ def run_experiment(seed, data_path):
     # learn structure using tabu search, plot learned structure
     tabu_length = 4
     patience = 4
-    #max_iter = 10
-    max_iter = 7
+    max_iter = 10
+    #max_iter = 7
 
     manager = CyclicManager(X, bic_coef=0.5)
     B_est_dglearn, best_score, log = tabu_search(manager, tabu_length, patience, max_iter=max_iter, first_ascent=False, verbose=1) # returns a binary matrix as learned support
@@ -910,7 +911,6 @@ def run_experiment(seed, data_path):
     # calculate accuracy
     met_dglearn = MetricsDAG(B_est_dglearn, B_true)
     print(met_dglearn.metrics)
-
 
     # benchmark model 3 FRP
     edge_penalty = 0.5 * np.log(X.shape[0]) / X.shape[0] # BIC choice
@@ -938,7 +938,7 @@ def run_experiment(seed, data_path):
     print(met_frp.metrics)
 
     # NOTEARS
-    nt = Notears(lambda1=1e-4, h_tol=1e-5, max_iter=1000, no_dag_constraint=True, loss_type='laplace') # default loss_type is 'l2', F1 of 27%
+    nt = Notears(lambda1=1e-5, h_tol=1e-5, max_iter=1000, no_dag_constraint=True, loss_type='laplace') # default loss_type is 'l2', F1 of 27%
     #nt = Notears(lambda1=1e-2, h_tol=1e-5, max_iter=10000, loss_type='logistic')
     #nt = Notears(lambda1=1e-2, h_tol=1e-5, max_iter=10000, loss_type='poisson')
     nt.learn(X)
@@ -955,7 +955,7 @@ def run_experiment(seed, data_path):
     # GOLEM
     #gol = GOLEM(num_iter=2e4, lambda_2=0.0)  setting h_reg to 0 still allows model to be fit (no error thrown)
     #gol = GOLEM(num_iter=20000, equal_variances=True, non_equal_variances=False, lambda_2=0.0, device_type='gpu') # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
-    gol = GOLEM(num_iter=20000, lambda_2=0.0, equal_variances=True ,device_type='gpu') # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
+    gol = GOLEM(num_iter=20000, lambda_1=1e-5, lambda_2=0.0, non_equal_variances=False, device_type='gpu', no_dag_constraint=True) # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
     #g = GOLEM(num_iter=2e4, non_equal_variances=False) # F1 of 68%, default non_equal_variances=True
     gol.learn(X)
 
@@ -974,17 +974,17 @@ def run_experiment(seed, data_path):
 
     # Compute BIC and AIC scores robustly
     bic_values = [safe_compute(compute_model_fit, B, X, default_value=None)[0] 
-                  for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
+                  for B in [B_est, B_est_ling, B_est_dglearn, B_est_frp, B_est_nt, B_est_gol, B_est_nodags]]
 
     aic_values = [safe_compute(compute_model_fit, B, X, default_value=None)[1] 
-                  for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
+                  for B in [B_est, B_est_ling, B_est_dglearn, B_est_frp, B_est_nt, B_est_gol, B_est_nodags]]
 
     # Compute SHD and cycle F1 robustly
     shd_cyclic = [safe_compute(compute_cycle_SHD, B_true_EC, B, default_value=None) 
-                  for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
+                  for B in [B_est, B_est_ling, B_est_dglearn, B_est_frp, B_est_nt, B_est_gol, B_est_nodags]]
 
     cycle_f1 = [safe_compute(compute_cycle_F1, B_true, B, default_value=None) 
-                for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
+                for B in [B_est, B_est_ling, B_est_dglearn, B_est_frp, B_est_nt, B_est_gol, B_est_nodags]]
 
     # Compute CSS scores robustly
     css_scores = [safe_compute(compute_CSS, shd, f1, epsilon=1e-8, default_value=None) 
@@ -992,7 +992,7 @@ def run_experiment(seed, data_path):
 
     # Compute cycle KLD robustly
     cycle_kld = [safe_compute(compute_cycle_KLD, prec_matrix, B, default_value=None)  
-                for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
+                for B in [B_est, B_est_ling, B_est_dglearn, B_est_frp, B_est_nt, B_est_gol, B_est_nodags]]
 
     ##############################################
 
