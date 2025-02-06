@@ -49,7 +49,8 @@ import pcx.utils as pxu
 import jax
 from jax import jit
 import jax.numpy as jnp
-import jax.numpy.linalg as jax_la
+import jax.numpy.linalg as jax_numpy_linalg # for expm()
+import jax.scipy.linalg as jax_scipy_linalg # for slogdet()
 import jax.random as random
 import optax
 import numpy as np
@@ -157,7 +158,7 @@ def run_experiment(seed):
         d = W.shape[0]
 
         # Compute h_reg using the trace of the matrix exponential
-        h_reg = jnp.trace(jax_la.expm(jnp.multiply(W, W))) - d
+        h_reg = jnp.trace(jax_scipy_linalg.expm(jnp.multiply(W, W))) - d
 
         return h_reg
 
@@ -185,7 +186,7 @@ def run_experiment(seed):
         d = W.shape[0]
 
         # Compute h_reg using the trace of the matrix exponential
-        h_reg = jnp.trace(jax_la.expm(jnp.multiply(W, W))) - d
+        h_reg = jnp.trace(jax_numpy_linalg.expm(jnp.multiply(W, W))) - d
 
         return h_reg
 
@@ -214,7 +215,7 @@ def run_experiment(seed):
         M = s * jnp.eye(d) - jnp.multiply(W, W)
 
         # Compute the value of the logdet DAG constraint
-        h_reg = -jax_la.slogdet(M)[1] + d * jnp.log(s)
+        h_reg = -jax_numpy_linalg.slogdet(M)[1] + d * jnp.log(s)
 
         return h_reg
 

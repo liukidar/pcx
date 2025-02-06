@@ -24,7 +24,8 @@ import pcx.utils as pxu
 import jax
 from jax import jit
 import jax.numpy as jnp
-import jax.numpy.linalg as jax_la
+import jax.numpy.linalg as jax_numpy_linalg # for expm()
+import jax.scipy.linalg as jax_scipy_linalg # for slogdet()
 import jax.random as random
 import optax
 import numpy as np
@@ -41,6 +42,8 @@ import timeit
 
 # own
 import causal_helpers
+from causal_model import Complete_Graph
+from causal_helpers import is_dag_nx, MAE, compute_binary_adjacency, compute_h_reg, notears_dag_constraint, dagma_dag_constraint
 from causal_helpers import simulate_dag, simulate_parameter, simulate_linear_sem, simulate_linear_sem_cyclic
 from causal_helpers import load_adjacency_matrix, set_random_seed, plot_adjacency_matrices
 from causal_helpers import load_graph, load_adjacency_matrix
@@ -79,8 +82,7 @@ set_random_seed(seed)
 
 # causal libraries
 import cdt, castle
-from castle.algorithms import GOLEM
-from castle.algorithms import Notears
+from castle.algorithms import GOLEM, Notears
 
 # causal metrics
 from cdt.metrics import precision_recall, SHD, SID
@@ -104,13 +106,38 @@ output_dir = "experiment_results_cyclic_data"
 os.makedirs(output_dir, exist_ok=True)
 output_file = os.path.join(output_dir, "results_all_seeds.json")
 
+def safe_compute(func, *args, default_value=None, **kwargs):
+    """
+    Wrapper to safely compute a function and handle exceptions.
+    Returns a default value (None by default) if an error occurs.
+    Supports both positional and keyword arguments.
+    """
+    try:
+        value = func(*args, **kwargs)  # Pass keyword arguments correctly
+        
+        # If function returns None, replace with default_value
+        if value is None:
+            return default_value
 
-def run_experiment(seed):
+        # If function returns a list/tuple, check each element for validity
+        if isinstance(value, (list, tuple)):  
+            return [v if isinstance(v, (int, float, np.number)) and np.isfinite(v) else default_value for v in value]
+
+        # If function returns a scalar, check if it's a valid number
+        if isinstance(value, (int, float, np.number)) and np.isfinite(value):
+            return value
+        
+        # If none of the above conditions matched, return default_value
+        return default_value
+
+    except Exception as e:
+        print(f"⚠️ Error computing {func.__name__}: {e}")
+        return default_value
+
+def run_experiment(seed, data_path):
     """Runs the experiment for a given seed and returns results as a dictionary."""
 
-
-    path = '/share/amine.mcharrak/cyclic_data/10ER41_linear_cyclic_GAUSS-EV_seed_2_n_samples_5000/'
-    #path = '/share/amine.mcharrak/cyclic_data/10ER43_linear_cyclic_GAUSS-EV_seed_3_n_samples_5000/'
+    print(f"🔄 Running experiment with seed {seed}")
 
     # Load adjacency matrix and data as pandas dataframe
     adj_matrix = pd.read_csv(os.path.join(path, 'adj_matrix.csv'), header=None)
@@ -154,194 +181,6 @@ def run_experiment(seed):
     # print how many non-zero entries are in the true DAG
     print(f"Number of non-zero entries in the true DAG: {np.count_nonzero(B_true)}")
 
-    # utility and evaluation functions
-    @jit
-    def MAE(W_true, W):
-        """This function returns the Mean Absolute Error for the difference between the true weighted adjacency matrix W_true and th estimated one, W."""
-        MAE_ = jnp.mean(jnp.abs(W - W_true))
-        return MAE_
-
-    @jax.jit
-    def compute_h_reg(W):
-        """
-        Compute the DAG constraint using the exponential trace-based acyclicity constraint.
-
-        This function calculates the value of the acyclicity constraint for a given
-        adjacency matrix using the formulation:
-        h_reg = trace(exp(W ⊙ W)) - d
-        where ⊙ represents the Hadamard (element-wise) product.
-
-        Parameters
-        ----------
-        W : jnp.ndarray
-            (d, d) adjacency matrix.
-
-        Returns
-        -------
-        h_reg : float
-            The value of the DAG constraint.
-        """
-        # Dimensions of W
-        d = W.shape[0]
-
-        # Compute h_reg using the trace of the matrix exponential
-        h_reg = jnp.trace(jax_la.expm(jnp.multiply(W, W))) - d
-
-        return h_reg
-
-    @jax.jit
-    def notears_dag_constraint(W):
-        """
-        Compute the NOTEARS DAG constraint using the exponential trace-based acyclicity constraint.
-
-        This function calculates the value of the acyclicity constraint for a given
-        adjacency matrix using the formulation:
-        h_reg = trace(exp(W ⊙ W)) - d
-        where ⊙ represents the Hadamard (element-wise) product.
-
-        Parameters
-        ----------
-        W : jnp.ndarray
-            (d, d) adjacency matrix.
-
-        Returns
-        -------
-        h_reg : float
-            The value of the DAG constraint.
-        """
-        # Dimensions of W
-        d = W.shape[0]
-
-        # Compute h_reg using the trace of the matrix exponential
-        h_reg = jnp.trace(jax_la.expm(jnp.multiply(W, W))) - d
-
-        return h_reg
-
-    @jax.jit
-    def dagma_dag_constraint(W, s=1.0):
-        """
-        Compute the DAG constraint using the logdet acyclicity constraint from DAGMA.
-        This function is JAX-jitted for improved performance.
-
-        Parameters
-        ----------
-        W : jnp.ndarray
-            (d, d) adjacency matrix.
-        s : float, optional
-            Controls the domain of M-matrices. Defaults to 1.0.
-
-        Returns
-        -------
-        h_reg : float
-            The value of the DAG constraint.
-        """
-        # Dimensions of W
-        d = W.shape[0]
-
-        # Compute M-matrix for the logdet constraint
-        M = s * jnp.eye(d) - jnp.multiply(W, W)
-
-        # Compute the value of the logdet DAG constraint
-        h_reg = -jax_la.slogdet(M)[1] + d * jnp.log(s)
-
-        return h_reg
-
-
-    # # Define fucntion to compute h_reg based W with h_reg = jnp.trace(jax.scipy.linalg.expm(W * W)) - d, here * denotes the hadamard product
-    # def compute_h_reg(W):
-    #     """This function computes the h_reg term based on the matrix W."""
-    #     h_reg = jnp.trace(jax.scipy.linalg.expm(W * W)) - W.shape[0]
-    #     return h_reg
-
-    def compute_binary_adjacency(W, threshold=0.3):
-        """
-        Compute the binary adjacency matrix by thresholding the input matrix.
-
-        Args:
-        - W (array-like): The weighted adjacency matrix (can be a JAX array or a NumPy array).
-        - threshold (float): The threshold value to determine the binary matrix. Default is 0.3.
-
-        Returns:
-        - B_est (np.ndarray): The binary adjacency matrix where each element is True if the corresponding 
-                            element in W is greater than the threshold, otherwise False.
-        """
-        # Convert JAX array to NumPy array if necessary
-        if isinstance(W, jnp.ndarray):
-            W = np.array(W)
-
-        # Compute the binary adjacency matrix
-        B_est = np.array(np.abs(W) > threshold)
-        
-        return B_est
-
-    def ensure_DAG(W):
-        """
-        Ensure that the weighted adjacency matrix corresponds to a DAG.
-
-        Inputs:
-            W: numpy.ndarray - a weighted adjacency matrix representing a directed graph
-
-        Outputs:
-            W: numpy.ndarray - a weighted adjacency matrix without cycles (DAG)
-        """
-        # Convert the adjacency matrix to a directed graph
-        g = nx.DiGraph(W)
-
-        # Make a copy of the graph to modify
-        gg = g.copy()
-
-        # Remove cycles by removing edges
-        while not nx.is_directed_acyclic_graph(gg):
-            h = gg.copy()
-
-            # Remove all the sources and sinks
-            while True:
-                finished = True
-
-                for node, in_degree in nx.in_degree_centrality(h).items():
-                    if in_degree == 0:
-                        h.remove_node(node)
-                        finished = False
-
-                for node, out_degree in nx.out_degree_centrality(h).items():
-                    if out_degree == 0:
-                        h.remove_node(node)
-                        finished = False
-
-                if finished:
-                    break
-
-            # Find a cycle with a random walk starting at a random node
-            node = list(h.nodes)[0]
-            cycle = [node]
-            while True:
-                edges = list(h.out_edges(node))
-                _, node = edges[np.random.choice(len(edges))]
-
-                if node in cycle:
-                    break
-
-                cycle.append(node)
-
-            # Extract the cycle path and adjust it to start at the first occurrence of the repeated node
-            cycle = np.array(cycle)
-            i = np.argwhere(cycle == node)[0][0]
-            cycle = cycle[i:]
-            cycle = cycle.tolist() + [node]
-
-            # Find edges in that cycle
-            edges = list(zip(cycle[:-1], cycle[1:]))
-
-            # Randomly pick an edge to remove
-            edge = edges[np.random.choice(len(edges))]
-            gg.remove_edge(*edge)
-
-        # Convert the modified graph back to a weighted adjacency matrix
-        W_acyclic = nx.to_numpy_array(gg)
-
-        return W_acyclic
-
-
     # Usage
     input_dim = 1
     n_nodes = X.shape[1]
@@ -356,7 +195,6 @@ def run_experiment(seed):
     print()
     #print(model)
     print()
-
 
     # Freezing all nodes
     print("Freezing all nodes...")
@@ -375,7 +213,6 @@ def run_experiment(seed):
     # Check if all nodes are frozen after unfreezing
     print("After unfreezing, are all nodes frozen?:", model.are_vodes_frozen())
 
-    # %%
     model.is_cont_node
 
     # %%
@@ -385,13 +222,13 @@ def run_experiment(seed):
     h_learning_rate = 1e-4
     T = 1
 
-    nm_epochs = 2 # not much happens after 2000 epochs
-    #every_n_epochs = nm_epochs // 20 # Print every 5% of the epochs
-    every_n_epochs = 1
+    nm_epochs = 2000 # not much happens after 2000 epochs
+    every_n_epochs = nm_epochs // 20 # Print every 5% of the epochs
+    #every_n_epochs = 1
     batch_size = 256
 
-    lam_h = 1e0
-    lam_l1 = 1e-2
+    lam_h = 1e-1
+    lam_l1 = 1e-3
 
     # SHD cyclic and cycle F1 using our method: 45, 0.4838709677419355
     #lam_h = 2e0
@@ -408,10 +245,6 @@ def run_experiment(seed):
     # SHD cyclic and cycle F1 using our method: 45, 0.507936507936508
     #lam_h = 1.5e0
     #lam_l1 = 4e-2
-
-    # Create a file name string for the hyperparameters
-    exp_name = f"bs_{batch_size}_lrw_{w_learning_rate}_lrh_{h_learning_rate}_lamh_{lam_h}_laml1_{lam_l1}_epochs_{nm_epochs}"
-    print("Name of the experiment: ", exp_name)
 
     # Training an1d evaluation functions
     @pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), in_axes=(0,), out_axes=0)
@@ -552,7 +385,6 @@ def run_experiment(seed):
         return W, epoch_pc_energy, epoch_l1_reg, epoch_h_reg, epoch_obj
 
 
-    # %%
     # for reference compute the MAE, SID, and SHD between the true adjacency matrix and an all-zero matrix and then print it
     # this acts as a baseline for the MAE, SID, and SHD similar to how 1/K accuracy acts as a baseline for classification tasks where K is the number of classes
 
@@ -561,7 +393,6 @@ def run_experiment(seed):
     print("SHD between the true adjacency matrix and an all-zero matrix: ", SHD(B_true, compute_binary_adjacency(W_zero)))
     #print("SID between the true adjacency matrix and an all-zero matrix: ", SID(W_true, W_zero))
 
-    # %%
     class CustomDataset(torch.utils.data.Dataset):
         def __init__(self, X):
             self.X = X
@@ -726,11 +557,13 @@ def run_experiment(seed):
     print("\n\n ###########################  Training is done  ########################### \n\n")
 
     # %%
-    # Define experiment name
-    exp_name = f"bs_{batch_size}_lrw_{w_learning_rate}_lrh_{h_learning_rate}_lamh_{lam_h}_laml1_{lam_l1}_epochs_{nm_epochs}"
+    # Create a file name string for the hyperparameters
+    exp_name = f"bs_{batch_size}_lrw_{w_learning_rate}_lrh_{h_learning_rate}_lamh_{lam_h}_laml1_{lam_l1}_epochs_{nm_epochs}_seed_{seed}"
+    print("Name of the experiment: ", exp_name)    
 
     # Create subdirectory in linear folder with the name stored in exp_name
-    save_path = os.path.join('plots/linear_cyclic', exp_name)
+    last_level = os.path.basename(os.path.normpath(path))
+    save_path = os.path.join('plots/linear_cyclic', last_level, exp_name)
     os.makedirs(save_path, exist_ok=True)
 
     # Reset to default style and set seaborn style
@@ -911,26 +744,8 @@ def run_experiment(seed):
     W_est = np.array(model.get_W())
     B_est = compute_binary_adjacency(W_est, threshold=0.3)
 
-    # %%
-    # Check if B_est is indeed a DAG
-    def is_dag(adjacency_matrix):
-        """
-        Check if a given adjacency matrix represents a Directed Acyclic Graph (DAG).
-        
-        Parameters:
-            adjacency_matrix (numpy.ndarray): A square matrix representing the adjacency of a directed graph.
-            
-        Returns:
-            bool: True if the graph is a DAG, False otherwise.
-        """
-        # Create a directed graph from the adjacency matrix
-        graph = nx.DiGraph(adjacency_matrix)
-        
-        # Check if the graph is a DAG
-        return nx.is_directed_acyclic_graph(graph)
-
     # Check if the estimated binary adjacency matrix B_est is a DAG
-    is_dag_B_est = is_dag(B_est)
+    is_dag_B_est = is_dag_nx(B_est)
     print(f"Is the estimated binary adjacency matrix a DAG? {is_dag_B_est}")
 
     print()
@@ -1049,59 +864,55 @@ def run_experiment(seed):
     resblock.train([X_torch], [[]], batch_size=64)
 
     # get the weighted adjacency matrix
-    nodags_W_est = resblock.get_adjacency()
+    W_est_nodags = resblock.get_adjacency()
     # get the binary adjacency matrix
-    nodags_B_est = (nodags_W_est > 0.3)
+    B_est_nodags = (W_est_nodags > 0.3).astype(int)
 
     # plot est_dag and true_dag
-    GraphDAG(nodags_B_est, B_true)
+    GraphDAG(B_est_nodags, B_true)
     # calculate accuracy
-    met_nodags = MetricsDAG(nodags_B_est, B_true) # expects first arg to be the predicted labels and the second arg to be the true labels
+    met_nodags = MetricsDAG(B_est_nodags, B_true) # expects first arg to be the predicted labels and the second arg to be the true labels
     print(met_nodags.metrics)
-
 
     # benchmark model 1 LiNG
     ling = LiNGD(k=1)
     ling.fit(X)
     W_ling = ling._adjacency_matrices[0].T # 0 because we are using k=1, Transpose to make each row correspond to parents
-    ling_B_est = compute_binary_adjacency(W_ling)
+    B_est_ling = compute_binary_adjacency(W_ling)
 
     # plot est_dag and true_dag
-    GraphDAG(ling_B_est, B_true)
+    GraphDAG(B_est_ling, B_true)
     # calculate accuracy
-    met_ling = MetricsDAG(ling_B_est, B_true)
+    met_ling = MetricsDAG(B_est_ling, B_true)
     print(met_ling.metrics)
 
-    # %%
     # benchmark model 2 dglearn
 
     # learn structure using tabu search, plot learned structure
     tabu_length = 4
     patience = 4
     #max_iter = 10
-    max_iter = 2
+    max_iter = 7
 
     manager = CyclicManager(X, bic_coef=0.5)
-    dglearn_B_est, best_score, log = tabu_search(manager, tabu_length, patience, max_iter=max_iter, first_ascent=False, verbose=1) # returns a binary matrix as learned support
+    B_est_dglearn, best_score, log = tabu_search(manager, tabu_length, patience, max_iter=max_iter, first_ascent=False, verbose=1) # returns a binary matrix as learned support
 
     # perform virtual edge correction
     print("virtual edge correction...")
-    dglearn_B_est = virtual_refine(manager, dglearn_B_est, patience=0, max_iter=max_iter, max_path_len=6, verbose=1)
+    B_est_dglearn = virtual_refine(manager, B_est_dglearn, patience=0, max_iter=max_iter, max_path_len=6, verbose=1)
 
     # remove any reducible edges
-    dglearn_B_est = reduce_support(dglearn_B_est, fill_diagonal=False)
-    # convert dglearn_B_est to boolean matrix in case it is not
-    dglearn_B_est = dglearn_B_est.astype(bool)
+    B_est_dglearn = reduce_support(B_est_dglearn, fill_diagonal=False)
+    # convert B_est_dglearn to boolean matrix in case it is not
 
     # plot est_dag and true_dag
-    GraphDAG(dglearn_B_est, B_true)
+    GraphDAG(B_est_dglearn, B_true)
     # calculate accuracy
-    met_dglearn = MetricsDAG(dglearn_B_est, B_true)
+    met_dglearn = MetricsDAG(B_est_dglearn, B_true)
     print(met_dglearn.metrics)
 
-    # %%
-    # benchmark model 3 FRP
 
+    # benchmark model 3 FRP
     edge_penalty = 0.5 * np.log(X.shape[0]) / X.shape[0] # BIC choice
     # Run FRP
     frp_result = run_filter_rank_prune(
@@ -1118,62 +929,70 @@ def run_experiment(seed):
             verbose=True,
     )
 
-    frp_B_est = frp_result["learned_support"] # Transpose to make each row correspond to parents
+    B_est_frp = frp_result["learned_support"].astype(int)
 
     # plot est_dag and true_dag
-    GraphDAG(frp_B_est, B_true)
+    GraphDAG(B_est_frp, B_true)
     # calculate accuracy
-    met_frp = MetricsDAG(frp_B_est, B_true)
+    met_frp = MetricsDAG(B_est_frp, B_true)
     print(met_frp.metrics)
 
-    # notears learn
-    nt = Notears(lambda1=1e-2, h_tol=1e-5, max_iter=500, no_dag_constraint=True) # default loss_type is 'l2', F1 of 27%
+    # NOTEARS
+    nt = Notears(lambda1=1e-4, h_tol=1e-5, max_iter=1000, no_dag_constraint=True, loss_type='laplace') # default loss_type is 'l2', F1 of 27%
     #nt = Notears(lambda1=1e-2, h_tol=1e-5, max_iter=10000, loss_type='logistic')
     #nt = Notears(lambda1=1e-2, h_tol=1e-5, max_iter=10000, loss_type='poisson')
     nt.learn(X)
 
     # plot est_dag and true_dag
-    nt_W_est = nt.weight_causal_matrix
-    nt_B_est = nt.causal_matrix
-    GraphDAG(nt_B_est, B_true)
+    W_est_nt = np.array(nt.weight_causal_matrix)
+    B_est_nt = np.array(nt.causal_matrix)
+    GraphDAG(B_est_nt, B_true)
 
     # calculate accuracy
-    met_nt = MetricsDAG(nt_B_est, B_true)
+    met_nt = MetricsDAG(B_est_nt, B_true)
     print(met_nt.metrics)
 
-        
-    #gol = GOLEM(num_iter=2e4, lambda_2=1e4/X.shape[1], lambda_1=1e-2)
+    # GOLEM
     #gol = GOLEM(num_iter=2e4, lambda_2=0.0)  setting h_reg to 0 still allows model to be fit (no error thrown)
-    gol = GOLEM(num_iter=10000, non_equal_variances=True, lambda_1=1e-2, lambda_2=0.0, device_type='gpu') # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
+    #gol = GOLEM(num_iter=20000, equal_variances=True, non_equal_variances=False, lambda_2=0.0, device_type='gpu') # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
+    gol = GOLEM(num_iter=20000, lambda_2=0.0, equal_variances=True ,device_type='gpu') # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
     #g = GOLEM(num_iter=2e4, non_equal_variances=False) # F1 of 68%, default non_equal_variances=True
     gol.learn(X)
 
     # plot est_dag and true_dag
-    gol_B_est = gol.causal_matrix
-    GraphDAG(gol_B_est, B_true)
+    W_est_gol = np.array(gol.weight_causal_matrix)
+    B_est_gol = np.array(gol.causal_matrix)
+    GraphDAG(B_est_gol, B_true)
 
     # calculate accuracy
-    met_gol = MetricsDAG(gol_B_est, B_true)
+    met_gol = MetricsDAG(B_est_gol, B_true)
     print(met_gol.metrics)
 
-    # %%
+    print("✅ ALL METHODS FITTED")
 
-    print("ALL METHODS FITTED")
     ###### PLACE METRIC COMPUTATION CODE HERE ######
 
-    # Compute BIC and AIC scores
-    bic_values = [compute_model_fit(B, X)[0] for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
-    aic_values = [compute_model_fit(B, X)[1] for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
+    # Compute BIC and AIC scores robustly
+    bic_values = [safe_compute(compute_model_fit, B, X, default_value=None)[0] 
+                  for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
 
-    # Compute SHD and cycle F1 for all methods
-    shd_cyclic = [compute_cycle_SHD(B_true_EC, B) for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
-    cycle_f1 = [compute_cycle_F1(B_true, B) for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
+    aic_values = [safe_compute(compute_model_fit, B, X, default_value=None)[1] 
+                  for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
 
-    # Compute CSS scores
-    css_scores = [compute_CSS(shd, f1, epsilon=1e-8) for shd, f1 in zip(shd_cyclic, cycle_f1)]
+    # Compute SHD and cycle F1 robustly
+    shd_cyclic = [safe_compute(compute_cycle_SHD, B_true_EC, B, default_value=None) 
+                  for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
 
-    # Compute cycle KLD
-    cycle_kld = [compute_cycle_KLD(prec_matrix, B)[0] for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
+    cycle_f1 = [safe_compute(compute_cycle_F1, B_true, B, default_value=None) 
+                for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
+
+    # Compute CSS scores robustly
+    css_scores = [safe_compute(compute_CSS, shd, f1, epsilon=1e-8, default_value=None) 
+                  for shd, f1 in zip(shd_cyclic, cycle_f1)]
+
+    # Compute cycle KLD robustly
+    cycle_kld = [safe_compute(compute_cycle_KLD, prec_matrix, B, default_value=None)  
+                for B in [B_est, ling_B_est, dglearn_B_est, frp_B_est, nt_B_est, gol_B_est, nodags_B_est]]
 
     ##############################################
 
@@ -1192,20 +1011,46 @@ def run_experiment(seed):
     return results
 
 
-def save_results(results_list):
-    """Merge results from different runs and save to a JSON file."""
-    df = pd.concat([pd.DataFrame(res) for res in results_list], ignore_index=True)
+def save_results(results_list, output_file="experiment_results.json"):
+    """Merge results from different runs and save to a JSON file robustly."""
+    
+    print("📁 Merging and saving results...")
 
-    # Save results to JSON
-    df.to_json(output_file, orient="records", indent=4)
-    print(f"✅ Merged results saved to {output_file}")
+    try:
+        df = pd.concat([pd.DataFrame(res) for res in results_list], ignore_index=True)
 
+        # Convert NaN and Inf values to None before saving
+        df = df.replace([np.nan, np.inf, -np.inf], None)
 
-if __name__ == "__main__":
-    num_seeds = 5  # Set the number of seeds to run in parallel
-    seed_values = list(range(1, num_seeds + 1))  # Seeds: [1, 2, 3, 4, 5]
+        # Save results to JSON
+        df.to_json(output_file, orient="records", indent=4)
+        print(f"✅ Merged results saved to {output_file}")
 
-    results_all = [run_experiment(seed) for seed in seed_values]
+    except Exception as e:
+        print(f"⚠️ Error saving results: {e}")
 
-    # Save merged results
-    save_results(results_all)
+#if __name__ == "__main__":
+num_seeds = 5  # Set the number of seeds to run
+
+paths = ['/share/amine.mcharrak/cyclic_data/10ER40_linear_cyclic_GAUSS-EV_seed_3_n_samples_5000/', 
+         '/share/amine.mcharrak/cyclic_data/10SF40_linear_cyclic_GAUSS-EV_seed_3_n_samples_5000/', 
+         '/share/amine.mcharrak/cyclic_data/10NWS40_linear_cyclic_GAUSS-EV_seed_3_n_samples_5000/']
+seed_values = list(range(1, num_seeds + 1))  # Seeds: [1, 2, 3, 4, 5]
+
+# Run experiment for each combination of path and seed
+for path in paths:
+    results_all = []
+    # Get base folder name from path
+    base_folder = os.path.basename(os.path.dirname(path))
+    
+    # Create output directory for this path
+    path_output_dir = os.path.join(output_dir, base_folder)
+    os.makedirs(path_output_dir, exist_ok=True)
+    
+    for seed in seed_values:
+        results = run_experiment(seed, path)
+        results_all.append(results)
+
+    # Save merged results for this path
+    output_file = os.path.join(path_output_dir, "experiment_results.json")
+    save_results(results_all, output_file)

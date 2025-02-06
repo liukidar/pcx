@@ -1,31 +1,293 @@
 import numpy as np
 from scipy.special import expit as sigmoid
 import igraph as ig
+import networkx as nx
 import random
 import jax
+from jax import jit
+import jax.numpy as jnp
+import jax.numpy.linalg as jax_numpy_linalg # for expm()
+import jax.scipy.linalg as jax_scipy_linalg # for slogdet()
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
-import networkx as nx
 
 
+# function to set random seed in JAX, NumPy, and Python's random module
 def set_random_seed(seed):
     # Set the seed for reproducibility    
     random.seed(seed)
     np.random.seed(seed)
     jax.random.PRNGKey(seed)
 
-# Function to load the adjacency matrix
-def load_adjacency_matrix(file_name):
-    adj_matrix = np.load(file_name)
-    print(f"Adjacency matrix loaded from {file_name}")
-    return adj_matrix
+############################ JAX Utility and Metric Functions ############################
+
+@jit
+def MAE(W_true, W):
+    """This function returns the Mean Absolute Error for the difference between the true weighted adjacency matrix W_true and th estimated one, W."""
+    MAE_ = jnp.mean(jnp.abs(W - W_true))
+    return MAE_
+
+@jax.jit
+def compute_h_reg(W):
+    """
+    Compute the DAG constraint using the exponential trace-based acyclicity constraint (NOTEARS).
+
+    This function calculates the value of the acyclicity constraint for a given
+    adjacency matrix using the formulation:
+    h_reg = trace(exp(W ⊙ W)) - d
+    where ⊙ represents the Hadamard (element-wise) product.
+
+    Parameters
+    ----------
+    W : jnp.ndarray
+        (d, d) adjacency matrix.
+
+    Returns
+    -------
+    h_reg : float
+        The value of the DAG constraint.
+    """
+    # Dimensions of W
+    d = W.shape[0]
+
+    # Compute h_reg using the trace of the matrix exponential
+    h_reg = jnp.trace(jax_scipy_linalg.expm(jnp.multiply(W, W))) - d
+
+    return h_reg
+
+@jax.jit
+def notears_dag_constraint(W):
+    """
+    Compute the NOTEARS DAG constraint using the exponential trace-based acyclicity constraint.
+
+    This function calculates the value of the acyclicity constraint for a given
+    adjacency matrix using the formulation:
+    h_reg = trace(exp(W ⊙ W)) - d
+    where ⊙ represents the Hadamard (element-wise) product.
+
+    Parameters
+    ----------
+    W : jnp.ndarray
+        (d, d) adjacency matrix.
+
+    Returns
+    -------
+    h_reg : float
+        The value of the DAG constraint.
+    """
+    # Dimensions of W
+    d = W.shape[0]
+
+    # Compute h_reg using the trace of the matrix exponential
+    h_reg = jnp.trace(jax_scipy_linalg.expm(jnp.multiply(W, W))) - d
+
+    return h_reg
+
+@jax.jit
+def dagma_dag_constraint(W, s=1.0):
+    """
+    Compute the DAG constraint using the logdet acyclicity constraint from DAGMA.
+    This function is JAX-jitted for improved performance.
+
+    Parameters
+    ----------
+    W : jnp.ndarray
+        (d, d) adjacency matrix.
+    s : float, optional
+        Controls the domain of M-matrices. Defaults to 1.0.
+
+    Returns
+    -------
+    h_reg : float
+        The value of the DAG constraint.
+    """
+    # Dimensions of W
+    d = W.shape[0]
+
+    # Compute M-matrix for the logdet constraint
+    M = s * jnp.eye(d) - jnp.multiply(W, W)
+
+    # Compute the value of the logdet DAG constraint
+    h_reg = -jax_numpy_linalg.slogdet(M)[1] + d * jnp.log(s)
+
+    return h_reg
 
 
-def is_dag(W):
-    G = ig.Graph.Weighted_Adjacency(W.tolist())
+# # Define fucntion to compute h_reg based W with h_reg = jnp.trace(jax.scipy.linalg.expm(W * W)) - d, here * denotes the hadamard product
+# def compute_h_reg(W):
+#     """This function computes the h_reg term based on the matrix W."""
+#     h_reg = jnp.trace(jax.scipy.linalg.expm(W * W)) - W.shape[0]
+#     return h_reg
+
+def compute_binary_adjacency(W, threshold=0.3):
+    """
+    Compute the binary adjacency matrix by thresholding the input matrix.
+
+    Args:
+    - W (array-like): The weighted adjacency matrix (can be a JAX array or a NumPy array).
+    - threshold (float): The threshold value to determine the binary matrix. Default is 0.3.
+
+    Returns:
+    - B_est (np.ndarray): The binary adjacency matrix where each element is True if the corresponding 
+                          element in W is greater than the threshold, otherwise False.
+    """
+    # Convert JAX array to NumPy array if necessary
+    if isinstance(W, jnp.ndarray):
+        W = np.array(W)
+
+    # Compute the binary adjacency matrix
+    B_est = np.array(np.abs(W) > threshold, dtype=int)
+
+    return B_est
+
+###################################### DAG Utility Functions ######################################
+
+def ensure_DAG(W):
+    """
+    Ensure that the weighted adjacency matrix corresponds to a DAG.
+
+    Inputs:
+        W: numpy.ndarray - a weighted adjacency matrix representing a directed graph
+
+    Outputs:
+        W: numpy.ndarray - a weighted adjacency matrix without cycles (DAG)
+    """
+    # Convert the adjacency matrix to a directed graph
+    g = nx.DiGraph(W)
+
+    # Make a copy of the graph to modify
+    gg = g.copy()
+
+    # Remove cycles by removing edges
+    while not nx.is_directed_acyclic_graph(gg):
+        h = gg.copy()
+
+        # Remove all the sources and sinks
+        while True:
+            finished = True
+
+            for node, in_degree in nx.in_degree_centrality(h).items():
+                if in_degree == 0:
+                    h.remove_node(node)
+                    finished = False
+
+            for node, out_degree in nx.out_degree_centrality(h).items():
+                if out_degree == 0:
+                    h.remove_node(node)
+                    finished = False
+
+            if finished:
+                break
+
+        # Find a cycle with a random walk starting at a random node
+        node = list(h.nodes)[0]
+        cycle = [node]
+        while True:
+            edges = list(h.out_edges(node))
+            _, node = edges[np.random.choice(len(edges))]
+
+            if node in cycle:
+                break
+
+            cycle.append(node)
+
+        # Extract the cycle path and adjust it to start at the first occurrence of the repeated node
+        cycle = np.array(cycle)
+        i = np.argwhere(cycle == node)[0][0]
+        cycle = cycle[i:]
+        cycle = cycle.tolist() + [node]
+
+        # Find edges in that cycle
+        edges = list(zip(cycle[:-1], cycle[1:]))
+
+        # Randomly pick an edge to remove
+        edge = edges[np.random.choice(len(edges))]
+        gg.remove_edge(*edge)
+
+    # Convert the modified graph back to a weighted adjacency matrix
+    W_acyclic = nx.to_numpy_array(gg)
+
+    return W_acyclic
+
+def is_dag_ig(adjacency_matrix: np.ndarray) -> bool:
+    """
+    Checks if a given adjacency matrix represents a Directed Acyclic Graph (DAG)
+    using the igraph library.  Works with both weighted and binary adjacency matrices.
+
+    Parameters:
+        adjacency_matrix: A square NumPy array representing the adjacency of a
+                          directed graph.  Non-zero entries indicate edges.
+                          Can be weighted or binary.
+
+    Returns:
+        True if the graph is a DAG, False otherwise.
+
+    Raises:
+        TypeError: If adjacency_matrix is not a NumPy array.
+        ValueError: If adjacency_matrix is not a square 2D array.
+
+    Examples:
+        >>> import numpy as np
+        >>> import igraph as ig
+        >>> # DAG (acyclic)
+        >>> W = np.array([[0, 1, 0], [0, 0, 1], [0, 0, 0]])
+        >>> is_dag_ig(W)
+        True
+        >>> # Cyclic graph
+        >>> W = np.array([[0, 1, 0], [0, 0, 1], [1, 0, 0]])
+        >>> is_dag_ig(W)
+        False
+    """
+    if not isinstance(adjacency_matrix, np.ndarray):
+        raise TypeError("adjacency_matrix must be a NumPy array")
+    if adjacency_matrix.ndim != 2 or adjacency_matrix.shape[0] != adjacency_matrix.shape[1]:
+        raise ValueError("adjacency_matrix must be a square 2D array")
+
+    # Convert to list of lists (igraph requirement for weighted adjacency)
+    matrix_list = adjacency_matrix.tolist()
+    G = ig.Graph.Weighted_Adjacency(matrix_list)  # Handles both weighted and binary
     return G.is_dag()
 
+def is_dag_nx(adjacency_matrix: np.ndarray) -> bool:
+    """
+    Checks if a given adjacency matrix represents a Directed Acyclic Graph (DAG)
+    using the networkx library. Works with both weighted and binary adjacency matrices.
+
+    Parameters:
+        adjacency_matrix: A square NumPy array representing the adjacency of a
+                          directed graph. Non-zero entries indicate edges.
+                          Can be weighted or binary.
+
+    Returns:
+        True if the graph is a DAG, False otherwise.
+
+    Raises:
+        TypeError: If adjacency_matrix is not a NumPy array.
+        ValueError: If adjacency_matrix is not a square 2D array.
+    
+    Examples:
+        >>> import numpy as np
+        >>> import networkx as nx
+        >>> # DAG (acyclic)
+        >>> W = np.array([[0, 1, 0], [0, 0, 1], [0, 0, 0]])
+        >>> is_dag_nx(W)
+        True
+        >>> # Cyclic graph
+        >>> W = np.array([[0, 1, 0], [0, 0, 1], [1, 0, 0]])
+        >>> is_dag_nx(W)
+        False
+
+    """
+    if not isinstance(adjacency_matrix, np.ndarray):
+        raise TypeError("adjacency_matrix must be a NumPy array")
+    if adjacency_matrix.ndim != 2 or adjacency_matrix.shape[0] != adjacency_matrix.shape[1]:
+        raise ValueError("adjacency_matrix must be a square 2D array")
+
+    graph = nx.DiGraph(adjacency_matrix)  # Handles both weighted and binary
+    return nx.is_directed_acyclic_graph(graph)
+
+####################### Graph and Data Simulation #######################
 
 def simulate_dag(d, s0, graph_type):
     """Simulate random DAG with some expected number of edges.
@@ -68,9 +330,6 @@ def simulate_dag(d, s0, graph_type):
     B_perm = _random_permutation(B)
     assert ig.Graph.Adjacency(B_perm.tolist()).is_dag()
     return B_perm
-
-
-import numpy as np
 
 
 def simulate_parameter(B, w_ranges=((-2.0, -0.5), (0.5, 2.0)), connectome=False):
@@ -259,6 +518,9 @@ def simulate_linear_sem_cyclic(W, n, sem_type, noise_scale=None, max_iter=1000, 
     
     return X
 
+
+################################ PLotting functions ################################
+
 def plot_adjacency_matrices(true_matrix, est_matrix, save_path=None):
     """Plot true and estimated adjacency matrices side by side and optionally save the figure."""
     plt.figure(figsize=(20, 8))
@@ -282,6 +544,8 @@ def plot_adjacency_matrices(true_matrix, est_matrix, save_path=None):
         plt.savefig(save_path, bbox_inches='tight')  # Save the plot to the specified path
 
     plt.show()  # Display the combined plot
+
+################################ Saving and Loading Graphs ################################
 
 # Save a NetworkX graph to a file using pickle
 def save_graph(graph, file_name):

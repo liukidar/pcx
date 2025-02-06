@@ -251,7 +251,7 @@ def compute_cycle_KLD(prec_mat_true, B_est, thresh=1e-6, max_iters=50, patience=
 
     Returns:
         float: Best KLD value.
-        np.ndarray: The best Q matrix that minimizes the KLD.
+        #np.ndarray: The best Q matrix that minimizes the KLD.
     """
 
     assert prec_mat_true.shape[0] == prec_mat_true.shape[1]
@@ -300,7 +300,8 @@ def compute_cycle_KLD(prec_mat_true, B_est, thresh=1e-6, max_iters=50, patience=
 
         n_iters += 1
 
-    return best_KLD, Q_best
+    return best_KLD
+    #return best_KLD, Q_best
 
 #################################### MIXED DATA METRICS ######################################
 
