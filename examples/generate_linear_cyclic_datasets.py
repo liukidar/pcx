@@ -24,7 +24,7 @@ os.makedirs(data_dir, exist_ok=True)
 
 # dglearn
 from dglearn.dglearn.dg.adjacency_structure import AdjacencyStucture
-from dglearn.dglearn.dg.graph_equivalence_search import GraphEquivalenceSearch
+from dglearn.dglearn.dg.graph_equivalence_search import GraphEquivalenceSearch, TooManyVisitedGraphsError
 
 ############################## HELPER FUNCTIONS ##############################
 
@@ -69,9 +69,8 @@ def save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samp
     # Save weighted adjacency matrix
     pd.DataFrame(W).to_csv(f"{dataset_dir}/W_adj_matrix.csv", header=False, index=False)
 
-    # Save precision matrix if applicable
-    if prec_matrix is not None:
-        pd.DataFrame(prec_matrix).to_csv(f"{dataset_dir}/prec_matrix.csv", header=False, index=False)
+    # Save precision matrix
+    pd.DataFrame(prec_matrix).to_csv(f"{dataset_dir}/prec_matrix.csv", header=False, index=False)
 
 
 ############################## MAIN SCRIPT ##################################
@@ -79,53 +78,76 @@ def save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samp
 def generate_dataset(seed, num_samples, d, graph_type, noise_type):
     """Generate dataset for a given combination of parameters."""
     set_random_seed(seed)
-    max_degree = d - 1  # Max out-degree per node
+    max_degree = d - 1
+    max_resample_attempts = 10
 
-    # Generate graphs
     if graph_type == "NWS":
         for p_density in p_densities:
-            while True:
+            attempts = 0
+            while attempts < max_resample_attempts:
                 B = sample_NWS_dcg(d=d, max_degree=max_degree, max_cycle=max_cycle, p=p_density)
-                n_edges = int(np.sum(B))  # Ensure correct edge count
-                
-                # Get edge list from B
+                n_edges = int(np.sum(B))
+
                 G_true = nx.DiGraph(B)
                 edges_list = list(G_true.edges())
 
                 true_graph = AdjacencyStucture(n_vars=d, edge_list=edges_list)
                 search = GraphEquivalenceSearch(true_graph, report_too_large_class=True)
-                
+
+                try:
+                    search.search_dfs()
+                    break  # Exit loop if search is successful
+                except TooManyVisitedGraphsError:
+                    print(f"⚠️ Resampling B for {graph_type} with p_density={p_density} due to large equivalence class.")
+                    attempts += 1
+
+            if attempts == max_resample_attempts:
+                print(f"❌ Max resampling attempts reached for {graph_type}, skipping this dataset.")
+                return
+
             save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samples)
 
     else:  # ER or SF
         for e_to_d_ratio in e_to_d_ratios:
-            while True:
-                n_edges = int(e_to_d_ratio * d)  # Initial estimate
-                
+            attempts = 0
+            while attempts < max_resample_attempts:
+                n_edges = int(e_to_d_ratio * d)
+
                 if graph_type == "ER":
                     B = sample_ER_dcg(d=d, max_degree=max_degree, max_cycle=max_cycle, p=None, n_edges=n_edges)
                 elif graph_type == "SF":
                     B = sample_SF_dcg(d=d, max_degree=max_degree, max_cycle=max_cycle, p=None, n_edges=n_edges)
-                
-                n_edges = int(np.sum(B))  # Ensure correct edge count after sampling
-                
+
+                n_edges = int(np.sum(B))
+
                 G_true = nx.DiGraph(B)
                 edges_list = list(G_true.edges())
-                
+
                 true_graph = AdjacencyStucture(n_vars=d, edge_list=edges_list)
                 search = GraphEquivalenceSearch(true_graph, report_too_large_class=True)
 
-            save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samples)
+                try:
+                    search.search_dfs()
+                    break  # Exit loop if search is successful
+                except TooManyVisitedGraphsError:
+                    print(f"⚠️ Resampling B for {graph_type} with e_to_d_ratio={e_to_d_ratio} due to large equivalence class.")
+                    attempts += 1
 
+            if attempts == max_resample_attempts:
+                print(f"❌ Max resampling attempts reached for {graph_type}, skipping this dataset.")
+                return
+
+            save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samples)
 
 # Define parameter ranges
 seeds = [1, 2, 3, 4, 5]  # Different seeds for different datasets
-num_samples_list = [100, 500, 1000, 2000, 5000]
+num_samples_list = [500, 1000, 2000, 5000]
 num_vars_list = [10, 15, 20]  # Number of nodes in the graph
 graph_types = ["ER", "SF", "NWS"]  # Graph models
-noise_types = ["GAUSS-EV", "SOFTPLUS", "EXP", "UNIFORM"]  # Noise types
+#noise_types = ["GAUSS-EV", "SOFTPLUS", "EXP", "UNIFORM"]  # Noise types
+noise_types = ["GAUSS-EV"]  # Noise types
 p_densities = [0.3, 0.5, 0.7]  # For NWS graphs
-e_to_d_ratios = [2, 4]  # For ER and SF graphs
+e_to_d_ratios = [2, 3, 4, 5]  # For ER and SF graphs
 max_cycle = 3  # Max cycle length
 
 # Compute total number of datasets

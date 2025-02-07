@@ -388,10 +388,14 @@ def sample_data(W, num_samples=5000, noise_type='GAUSS-EV', scale=None, scales=N
     if np.linalg.cond(np.eye(d) - W.T) > 1e10:
         raise ValueError("Matrix (I - W.T) is nearly singular. Adjust W.")
     X = np.linalg.solve(np.eye(d) - W.T, scaled_noise.T).T
+    # Using W.T enables interpretation of W_ji as effect of X_j on X_i (row index = parent, column index = child)
+    # Using W would imply W_ji as effect of X_i on X_j (row index = child, column index = parent)
+    # X and scale_noise are nxd matrices, np.eye(d) - W.T is a dxd matrix, the results will have same shape as second argument of np.linalg.solve
+    # which is scaled_noise.T in this case, thus we need to transpose the result to get the nxd matrix X
 
     # Compute precision matrix
     prec_matrix = None
-    Q = np.eye(d) - W
+    Q = np.eye(d) - W.T
     if noise_type == 'GAUSS-EV':
         # option A:
         # noise_cov = np.diag(scales**2)
