@@ -7,7 +7,7 @@ import networkx as nx
 ########################## graph sampling functions ##########################
 
 # ER cycle graph sampling
-def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.3):
+def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0.3):
     """
     Sample a Directed Cyclic Graph (DCG) with an Erdős-Rényi degree distribution.
 
@@ -16,15 +16,16 @@ def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.3):
         max_degree (int): Maximum degree (number of edges) per node.
         max_cycle (int): Maximum allowed length of any cycle in the graph.
         p (float): Probability of edge creation in the Erdős-Rényi graph.
-        n_edges (int): Number of edges in the graph. If provided, take precedence over p in random graph generation.
+        n_edges (int): Number of edges in the graph. If provided, take precedence over p.
+        edge_add_prob (float): Probability of adding an extra cyclic edge.
 
     Returns:
         np.ndarray: Adjacency matrix representing the graph structure.
     """
-    while True:  # Repeat until a cyclic graph is generated
+    while True:  # Repeat until a valid cyclic graph is generated
         def degree(var):
             """Calculate the degree of a node in the adjacency matrix."""
-            return len(np.where(B[:, var])[0]) + len(np.where(B[var, :])[0])
+            return np.count_nonzero(B[:, var]) + np.count_nonzero(B[var, :])
 
         def reachable(end, start):
             """Check if 'end' is reachable from 'start' using DFS."""
@@ -69,8 +70,8 @@ def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.3):
         # Convert to adjacency matrix
         B = nx.to_numpy_array(G)
 
-        # Add cycles randomly while respecting constraints
-        for i in range(d):
+        # 🔥 Add cyclic edges while limiting density
+        for i in np.random.permutation(d):  # Random order
             for j in np.random.permutation(d):
                 if i == j or B[i, j] == 1 or B[j, i] == 1:  # No self-loops or duplicate edges
                     continue
@@ -78,30 +79,28 @@ def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.3):
                     break
                 if degree(j) >= max_degree:
                     continue
+                if np.random.rand() > edge_add_prob:  # 🔥 Skip edge with probability
+                    continue
                 direction = np.random.choice([True, False])
-                if direction:
-                    B[i, j] = 1
-                else:
-                    B[j, i] = 1
+                B[i, j] = direction
+                B[j, i] = 1 - direction  # Ensure directed nature
+
                 # Check cycle length constraint
                 if len(find_scc(j)) > max_cycle:
-                    if direction:
-                        B[i, j] = 0
-                    else:
-                        B[j, i] = 0
+                    B[i, j], B[j, i] = 0, 0  # Revert edge if cycle is too large
 
         # Validate degrees
         for i in range(d):
             assert degree(i) <= max_degree, f"Node {i} exceeds max degree."
-        
+
         # Check if the graph is cyclic using NetworkX
         G = nx.DiGraph(B)
-        is_cyclic = not nx.is_directed_acyclic_graph(G) # from the previous line we know the graph is directed, thus nx.is_directed_acyclic_graph(G) is equivalent to nx.is_cyclic(G)
+        is_cyclic = not nx.is_directed_acyclic_graph(G)  # True if cyclic
         if is_cyclic:
             return B
 
 # SF cycle graph sampling
-def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.3):
+def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0.3):
     """
     Sample a Directed Cyclic Graph (DCG) with a scale-free degree distribution.
 
@@ -109,17 +108,17 @@ def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.3):
         d (int): Number of variables (nodes) in the graph.
         max_degree (int): Maximum degree (number of edges) per node.
         max_cycle (int): Maximum allowed length of any cycle in the graph.
-        n_edges (int): Number of edges in the graph. If provided, take precedence over p in random graph generation.
+        n_edges (int): Number of edges in the graph. If provided, take precedence over p.
         p (float): Probability value for beta in the scale-free graph such that alpha+beta+gamma=1.
+        edge_add_prob (float): Probability of adding an extra cyclic edge.
 
     Returns:
         np.ndarray: Adjacency matrix representing the graph structure.
     """
-    while True:  # Repeat until a cyclic graph is generated
-        B = np.zeros((d, d))
-
+    while True:  # Repeat until a valid cyclic graph is generated
         def degree(var):
-            return len(np.where(B[:, var])[0]) + len(np.where(B[var, :])[0])
+            """Calculate the degree of a node in the adjacency matrix."""
+            return np.count_nonzero(B[:, var]) + np.count_nonzero(B[var, :])
 
         def reachable(end, start):
             """Check if 'end' is reachable from 'start' using DFS."""
@@ -143,25 +142,24 @@ def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.3):
                     scc.add(i)
             return scc
 
-        # Generate a scale-free graph using NetworkX's scale_free_graph
+        # Generate a scale-free graph
         if n_edges is not None:
-            #m = int(round(n_edges / d))  # average degree
-            m = n_edges // d  # average degree (alternative definition which is equivalent to the previous line)
-            _G = nx.barabasi_albert_graph(d, m) # returns an undirected scale-free graph
+            m = n_edges // d  # Average degree
+            _G = nx.barabasi_albert_graph(d, m)  # Undirected scale-free graph
         elif n_edges is None and p is not None:
             beta = p
             gamma = 0.05
             alpha = 1 - beta - gamma
-            _G = nx.scale_free_graph(d, alpha=alpha, beta=beta, gamma=gamma) # returns a directed scale-free directed graph
+            _G = nx.scale_free_graph(d, alpha=alpha, beta=beta, gamma=gamma)  # Directed scale-free graph
         else:
             raise ValueError("Provide either 'n_edges' or 'p (beta value)'.")
 
-        # Remove cycles by ensuring edges are only added in topological order
+        # Convert to directed graph while preserving scale-free properties
         G_edges = [(u, v) for u, v in _G.edges() if u < v]
         G = nx.DiGraph(G_edges)
         G.remove_edges_from(nx.selfloop_edges(G))
 
-        # Add any missing nodes to ensure the graph has exactly d nodes
+        # Ensure exactly `d` nodes exist
         for node in range(d):
             if node not in G.nodes:
                 G.add_node(node)
@@ -169,8 +167,8 @@ def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.3):
         # Convert to adjacency matrix
         B = nx.to_numpy_array(G)
 
-        # Add cycles randomly while respecting constraints
-        for i in range(d):
+        # 🔥 Add cyclic edges while controlling density
+        for i in np.random.permutation(d):  # Randomized node order
             for j in np.random.permutation(d):
                 if i == j or B[i, j] == 1 or B[j, i] == 1:  # No self-loops or duplicate edges
                     continue
@@ -178,30 +176,29 @@ def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.3):
                     break
                 if degree(j) >= max_degree:
                     continue
+                if np.random.rand() > edge_add_prob:  # 🔥 Skip edge with probability
+                    continue
                 direction = np.random.choice([True, False])
-                if direction:
-                    B[i, j] = 1
-                else:
-                    B[j, i] = 1
+                B[i, j] = direction
+                B[j, i] = 1 - direction  # Ensure directed nature
+
                 # Check cycle length constraint
                 if len(find_scc(j)) > max_cycle:
-                    if direction:
-                        B[i, j] = 0
-                    else:
-                        B[j, i] = 0
+                    B[i, j], B[j, i] = 0, 0  # Revert edge if cycle is too large
 
         # Validate degrees
         for i in range(d):
             assert degree(i) <= max_degree, f"Node {i} exceeds max degree."
 
-        # Check if the graph is cyclic using NetworkX
+        # Check if the graph is cyclic
         G = nx.DiGraph(B)
-        is_cyclic = not nx.is_directed_acyclic_graph(G) # from the previous line we know the graph is directed, thus nx.is_directed_acyclic_graph(G) is equivalent to nx.is_cyclic(G)
+        is_cyclic = not nx.is_directed_acyclic_graph(G)  # True if cyclic
         if is_cyclic:
             return B
 
+
 # NWS cycle graph sampling
-def sample_NWS_dcg(d, max_degree, max_cycle, k=2, p=0.3):
+def sample_NWS_dcg(d, max_degree, max_cycle, k=2, p=0.2, edge_add_prob=0.3):
     """
     Sample a Directed Cyclic Graph (DCG) using the Newman-Watts-Strogatz model.
 
@@ -210,7 +207,8 @@ def sample_NWS_dcg(d, max_degree, max_cycle, k=2, p=0.3):
         max_degree (int): Maximum degree (in + out) per node.
         max_cycle (int): Maximum allowed length of any cycle.
         k (int): Each node is connected to k nearest neighbors in the ring. Default is 2.
-        p (float): Probability of adding a shortcut edge. Default is 0.5.
+        p (float): Probability of adding a shortcut edge. Default is 0.2.
+        edge_add_prob (float): Probability of adding an extra cyclic edge.
 
     Returns:
         np.ndarray: Adjacency matrix of the directed cyclic graph.
@@ -218,7 +216,7 @@ def sample_NWS_dcg(d, max_degree, max_cycle, k=2, p=0.3):
     while True:
         def degree(var):
             """Calculate the degree of a node in the adjacency matrix."""
-            return np.sum(B[:, var]) + np.sum(B[var, :])
+            return np.count_nonzero(B[:, var]) + np.count_nonzero(B[var, :])
 
         def reachable(end, start):
             """Check if 'end' is reachable from 'start' using DFS."""
@@ -242,51 +240,48 @@ def sample_NWS_dcg(d, max_degree, max_cycle, k=2, p=0.3):
                     scc.add(i)
             return scc
 
-        # Generate undirected Newman-Watts-Strogatz graph
-        G = nx.newman_watts_strogatz_graph(d, k, p) # returns an undirected graph
+        # Generate an **undirected** Newman-Watts-Strogatz graph
+        G = nx.newman_watts_strogatz_graph(d, k, p)  # Undirected base graph
 
         # Initialize adjacency matrix
         B = np.zeros((d, d), dtype=int)
 
-        # Randomly assign directions to the edges, which will make the graph directed and probably cyclic
+        # 🔥 Convert to **directed** graph by randomly assigning edge directions
         for u, v in G.edges():
             if np.random.rand() < 0.5:
                 B[u, v] = 1
             else:
                 B[v, u] = 1
 
-        # Add additional edges while respecting constraints
-        for i in range(d):
+        # 🔥 Add **cyclic** edges while respecting constraints
+        for i in np.random.permutation(d):  # Randomized node order
             for j in np.random.permutation(d):
-                if i == j or B[i, j] or B[j, i]:  # No self-loops or duplicate edges
+                if i == j or B[i, j] == 1 or B[j, i] == 1:  # No self-loops or duplicate edges
                     continue
                 if degree(i) >= max_degree:
                     break
                 if degree(j) >= max_degree:
                     continue
-                # Randomly assign direction
-                if np.random.choice([True, False]):
-                    B[i, j] = 1
-                else:
-                    B[j, i] = 1
+                if np.random.rand() > edge_add_prob:  # 🔥 Skip edge with probability
+                    continue
+                direction = np.random.choice([True, False])
+                B[i, j] = direction
+                B[j, i] = 1 - direction  # Ensure directed nature
+
                 # Check cycle length constraint
                 if len(find_scc(j)) > max_cycle:
-                    if B[i, j]:
-                        B[i, j] = 0
-                    else:
-                        B[j, i] = 0
+                    B[i, j], B[j, i] = 0, 0  # Revert edge if cycle is too long
 
         # Validate degrees
-        if any(degree(i) > max_degree for i in range(d)):
-            continue
+        for i in range(d):
+            assert degree(i) <= max_degree, f"Node {i} exceeds max degree."
 
-        # Check cyclicity
+        # Check if the graph is cyclic using NetworkX
         G = nx.DiGraph(B)
-        is_cyclic = not nx.is_directed_acyclic_graph(G) # from the previous line we know the graph is directed, thus nx.is_directed_acyclic_graph(G) is equivalent to nx.is_cyclic(G)
+        is_cyclic = not nx.is_directed_acyclic_graph(G)  # True if cyclic
         if is_cyclic:
             return B
 
-        return B
 
 ####################### data generation functions #######################
 

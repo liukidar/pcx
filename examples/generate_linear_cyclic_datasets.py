@@ -3,12 +3,14 @@ import os
 os.environ["JAX_PLATFORM_NAME"] = "cpu"  # Forces JAX to use CPU
 os.environ["CUDA_VISIBLE_DEVICES"] = ""  # Hides all GPUs from CUDA
 import sys
-import itertools
 import networkx as nx
 import numpy as np
 import random
 import pandas as pd
+
 import concurrent.futures
+import itertools
+from joblib import Parallel, delayed
 
 # Set up paths
 examples_dir = os.path.abspath(os.path.join(os.getcwd(), '..', 'examples'))
@@ -75,7 +77,7 @@ def save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samp
 
 ############################## MAIN SCRIPT ##################################
 
-def generate_dataset(seed, num_samples, d, graph_type, noise_type):
+def generate_dataset(seed, num_samples, d, graph_type, noise_type, e_to_d_ratio):  
     """Generate dataset for a given combination of parameters."""
     set_random_seed(seed)
     max_degree = d - 1
@@ -108,61 +110,61 @@ def generate_dataset(seed, num_samples, d, graph_type, noise_type):
             save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samples)
 
     else:  # ER or SF
-        for e_to_d_ratio in e_to_d_ratios:
-            attempts = 0
-            while attempts < max_resample_attempts:
-                n_edges = int(e_to_d_ratio * d)
+        attempts = 0
+        while attempts < max_resample_attempts:
+            n_edges = int(e_to_d_ratio * d)  # ✅ No need to loop over e_to_d_ratios
 
-                if graph_type == "ER":
-                    B = sample_ER_dcg(d=d, max_degree=max_degree, max_cycle=max_cycle, p=None, n_edges=n_edges)
-                elif graph_type == "SF":
-                    B = sample_SF_dcg(d=d, max_degree=max_degree, max_cycle=max_cycle, p=None, n_edges=n_edges)
+            if graph_type == "ER":
+                B = sample_ER_dcg(d=d, max_degree=max_degree, max_cycle=max_cycle, p=None, n_edges=n_edges)
+            elif graph_type == "SF":
+                B = sample_SF_dcg(d=d, max_degree=max_degree, max_cycle=max_cycle, p=None, n_edges=n_edges)
 
-                n_edges = int(np.sum(B))
+            n_edges = int(np.sum(B))
 
-                G_true = nx.DiGraph(B)
-                edges_list = list(G_true.edges())
+            G_true = nx.DiGraph(B)
+            edges_list = list(G_true.edges())
 
-                true_graph = AdjacencyStucture(n_vars=d, edge_list=edges_list)
-                search = GraphEquivalenceSearch(true_graph, report_too_large_class=True)
+            true_graph = AdjacencyStucture(n_vars=d, edge_list=edges_list)
+            search = GraphEquivalenceSearch(true_graph, report_too_large_class=True)
 
-                try:
-                    search.search_dfs()
-                    break  # Exit loop if search is successful
-                except TooManyVisitedGraphsError:
-                    print(f"⚠️ Resampling B for {graph_type} with e_to_d_ratio={e_to_d_ratio} due to large equivalence class.")
-                    attempts += 1
+            try:
+                search.search_dfs()
+                break  # Exit loop if search is successful
+            except TooManyVisitedGraphsError:
+                print(f"⚠️ Resampling B for {graph_type} with e_to_d_ratio={e_to_d_ratio} due to large equivalence class.")
+                attempts += 1
 
-            if attempts == max_resample_attempts:
-                print(f"❌ Max resampling attempts reached for {graph_type}, skipping this dataset.")
-                return
+        if attempts == max_resample_attempts:
+            print(f"❌ Max resampling attempts reached for {graph_type}, skipping this dataset.")
+            return
 
-            save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samples)
+        save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samples)
 
 # Define parameter ranges
-seeds = [1, 2, 3, 4, 5]  # Different seeds for different datasets
+seeds = [1, 2, 3, 4, 5]  
 num_samples_list = [500, 1000, 2000, 5000]
-num_vars_list = [10, 15, 20]  # Number of nodes in the graph
-graph_types = ["ER", "SF", "NWS"]  # Graph models
-#noise_types = ["GAUSS-EV", "SOFTPLUS", "EXP", "UNIFORM"]  # Noise types
-noise_types = ["GAUSS-EV"]  # Noise types
-p_densities = [0.3, 0.5, 0.7]  # For NWS graphs
-e_to_d_ratios = [2, 3, 4, 5]  # For ER and SF graphs
-max_cycle = 3  # Max cycle length
+num_vars_list = [10, 15, 20]
+graph_types = ["ER", "SF", "NWS"]
+noise_types = ["GAUSS-EV"]
+p_densities = [0.3, 0.5, 0.7]  # Only used for NWS
+e_to_d_ratios = [2, 3, 4, 5]  # Used for ER and SF
+max_cycle = 3  
 
-# Compute total number of datasets
+# Compute total number of datasets (now includes e_to_d_ratios)
 total_datasets = (
     len(seeds) * len(num_samples_list) * len(num_vars_list) * len(graph_types) * len(noise_types) * len(e_to_d_ratios)
 )
 print(f"Generating {total_datasets} datasets...")
 
-# Parallel processing
-parameter_combinations = list(itertools.product(seeds, num_samples_list, num_vars_list, graph_types, noise_types))
-num_workers = min(200, len(parameter_combinations))  # Limit to 200 workers or available tasks
+# Generate all parameter combinations, including e_to_d_ratios
+parameter_combinations = list(itertools.product(seeds, num_samples_list, num_vars_list, graph_types, noise_types, e_to_d_ratios))
 
-with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-    futures = [executor.submit(generate_dataset, *params) for params in parameter_combinations]
-    for future in concurrent.futures.as_completed(futures):
-        future.result()  # Ensure all errors are caught
+# Parallel processing using joblib
+num_workers = min(64, len(parameter_combinations))  # Use up to 64 workers, but no more than the number of tasks
+
+Parallel(n_jobs=num_workers)(
+    delayed(generate_dataset)(seed, num_samples, d, graph_type, noise_type, e_to_d_ratio)  
+    for seed, num_samples, d, graph_type, noise_type, e_to_d_ratio in parameter_combinations
+)
 
 print("✅ Dataset generation complete!")

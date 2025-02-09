@@ -92,11 +92,6 @@ parser = argparse.ArgumentParser(description="Run ICML Cyclic Data Experiment")
 parser.add_argument("--seed", type=int, default=1, help="Random seed for experiment")
 args = parser.parse_args()
 
-# # Use the parsed seed
-# seed = args.seed
-# set_random_seed(seed)
-# print(f"Running experiment with seed: {seed}")    
-
 # Define output directory
 output_dir = "experiment_results_cyclic_data_new"
 os.makedirs(output_dir, exist_ok=True)
@@ -178,9 +173,8 @@ def run_experiment(seed, data_path):
     # Usage
     input_dim = 1
     n_nodes = X.shape[1]
-    #model = Complete_Graph(input_dim, n_nodes, has_bias=False)
-    #model = Complete_Graph(input_dim, n_nodes, has_bias=True)
-    model = Complete_Graph(input_dim, n_nodes, has_bias=True, is_cont_node=is_cont_node)
+    #model = Complete_Graph(input_dim, n_nodes, has_bias=False, is_cont_node=is_cont_node, seed=seed)
+    model = Complete_Graph(input_dim, n_nodes, has_bias=True, is_cont_node=is_cont_node, seed=seed)
     # Get weighted adjacency matrix
     W = model.get_W()
     print("This is the weighted adjacency matrix:\n", W)
@@ -216,31 +210,18 @@ def run_experiment(seed, data_path):
     h_learning_rate = 1e-4
     T = 1
 
-    nm_epochs = 2000 # not much happens after 2000 epochs
+    nm_epochs = 1000 # not much happens after 2000 epochs
     every_n_epochs = nm_epochs // 20 # Print every 5% of the epochs
-    #every_n_epochs = 1
     batch_size = 256
 
     # NOTE: small lam_l1 (1e-5) and larger lam_h (1e1) seem to work well
     # NOTE: for any graph type, the best way to select lam_h is such that one increases it until the graph becomes acyclic, a value right before that is the best value
-    lam_h = 1e1
-    lam_l1 = 1e-5
+    # NOTE: larger lam_h (1e1) gives better cyclic structure score (CSS) but worse fit metric scores (log-likelihood, KL divergence, etc.)
+    # NOTE: smaller lam_h (5e-4) gives better fit metric scores (log-likelihood, KL divergence, etc.) but worse cyclic structure score (CSS)
+    #lam_h = 5e-2
+    lam_h = 9e0
+    lam_l1 = 1e-1
 
-    # SHD cyclic and cycle F1 using our method: 45, 0.4838709677419355
-    #lam_h = 2e0
-    #lam_l1 = 4e-2
-
-    # SHD cyclic and cycle F1 using our method: 44, 0.4838709677419355
-    #lam_h = 1.7e0
-    #lam_l1 = 4e-2
-
-    # SHD cyclic and cycle F1 using our method: 54, 0.5538461538461538
-    #lam_h = 0.8e0
-    #lam_l1 = 4e-2
-
-    # SHD cyclic and cycle F1 using our method: 45, 0.507936507936508
-    #lam_h = 1.5e0
-    #lam_l1 = 4e-2
 
     # Training an1d evaluation functions
     @pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), in_axes=(0,), out_axes=0)
@@ -472,8 +453,8 @@ def run_experiment(seed, data_path):
         pxu.M(pxnn.LayerParam)(model)  # Masking the parameters of the model
     )
         """
-        #optim_w = pxu.Optim(lambda: optax.adam(w_learning_rate), pxu.M(pxnn.LayerParam)(model))
-        optim_w = pxu.Optim(lambda: optax.adamw(w_learning_rate, nesterov=True), pxu.M(pxnn.LayerParam)(model))
+        #optim_w = pxu.Optim(lambda: optax.adam(w_learning_rate), pxu.M(pxnn.LayerParam)(model)) # adam without weight decay
+        optim_w = pxu.Optim(lambda: optax.adamw(w_learning_rate, nesterov=True), pxu.M(pxnn.LayerParam)(model)) # adam with weight decay
 
     # %%
     # Initialize lists to store differences and energies
@@ -842,24 +823,25 @@ def run_experiment(seed, data_path):
     resblock = resflow_train_test_wrapper(
         n_nodes=X.shape[1],
         batch_size=128,
-        l1_reg=False,
+        l1_reg=True, # default is False
+        lambda_c=1e-1, # default is 1e-2
         fun_type='lin-mlp',  # Linear version
         act_fun='none', # No activation function
-        lr=1e-3,
+        lr=1e-3, # default learning rate is 1e-3
         lip_const=0.99,
-        epochs=100,
-        optim='adam',
-        n_hidden=0,
-        thresh_val=0.05,
-        centered=False,
-        v=False,
-        inline=False,
-        upd_lip=False,
-        full_input=False,
+        epochs=50, # default number of epochs is 10
+        optim='adam', # default optimizer is 'sgd'
+        n_hidden=0, # default number of hidden layers is 1
+        thresh_val=0.3, # default threshold value is 0.01
+        centered=False, # default is True
+        v=True, # verbose
+        inline=True, # more verbose
+        upd_lip=True, # default is True
+        full_input=False, # default is False
     )
 
     # Train the model with only observational data
-    resblock.train([X_torch], [[]], batch_size=64)
+    resblock.train([X], [[]], batch_size=128)
 
     # get the weighted adjacency matrix
     W_est_nodags = resblock.get_adjacency()
@@ -875,7 +857,7 @@ def run_experiment(seed, data_path):
     ############################################################################################
     # benchmark model 2 LiNGD
     
-    ling = LiNGD(k=1)
+    ling = LiNGD(k=5, random_state=seed)
     ling.fit(X)
     W_ling = ling._adjacency_matrices[0].T # 0 because we are using k=1, Transpose to make each row correspond to parents
     B_est_ling = compute_binary_adjacency(W_ling)
@@ -889,13 +871,11 @@ def run_experiment(seed, data_path):
     ############################################################################################
     # benchmark model 3 DGLearn
 
-    # learn structure using tabu search, plot learned structure
     tabu_length = 4
     patience = 4
-    #max_iter = 10
     max_iter = np.inf
 
-    manager = CyclicManager(X, bic_coef=0.5)
+    manager = CyclicManager(X, bic_coef=0.5, num_workers = 100)
     B_est_dglearn, best_score, log = tabu_search(manager, tabu_length, patience, max_iter=max_iter, first_ascent=False, verbose=1) # returns a binary matrix as learned support
 
     # perform virtual edge correction
@@ -903,8 +883,7 @@ def run_experiment(seed, data_path):
     B_est_dglearn = virtual_refine(manager, B_est_dglearn, patience=0, max_iter=max_iter, max_path_len=6, verbose=1)
 
     # remove any reducible edges
-    B_est_dglearn = reduce_support(B_est_dglearn, fill_diagonal=False)
-    # convert B_est_dglearn to boolean matrix in case it is not
+    B_est_dglearn = reduce_support(B_est_dglearn, fill_diagonal=False) # same as done in FRP paper
 
     # plot est_dag and true_dag
     GraphDAG(B_est_dglearn, B_true)
@@ -916,14 +895,13 @@ def run_experiment(seed, data_path):
     # benchmark model 4 FRP
 
     edge_penalty = 0.5 * np.log(X.shape[0]) / X.shape[0] # BIC choice
-    # Run FRP
     frp_result = run_filter_rank_prune(
             X, 
             loss_type="kld",
             reg_type="scad",
             reg_params={"lam": edge_penalty, "gamma": 3.7},
             edge_penalty=edge_penalty,
-            n_inits=3,
+            n_inits=5,
             n_threads=200,
             parcorr_thrs=0.1 * (X.shape[0] / 1000)**(-1/4),
             use_loss_cache=True,
@@ -942,9 +920,9 @@ def run_experiment(seed, data_path):
     ############################################################################################
     # benchmark model 5 NOTEARS
 
-    nt = Notears(lambda1=1e-5, h_tol=1e-5, max_iter=1000, no_dag_constraint=True, loss_type='laplace') # default loss_type is 'l2', F1 of 27%
-    #nt = Notears(lambda1=1e-2, h_tol=1e-5, max_iter=10000, loss_type='logistic')
-    #nt = Notears(lambda1=1e-2, h_tol=1e-5, max_iter=10000, loss_type='poisson')
+    nt = Notears(lambda1=1e-1, h_tol=1e-5, max_iter=200, no_dag_constraint=True, loss_type='l2', seed=seed) # default loss_type is 'l2'
+    #nt = Notears(lambda1=1e-1, h_tol=1e-5, max_iter=200, no_dag_constraint=True, loss_type='laplace', seed=seed)
+    #nt = Notears(lambda1=1e-1, h_tol=1e-5, max_iter=200, no_dag_constraint=True, loss_type='logistic', seed=seed)
     nt.learn(X)
 
     # plot est_dag and true_dag
@@ -959,10 +937,7 @@ def run_experiment(seed, data_path):
     ############################################################################################
     # benchmark model 6 GOLEM
 
-    #gol = GOLEM(num_iter=2e4, lambda_2=0.0)  setting h_reg to 0 still allows model to be fit (no error thrown)
-    #gol = GOLEM(num_iter=20000, equal_variances=True, non_equal_variances=False, lambda_2=0.0, device_type='gpu') # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
-    gol = GOLEM(num_iter=20000, lambda_1=1e-5, lambda_2=0.0, non_equal_variances=False, device_type='gpu', no_dag_constraint=True) # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
-    #g = GOLEM(num_iter=2e4, non_equal_variances=False) # F1 of 68%, default non_equal_variances=True
+    gol = GOLEM(num_iter=10000, lambda_1=1e-1, lambda_2=0.0, equal_variances=True, device_type='gpu', no_dag_constraint=True, seed=seed) # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
     gol.learn(X)
 
     # plot est_dag and true_dag
@@ -973,6 +948,8 @@ def run_experiment(seed, data_path):
     # calculate accuracy
     met_gol = MetricsDAG(B_est_gol, B_true)
     print(met_gol.metrics)
+
+    ############################################################################################
 
     print("✅ ALL METHODS FITTED")
 
@@ -1038,9 +1015,18 @@ def save_results(results_list, output_file="experiment_results.json"):
 #if __name__ == "__main__":
 num_seeds = 5  # Set the number of seeds to run
 
-paths = ['/share/amine.mcharrak/cyclic_data/10ER40_linear_cyclic_GAUSS-EV_seed_3_n_samples_5000/', 
-         '/share/amine.mcharrak/cyclic_data/10SF40_linear_cyclic_GAUSS-EV_seed_3_n_samples_5000/', 
-         '/share/amine.mcharrak/cyclic_data/10NWS40_linear_cyclic_GAUSS-EV_seed_3_n_samples_5000/']
+paths = ['/share/amine.mcharrak/cyclic_data/10ER40_linear_cyclic_GAUSS-EV_seed_3_n_samples_500/',
+         '/share/amine.mcharrak/cyclic_data/10SF40_linear_cyclic_GAUSS-EV_seed_3_n_samples_500/',
+         '/share/amine.mcharrak/cyclic_data/10NWS40_linear_cyclic_GAUSS-EV_seed_1_n_samples_500/', # NWS does not have seed 3 for any n_samples
+         '/share/amine.mcharrak/cyclic_data/10ER40_linear_cyclic_GAUSS-EV_seed_3_n_samples_1000/',
+         '/share/amine.mcharrak/cyclic_data/10SF40_linear_cyclic_GAUSS-EV_seed_3_n_samples_1000/', 
+         '/share/amine.mcharrak/cyclic_data/10NWS40_linear_cyclic_GAUSS-EV_seed_1_n_samples_1000/', # NWS does not have seed 3 for any n_samples
+         '/share/amine.mcharrak/cyclic_data/10ER40_linear_cyclic_GAUSS-EV_seed_3_n_samples_2000/',
+         '/share/amine.mcharrak/cyclic_data/10SF40_linear_cyclic_GAUSS-EV_seed_3_n_samples_2000/',
+         '/share/amine.mcharrak/cyclic_data/10NWS40_linear_cyclic_GAUSS-EV_seed_1_n_samples_2000/', # NWS does not have seed 3 for any n_samples
+         '/share/amine.mcharrak/cyclic_data/10ER40_linear_cyclic_GAUSS-EV_seed_3_n_samples_5000/',
+         '/share/amine.mcharrak/cyclic_data/10SF40_linear_cyclic_GAUSS-EV_seed_3_n_samples_5000/',
+         '/share/amine.mcharrak/cyclic_data/10NWS40_linear_cyclic_GAUSS-EV_seed_1_n_samples_5000/'] # NWS does not have seed 3 for any n_samples
 seed_values = list(range(1, num_seeds + 1))  # Seeds: [1, 2, 3, 4, 5]
 
 # Run experiment for each combination of path and seed

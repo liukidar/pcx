@@ -3,6 +3,7 @@ import networkx as nx
 import numpy as np
 from gadjid import ancestor_aid, parent_aid, shd
 from dglearn.dglearn.evaluation.evaluation_shd import min_colperm_shd as _compute_cycle_SHD
+from dglearn.dglearn.evaluation.evaluation_kld import minimize_kld as _minimize_kld
 from scipy.optimize import minimize, Bounds, basinhopping
 
 
@@ -209,6 +210,42 @@ def compute_cycle_SHD(B_true, B_est):
         float: Minimum column-permutation SHD value.
     """
     return _compute_cycle_SHD(B_true, B_est)
+
+def compute_min_KLD(prec_true, B_support, thresh=1e-6, max_iters=50, patience=10):
+    """
+    Compute the minimum Kullback-Leibler divergence (KLD) between a ground truth precision matrix and 
+    an estimated precision matrix based on a given graph structure.
+
+    This function attempts to find optimal parameters for a fixed graph structure that minimize the KLD
+    with respect to the ground truth distribution. It serves as an evaluation metric for learned graph structures.
+
+    Parameters
+    ----------
+    prec_true : numpy.ndarray
+        Ground truth precision matrix of shape (d, d) where d is the number of variables
+    B_support : numpy.ndarray
+        Binary adjacency matrix of shape (d, d) representing the graph structure to evaluate
+    thresh : float, optional
+        Convergence threshold for KLD minimization. Default is 1e-6
+    max_iters : int, optional
+        Maximum number of optimization iterations. Default is 50
+    patience : int, optional
+        Number of consecutive non-improving iterations before early stopping. Default is 10
+
+    Returns
+    -------
+    float
+        Minimum KLD value achieved. A value close to zero indicates the estimated structure 
+        is likely in the equivalence class of the true structure.
+
+    Notes
+    -----
+    The function internally uses _minimize_kld which returns both the minimum KLD value and 
+    the optimal Q matrix where Q @ Q.T = precision_estimated. This wrapper returns only the KLD value.
+    """
+    # _minimize_kld returns min/best KLD and the best Q matrix st Q @ Q.T = prec_est
+    # here we only need the min KLD value, so we return only the first element of the tuple
+    return _minimize_kld(prec_true, B_support, thresh, max_iters, patience)[0]
 
 def compute_CSS(shd_cyclic, cycle_f1, epsilon=1e-8):
     """

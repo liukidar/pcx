@@ -11,14 +11,21 @@ import jax.scipy.linalg as jax_scipy_linalg # for slogdet()
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
+import torch
 
 
-# function to set random seed in JAX, NumPy, and Python's random module
+# function to set random seed in JAX, NumPy, PyTorch and Python's random module 
 def set_random_seed(seed):
     # Set the seed for reproducibility    
     random.seed(seed)
     np.random.seed(seed)
     jax.random.PRNGKey(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = False # allow non-deterministic cuDNN functions
+        torch.backends.cudnn.benchmark = True # select fastest kernel
 
 ############################ JAX Utility and Metric Functions ############################
 

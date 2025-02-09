@@ -16,7 +16,7 @@ import numpy as np
 
 
 class Complete_Graph(pxc.EnergyModule):
-    def __init__(self, input_dim: int, n_nodes: int, has_bias: bool = False, is_cont_node: list = None) -> None:
+    def __init__(self, input_dim: int, n_nodes: int, has_bias: bool = False, is_cont_node: list = None, seed: int = 0) -> None:
         super().__init__()
 
         self.input_dim = px.static(input_dim)  # Ensure input_dim is static
@@ -29,7 +29,13 @@ class Complete_Graph(pxc.EnergyModule):
         
         #stddev = jnp.sqrt(0.01) # this equals 0.1 (default would have been 0.2887)
         stddev = 1/n_nodes
-        key = random.PRNGKey(0)
+
+        # Use the seed to generate a JAX key
+        key = random.PRNGKey(seed)
+
+        # split the key to ensure randomness
+        #key, subkey = random.split(key) # use if more than one key is needed, ie if we do more than one random operation
+
         #new_weight_matrix = random.normal(key, shape=(n_nodes, n_nodes)) * stddev # option 1 using normal distribution
         new_weight_matrix = random.uniform(key, shape=(n_nodes, n_nodes), minval=-stddev, maxval=stddev) # option 2 using uniform distribution
 
