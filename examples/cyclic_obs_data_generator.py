@@ -22,7 +22,9 @@ def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0
     Returns:
         np.ndarray: Adjacency matrix representing the graph structure.
     """
-    while True:  # Repeat until a valid cyclic graph is generated
+    #while True:  # Repeat until a valid cyclic graph is generated
+    n_tries = 10
+    for _ in range(n_tries):  # Repeat until a valid cyclic graph is generated
         def degree(var):
             """Calculate the degree of a node in the adjacency matrix."""
             return np.count_nonzero(B[:, var]) + np.count_nonzero(B[var, :])
@@ -98,6 +100,13 @@ def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0
         is_cyclic = not nx.is_directed_acyclic_graph(G)  # True if cyclic
         if is_cyclic:
             return B
+        
+    raise ValueError(
+        f"Failed to generate a cyclic ER graph after {n_tries} attempts. "
+        f"Parameters: d={d}, max_degree={max_degree}, max_cycle={max_cycle}, "
+        f"n_edges={n_edges}, p={p}, edge_add_prob={edge_add_prob}."
+    )
+
 
 # SF cycle graph sampling
 def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0.3):
@@ -115,7 +124,9 @@ def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0
     Returns:
         np.ndarray: Adjacency matrix representing the graph structure.
     """
-    while True:  # Repeat until a valid cyclic graph is generated
+    n_tries = 10
+    for _ in range(n_tries):  # Repeat until a valid cyclic graph is generated
+    #while True:  # Repeat until a valid cyclic graph is generated
         def degree(var):
             """Calculate the degree of a node in the adjacency matrix."""
             return np.count_nonzero(B[:, var]) + np.count_nonzero(B[var, :])
@@ -196,6 +207,12 @@ def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0
         if is_cyclic:
             return B
 
+    raise ValueError(
+        f"Failed to generate a cyclic SF graph after {n_tries} attempts. "
+        f"Parameters: d={d}, max_degree={max_degree}, max_cycle={max_cycle}, "
+        f"n_edges={n_edges}, p={p}, edge_add_prob={edge_add_prob}."
+    )
+
 
 # NWS cycle graph sampling
 def sample_NWS_dcg(d, max_degree, max_cycle, k=2, p=0.2, edge_add_prob=0.3):
@@ -213,7 +230,9 @@ def sample_NWS_dcg(d, max_degree, max_cycle, k=2, p=0.2, edge_add_prob=0.3):
     Returns:
         np.ndarray: Adjacency matrix of the directed cyclic graph.
     """
-    while True:
+    n_tries = 10
+    for _ in range(n_tries):
+    #while True:
         def degree(var):
             """Calculate the degree of a node in the adjacency matrix."""
             return np.count_nonzero(B[:, var]) + np.count_nonzero(B[var, :])
@@ -281,6 +300,12 @@ def sample_NWS_dcg(d, max_degree, max_cycle, k=2, p=0.2, edge_add_prob=0.3):
         is_cyclic = not nx.is_directed_acyclic_graph(G)  # True if cyclic
         if is_cyclic:
             return B
+
+    raise ValueError(
+        f"Failed to generate a cyclic NWS graph after {n_tries} attempts. "
+        f"Parameters: d={d}, max_degree={max_degree}, max_cycle={max_cycle}, "
+        f"k_nws={k}, p={p}, edge_add_prob={edge_add_prob}."
+    )
 
 
 ####################### data generation functions #######################
