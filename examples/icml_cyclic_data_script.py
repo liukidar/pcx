@@ -3,10 +3,8 @@ import sys
 import argparse
 import pandas as pd
 import multiprocessing
+import random
 import json
-
-import os
-import sys
 
 # choose the GPU to use
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
@@ -87,15 +85,19 @@ from causallearn.graph.SHD import SHD as SHD_causallearn
 
 ###################################################
 
-# Parse command-line arguments
-parser = argparse.ArgumentParser(description="Run ICML Cyclic Data Experiment")
-parser.add_argument("--seed", type=int, default=1, help="Random seed for experiment")
-args = parser.parse_args()
+# Function to load adjacency matrices and data
+def load_data(base_path, num_samples):
+    """
+    Load adjacency matrices and data from the given base path and sample size.
+    """
+    adj_matrix = pd.read_csv(os.path.join(base_path, 'adj_matrix.csv'), header=None)
+    weighted_adj_matrix = pd.read_csv(os.path.join(base_path, 'W_adj_matrix.csv'), header=None)
+    prec_matrix = pd.read_csv(os.path.join(base_path, 'prec_matrix.csv'), header=None)
 
-# Define output directory
-output_dir = "experiment_results_cyclic_data_new"
-os.makedirs(output_dir, exist_ok=True)
-output_file = os.path.join(output_dir, "results_all_seeds.json")
+    data_path = os.path.join(base_path, f"n_samples_{num_samples}", "train.csv")
+    data = pd.read_csv(data_path, header=None)
+
+    return adj_matrix, weighted_adj_matrix, prec_matrix, data
 
 def safe_compute(func, *args, default_value=None, **kwargs):
     """
@@ -125,18 +127,17 @@ def safe_compute(func, *args, default_value=None, **kwargs):
         print(f"⚠️ Error computing {func.__name__}: {e}")
         return default_value
 
-def run_experiment(seed, data_path):
+# Function to run the experiment
+def run_experiment(seed, base_path, num_samples):
     """Runs the experiment for a given seed and returns results as a dictionary."""
-
+    
     set_random_seed(seed)
     print(f"🔄 Running experiment with seed {seed}")
 
-    # Load adjacency matrices, data, and prec_matrix as pandas dataframe
-    adj_matrix = pd.read_csv(os.path.join(path, 'adj_matrix.csv'), header=None)
-    data = pd.read_csv(os.path.join(path, 'train.csv'), header=None)
-    weighted_adj_matrix = pd.read_csv(os.path.join(path, 'W_adj_matrix.csv'), header=None)
-    prec_matrix = pd.read_csv(os.path.join(path, 'prec_matrix.csv'), header=None)
+    # Load adjacency matrices, data, and precision matrix
+    adj_matrix, weighted_adj_matrix, prec_matrix, data = load_data(base_path, num_samples)
 
+    # Get the number of variables
     n_vars = data.shape[1]
 
     B_true = adj_matrix.values
@@ -153,10 +154,10 @@ def run_experiment(seed, data_path):
     search.search_dfs()
 
     B_true_EC = [binary2array(bstr) for bstr in search.visited_graphs]
-    print(f"Size of equivalence class of true graph for {path}: {len(B_true_EC)}")
+    print(f"Size of equivalence class of true graph for {base_path}: {len(B_true_EC)}")
 
     # Check if G_true is cyclic by listing all cycles
-    print(f"Number of cycles in G_true for {path}: {len(list(nx.simple_cycles(G_true)))}\n")
+    print(f"Number of cycles in G_true for {base_path}: {len(list(nx.simple_cycles(G_true)))}\n")
 
     # %%
     data.head()
@@ -172,6 +173,7 @@ def run_experiment(seed, data_path):
 
     # Usage
     input_dim = 1
+    n_samples = X.shape[0]
     n_nodes = X.shape[1]
     #model = Complete_Graph(input_dim, n_nodes, has_bias=False, is_cont_node=is_cont_node, seed=seed)
     model = Complete_Graph(input_dim, n_nodes, has_bias=True, is_cont_node=is_cont_node, seed=seed)
@@ -206,11 +208,10 @@ def run_experiment(seed, data_path):
     # %%
     # TODO: make the below params global or input to the functions in which it is used.
     w_learning_rate = 1e-3
-    #w_learning_rate = 5e-3
     h_learning_rate = 1e-4
     T = 1
 
-    nm_epochs = 1000 # not much happens after 2000 epochs
+    nm_epochs = 5000 # not much happens after 5000 epochs
     every_n_epochs = nm_epochs // 20 # Print every 5% of the epochs
     batch_size = 256
 
@@ -218,10 +219,9 @@ def run_experiment(seed, data_path):
     # NOTE: for any graph type, the best way to select lam_h is such that one increases it until the graph becomes acyclic, a value right before that is the best value
     # NOTE: larger lam_h (1e1) gives better cyclic structure score (CSS) but worse fit metric scores (log-likelihood, KL divergence, etc.)
     # NOTE: smaller lam_h (5e-4) gives better fit metric scores (log-likelihood, KL divergence, etc.) but worse cyclic structure score (CSS)
-    #lam_h = 5e-2
-    lam_h = 9e0
-    lam_l1 = 1e-1
-
+    
+    lam_h = 5e0 # effective value depends on d, does not change during training
+    lam_l1 = 1e0 # effective value depends on Frob Norm of W at any time, thus changes during training
 
     # Training an1d evaluation functions
     @pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), in_axes=(0,), out_axes=0)
@@ -539,7 +539,7 @@ def run_experiment(seed, data_path):
     print("Name of the experiment: ", exp_name)    
 
     # Create subdirectory in linear folder with the name stored in exp_name
-    last_level = os.path.basename(os.path.normpath(path))
+    last_level = os.path.basename(os.path.normpath(base_path))
     save_path = os.path.join('plots/linear_cyclic', last_level, exp_name)
     os.makedirs(save_path, exist_ok=True)
 
@@ -901,7 +901,7 @@ def run_experiment(seed, data_path):
             reg_type="scad",
             reg_params={"lam": edge_penalty, "gamma": 3.7},
             edge_penalty=edge_penalty,
-            n_inits=5,
+            n_inits=3,
             n_threads=200,
             parcorr_thrs=0.1 * (X.shape[0] / 1000)**(-1/4),
             use_loss_cache=True,
@@ -920,9 +920,9 @@ def run_experiment(seed, data_path):
     ############################################################################################
     # benchmark model 5 NOTEARS
 
-    nt = Notears(lambda1=1e-1, h_tol=1e-5, max_iter=200, no_dag_constraint=True, loss_type='l2', seed=seed) # default loss_type is 'l2'
-    #nt = Notears(lambda1=1e-1, h_tol=1e-5, max_iter=200, no_dag_constraint=True, loss_type='laplace', seed=seed)
-    #nt = Notears(lambda1=1e-1, h_tol=1e-5, max_iter=200, no_dag_constraint=True, loss_type='logistic', seed=seed)
+    nt = Notears(lambda1=5e-2, h_tol=1e-5, max_iter=100, no_dag_constraint=True, loss_type='l2', seed=seed) # default loss_type is 'l2'
+    #nt = Notears(lambda1=lambda1=5e-2, h_tol=1e-5, max_iter=100, no_dag_constraint=True, loss_type='laplace', seed=seed)
+    #nt = Notears(lambda1=lambda1=5e-2, h_tol=1e-5, max_iter=100, no_dag_constraint=True, loss_type='logistic', seed=seed)
     nt.learn(X)
 
     # plot est_dag and true_dag
@@ -937,7 +937,8 @@ def run_experiment(seed, data_path):
     ############################################################################################
     # benchmark model 6 GOLEM
 
-    gol = GOLEM(num_iter=10000, lambda_1=1e-1, lambda_2=0.0, equal_variances=True, device_type='gpu', no_dag_constraint=True, seed=seed) # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
+    gol = GOLEM(num_iter=50000, lambda_1=5e-2, lambda_2=0.0, equal_variances=True, device_type='gpu', no_dag_constraint=True, seed=seed) # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
+    #gol = GOLEM(num_iter=50000, lambda_1=5e-2, lambda_2=0.0, device_type='gpu', no_dag_constraint=True, seed=seed) # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
     gol.learn(X)
 
     # plot est_dag and true_dag
@@ -993,13 +994,14 @@ def run_experiment(seed, data_path):
 
     return results
 
-
-def save_results(results_list, output_file="experiment_results.json"):
+# Function to save results
+def save_results(results_list, output_file):
     """Merge results from different runs and save to a JSON file robustly."""
     
     print("📁 Merging and saving results...")
 
     try:
+        # Convert results list into DataFrame
         df = pd.concat([pd.DataFrame(res) for res in results_list], ignore_index=True)
 
         # Convert NaN and Inf values to None before saving
@@ -1012,37 +1014,67 @@ def save_results(results_list, output_file="experiment_results.json"):
     except Exception as e:
         print(f"⚠️ Error saving results: {e}")
 
-#if __name__ == "__main__":
-num_seeds = 5  # Set the number of seeds to run
-
-paths = ['/share/amine.mcharrak/cyclic_data/10ER40_linear_cyclic_GAUSS-EV_seed_3_n_samples_500/',
-         '/share/amine.mcharrak/cyclic_data/10SF40_linear_cyclic_GAUSS-EV_seed_3_n_samples_500/',
-         '/share/amine.mcharrak/cyclic_data/10NWS40_linear_cyclic_GAUSS-EV_seed_1_n_samples_500/', # NWS does not have seed 3 for any n_samples
-         '/share/amine.mcharrak/cyclic_data/10ER40_linear_cyclic_GAUSS-EV_seed_3_n_samples_1000/',
-         '/share/amine.mcharrak/cyclic_data/10SF40_linear_cyclic_GAUSS-EV_seed_3_n_samples_1000/', 
-         '/share/amine.mcharrak/cyclic_data/10NWS40_linear_cyclic_GAUSS-EV_seed_1_n_samples_1000/', # NWS does not have seed 3 for any n_samples
-         '/share/amine.mcharrak/cyclic_data/10ER40_linear_cyclic_GAUSS-EV_seed_3_n_samples_2000/',
-         '/share/amine.mcharrak/cyclic_data/10SF40_linear_cyclic_GAUSS-EV_seed_3_n_samples_2000/',
-         '/share/amine.mcharrak/cyclic_data/10NWS40_linear_cyclic_GAUSS-EV_seed_1_n_samples_2000/', # NWS does not have seed 3 for any n_samples
-         '/share/amine.mcharrak/cyclic_data/10ER40_linear_cyclic_GAUSS-EV_seed_3_n_samples_5000/',
-         '/share/amine.mcharrak/cyclic_data/10SF40_linear_cyclic_GAUSS-EV_seed_3_n_samples_5000/',
-         '/share/amine.mcharrak/cyclic_data/10NWS40_linear_cyclic_GAUSS-EV_seed_1_n_samples_5000/'] # NWS does not have seed 3 for any n_samples
-seed_values = list(range(1, num_seeds + 1))  # Seeds: [1, 2, 3, 4, 5]
-
-# Run experiment for each combination of path and seed
-for path in paths:
-    results_all = []
-    # Get base folder name from path
-    base_folder = os.path.basename(os.path.dirname(path))
+if __name__ == "__main__":
+    # Argument Parsing
+    parser = argparse.ArgumentParser(description="Run structured experiments.")
+    parser.add_argument("--exp_name", type=str, required=True, choices=["increase_k", "increase_d", "increase_n"],
+                        help="Specify the type of experiment (increase_k, increase_d, increase_n).")
+    parser.add_argument("--num_seeds", type=int, required=True, help="Number of seeds to run experiments for.")
     
-    # Create output directory for this path
-    path_output_dir = os.path.join(output_dir, base_folder)
-    os.makedirs(path_output_dir, exist_ok=True)
+    args = parser.parse_args()
     
-    for seed in seed_values:
-        results = run_experiment(seed, path)
-        results_all.append(results)
+    # Define dataset paths based on experiment type
+    data_dir = "/share/amine.mcharrak/cyclic_data_final"
+    num_seeds = args.num_seeds
+    seed_values = list(range(1, num_seeds + 1))
 
-    # Save merged results for this path
-    output_file = os.path.join(path_output_dir, "experiment_results.json")
-    save_results(results_all, output_file)
+    # **EXPERIMENT: Increasing k (k={1,2,3,4}, d=10)**
+    if args.exp_name == "increase_k":
+        base_paths = [
+            os.path.join(data_dir, "10ER10_linear_cyclic_GAUSS-EV_seed_1"),
+            os.path.join(data_dir, "10ER20_linear_cyclic_GAUSS-EV_seed_1"),
+            os.path.join(data_dir, "10ER30_linear_cyclic_GAUSS-EV_seed_1"),
+            os.path.join(data_dir, "10ER41_linear_cyclic_GAUSS-EV_seed_1")
+        ]
+        num_samples_list = [2000]  # Fixed sample size for this experiment
+
+    # **EXPERIMENT: Increasing d (d={10,15,20}, k=3)**
+    elif args.exp_name == "increase_d":
+        base_paths = [
+            os.path.join(data_dir, "10ER30_linear_cyclic_GAUSS-EV_seed_1"),
+            os.path.join(data_dir, "15ER46_linear_cyclic_GAUSS-EV_seed_1"),
+            os.path.join(data_dir, "20ER59_linear_cyclic_GAUSS-EV_seed_1")
+        ]
+        num_samples_list = [2000]  # Fixed sample size for this experiment
+
+    # **EXPERIMENT: Increasing n_samples (n={500,1000,2000,5000}, fixed k=3, d=10)**
+    elif args.exp_name == "increase_n":
+        base_paths = [os.path.join(data_dir, "10ER30_linear_cyclic_GAUSS-EV_seed_1")]
+        num_samples_list = [500, 1000, 2000, 5000]  # Different sample sizes
+
+    else:
+        print("⚠️ Invalid experiment name provided. Exiting.")
+        exit(1)
+
+    # Run experiments and store results
+    output_dir = os.path.join(data_dir, "experiment_results", args.exp_name)
+    os.makedirs(output_dir, exist_ok=True)
+
+    for base_path in base_paths:
+        results_all = []
+        base_folder = os.path.basename(base_path)
+        path_output_dir = os.path.join(output_dir, base_folder)
+        os.makedirs(path_output_dir, exist_ok=True)
+
+        for seed in seed_values:
+            for num_samples in num_samples_list:
+                print(f"🚀 Running experiment: {args.exp_name}, Base: {base_folder}, Seed: {seed}, Samples: {num_samples}")
+                results = run_experiment(seed, base_path, num_samples)
+                results_all.append(results)
+
+        # Save results
+        output_file = os.path.join(path_output_dir, "experiment_results.json")
+        save_results(results_all, output_file)
+
+    print(f"✅ All experiments completed for {args.exp_name}!")
+

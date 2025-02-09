@@ -19,7 +19,7 @@ from dglearn.dglearn.dg.adjacency_structure import AdjacencyStucture
 from dglearn.dglearn.dg.graph_equivalence_search import GraphEquivalenceSearch
 
 # Set up data directory
-data_dir = "/share/amine.mcharrak/mixed_data"
+data_dir = "/share/amine.mcharrak/mixed_data_final"
 os.makedirs(data_dir, exist_ok=True)
 
 ############################## HELPER FUNCTIONS ##############################
@@ -31,62 +31,66 @@ def set_random_seed(seed):
     random.seed(seed)
 
 # Function to generate dataset
-def generate_dataset(i, total_datasets, seed, n_samples, d, graph_type, e_to_d_ratio):
-    """Generate dataset for given parameters and save it to disk."""
-    # Set the seed for reproducibility
+def generate_dataset(i, total_datasets, seed, d, graph_type, e_to_d_ratio, num_samples_list):
+    """
+    Generate dataset for given parameters and save it efficiently.
+    """
     set_random_seed(seed)
 
-    n_edges = e_to_d_ratio * d  # Number of edges in the graph
+    n_edges = e_to_d_ratio * d  # Number of edges
     B = sample_B(d, n_edges, graph_type)
+    W = sample_W(B)
 
     # Verify cyclicity
     G = nx.DiGraph(B)
     is_DAG = nx.is_directed_acyclic_graph(G)
     print(f"({i}/{total_datasets}) Generating dataset with seed {seed}: Graph Type: {graph_type}, Nodes: {d}, Edges: {n_edges}, is_DAG: {is_DAG}")
 
-    W = sample_W(B)
+    # ✅ Store graph structure **once** in a base folder
+    base_dir = os.path.join(data_dir, f"{d}{graph_type}{n_edges}_linear_mixed_seed_{seed}")
+    os.makedirs(base_dir, exist_ok=True)
 
-    # Create dataset directory for this configuration
-    dataset_dir = os.path.join(data_dir, f"{d}{graph_type}{n_edges}_linear_mixed_seed_{seed}_n_samples_{n_samples}")
-    os.makedirs(dataset_dir, exist_ok=True)
+    # Save adjacency matrix **once**
+    pd.DataFrame(nx.to_numpy_array(G)).to_csv(f"{base_dir}/adj_matrix.csv", header=False, index=False)
 
-    for n_disc in range(1, d):  # Iterate n_disc from 1 to d-1
-        # Create ordered discrete variable list
-        is_cont = np.ones((1, d))  # Ensure 2D array shape (1, d), all continuous (b/c of 1)
-        is_cont[:, :n_disc] = 0   # Set first `n_disc` variables to discrete (via 0)
+    # Save weighted adjacency matrix **once**
+    pd.DataFrame(W).to_csv(f"{base_dir}/W_adj_matrix.csv", header=False, index=False)
 
-        X = simulate_linear_mixed_sem(W, n_samples, is_cont=is_cont , sem_type="mixed_random_i_dis")
+    # ✅ Generate and store datasets for different `n_disc` and `n_samples`
+    for n_disc in range(1, d):  # Iterate over discrete variables
+        for n_samples in num_samples_list:  # Iterate over sample sizes
+            # Create ordered discrete variable list
+            is_cont = np.ones((1, d))  # 1 = continuous
+            is_cont[:, :n_disc] = 0   # First `n_disc` are discrete
 
-        # Save data
-        sub_dir = os.path.join(dataset_dir, f"n_disc_{n_disc}")
-        os.makedirs(sub_dir, exist_ok=True)
+            # Generate dataset
+            X = simulate_linear_mixed_sem(W, n_samples, is_cont=is_cont, sem_type="mixed_random_i_dis")
 
-        # Save adjacency matrix
-        pd.DataFrame(nx.to_numpy_array(G)).to_csv(f"{sub_dir}/adj_matrix.csv", header=False, index=False)
+            # ✅ Save datasets in a structured way
+            sub_dir = os.path.join(base_dir, f"n_disc_{n_disc}")  # Subfolder for `n_disc`
+            os.makedirs(sub_dir, exist_ok=True)
 
-        # Save generated data
-        pd.DataFrame(X).to_csv(f"{sub_dir}/train.csv", header=False, index=False)
+            # Store `train.csv` for this specific `n_samples`
+            pd.DataFrame(X).to_csv(f"{sub_dir}/train_n_samples_{n_samples}.csv", header=False, index=False)
 
-        # Save weighted adjacency matrix
-        pd.DataFrame(W).to_csv(f"{sub_dir}/W_adj_matrix.csv", header=False, index=False)
-
-    print(f"({i}/{total_datasets}) Finished dataset with seed {seed}: {dataset_dir}")
+    print(f"({i}/{total_datasets}) Finished dataset with seed {seed}: {base_dir}")
 
 
-# **Sequential Execution Setup**
+# **Efficient Execution Setup**
 seeds = [1, 2, 3, 4, 5]
-num_samples_list = [100, 500, 1000, 2000, 5000]
+num_samples_list = [100, 500, 1000, 2000, 5000]  # Different sample sizes
 num_vars_list = [10, 15, 20]  # Number of nodes `d`
 graph_types = ["ER", "SF", "WS"]  # Graph models
-e_to_d_ratios = [2, 4, 6]  # Edge-to-node ratio, this determines number of edges
+e_to_d_ratios = [1, 2, 3, 4]  # Edge-to-node ratio
 
-# Generate parameter combinations
+# Generate parameter combinations **only once per graph**
 parameter_combinations = [
-    (seed, n_samples, d, graph_type, e_to_d_ratio)
-    for seed, n_samples, d, graph_type, e_to_d_ratio in itertools.product(seeds, num_samples_list, num_vars_list, graph_types, e_to_d_ratios)
-    if not (graph_type == "ER" and d == 10 and e_to_d_ratio == 6)
+    (seed, d, graph_type, e_to_d_ratio, num_samples_list)
+    for seed, d, graph_type, e_to_d_ratio in itertools.product(seeds, num_vars_list, graph_types, e_to_d_ratios)
 ]
+
 total_datasets = len(parameter_combinations)
+print(f"Generating {total_datasets} datasets...")
 
 for i, params in enumerate(parameter_combinations, start=1):
     generate_dataset(i, total_datasets, *params)

@@ -36,23 +36,16 @@ def set_random_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
 
-# Function to save dataset
 def save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samples_list):
     """
     Save multiple subsampled datasets from a single generated dataset.
-    
-    Args:
-        data_dir (str): Directory to save the datasets.
-        B (np.ndarray): Adjacency matrix of the generated graph.
-        d (int): Number of variables (nodes).
-        graph_type (str): Type of graph (ER, SF, NWS).
-        n_edges (int): Number of edges in the graph.
-        noise_type (str): Type of noise model.
-        seed (int): Random seed used for generation.
-        num_samples_list (list): List of sample sizes to generate.
     """
-    # ✅ Always generate a dataset with 5000 samples
-    max_samples = max(num_samples_list)  # Ensures we generate the largest dataset needed
+    if not num_samples_list:
+        print(f"⚠️ WARNING: No sample sizes provided for {graph_type} with seed {seed}. Skipping dataset generation.")
+        return  # 🚨 Stop execution if num_samples_list is empty
+
+    # ✅ Generate the largest dataset needed
+    max_samples = max(num_samples_list)  
     W, _ = sample_W(B)
 
     # Generate synthetic data once
@@ -65,22 +58,21 @@ def save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samp
     # Verify cyclicity
     G = nx.DiGraph(B)
     is_cyclic = not nx.is_directed_acyclic_graph(G)
-    print(f"Saving Graph Type: {graph_type}, Nodes: {d}, Edges: {n_edges}, Cyclic: {is_cyclic}")
+    print(f"✅ Saving Graph Type: {graph_type}, Nodes: {d}, Edges: {n_edges}, Cyclic: {is_cyclic}")
 
     # Create base directory
     base_dir = os.path.join(data_dir, f"{d}{graph_type}{n_edges}_linear_cyclic_{noise_type}_seed_{seed}")
     os.makedirs(base_dir, exist_ok=True)
 
-    # Save adjacency matrix
+    # Save graph metadata (✅ This part is working fine)
     pd.DataFrame(nx.to_numpy_array(G)).to_csv(f"{base_dir}/adj_matrix.csv", header=False, index=False)
-    
-    # Save weighted adjacency matrix
     pd.DataFrame(W).to_csv(f"{base_dir}/W_adj_matrix.csv", header=False, index=False)
-
-    # Save precision matrix
     pd.DataFrame(prec_matrix).to_csv(f"{base_dir}/prec_matrix.csv", header=False, index=False)
 
-    # ✅ Now save different dataset sizes from `X_full_df`
+    # ✅ Ensure datasets are actually being saved
+    print(f"ℹ️ Saving datasets for sample sizes: {num_samples_list}")
+
+    # Save subsampled datasets
     for num_samples in num_samples_list:
         dataset_dir = os.path.join(base_dir, f"n_samples_{num_samples}")
         os.makedirs(dataset_dir, exist_ok=True)
@@ -88,9 +80,11 @@ def save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samp
         # Take the first `num_samples` rows
         X_subset = X_full_df.iloc[:num_samples]
 
+        # ✅ Confirm data is being saved
+        print(f"💾 Saving dataset: {dataset_dir}/train.csv with {num_samples} samples.")
+
         # Save subset dataset
         X_subset.to_csv(f"{dataset_dir}/train.csv", header=False, index=False)
-
 
 ############################## MAIN SCRIPT ##################################
 
@@ -174,52 +168,22 @@ def generate_dataset(seed, d, graph_type, noise_type, e_to_d_ratio, num_samples_
     # ✅ Move save_dataset **outside** of the while-loop
     save_dataset(data_dir, B, d, graph_type, n_edges, noise_type, seed, num_samples_list)
 
-# # Define parameter ranges
-# #seeds = [1, 2, 3, 4, 5]
-# seeds = [1]  
-# #num_samples_list = [500, 1000, 2000, 5000]
-# num_samples_list = [500]
-# num_vars_list = [10, 15, 20]
-# graph_types = ["ER", "SF", "NWS"]
-# noise_types = ["GAUSS-EV"]
-# #p_densities = [0.1, 0.3, 0.5]  # Only used for NWS
-# p_densities = [0.1, 0.3]  # Only used for NWS
-# #e_to_d_ratios = [1, 2, 3, 4]  # Used for ER and SF
-# e_to_d_ratios = [1, 2]  # Used for ER and SF
-# max_cycle = 3  
-
-# # Compute total number of datasets (now includes e_to_d_ratios)
-# total_datasets = (
-#     len(seeds) * len(num_samples_list) * len(num_vars_list) * len(graph_types) * len(noise_types) * len(e_to_d_ratios)
-# )
-# print(f"Generating {total_datasets} datasets...")
-
-# # Generate all parameter combinations, including e_to_d_ratios
-# parameter_combinations = list(itertools.product(seeds, num_samples_list, num_vars_list, graph_types, noise_types, e_to_d_ratios))
-
-# # Parallel processing using joblib
-# num_workers = min(64, len(parameter_combinations))  # Use up to 64 workers, but no more than the number of tasks
-
-# Parallel(n_jobs=num_workers)(
-#     delayed(generate_dataset)(seed, num_samples, d, graph_type, noise_type, e_to_d_ratio)  
-#     for seed, num_samples, d, graph_type, noise_type, e_to_d_ratio in parameter_combinations
-# )
-
-# print("✅ Dataset generation complete!")
 
 # Define parameter ranges
 seeds = [1]
 num_samples_list = [500, 1000, 2000, 5000]  # ✅ Passed as a list
-num_vars_list = [10, 15, 20]
+num_vars_list = [10, 15]
 #graph_types = ["ER", "SF", "NWS"]
 graph_types = ["ER", "SF"]
+#graph_types = ["SF"]
 #graph_types = ["NWS"]
+#graph_types = ["ER"]
 noise_types = ["GAUSS-EV"]
-p_densities = [0.1, 0.4, 0.7]  # Used only for NWS
-e_to_d_ratios = [1, 2, 3]  # Used for ER and SF
+p_densities = [0.7, 0.8, 0.9]  # Used only for NWS
+e_to_d_ratios = [1, 2, 3, 4]  # Used for ER and SF
 max_cycle = 3
-k_nws = 3
-edge_add_prob = 0.1
+k_nws = 2
+edge_add_prob = 0.05
 
 # Compute total number of datasets (only counting graph generation cases)
 total_graphs = len(seeds) * len(num_vars_list) * len(graph_types) * len(noise_types) * len(e_to_d_ratios)

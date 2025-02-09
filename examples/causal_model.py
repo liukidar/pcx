@@ -28,7 +28,8 @@ class Complete_Graph(pxc.EnergyModule):
         self.layers = [pxnn.Linear(n_nodes, n_nodes, bias=has_bias)] # vanilla initialization is uniform(-stdv, stdv) with stdv = 1/sqrt(n_nodes), here n_nodes = 12, thus stdv = 1/sqrt(12) = 0.2887
         
         #stddev = jnp.sqrt(0.01) # this equals 0.1 (default would have been 0.2887)
-        stddev = 1/n_nodes
+        #stddev = 1/n_nodes
+        stddev = 1.0
 
         # Use the seed to generate a JAX key
         key = random.PRNGKey(seed)
@@ -36,8 +37,8 @@ class Complete_Graph(pxc.EnergyModule):
         # split the key to ensure randomness
         #key, subkey = random.split(key) # use if more than one key is needed, ie if we do more than one random operation
 
-        #new_weight_matrix = random.normal(key, shape=(n_nodes, n_nodes)) * stddev # option 1 using normal distribution
-        new_weight_matrix = random.uniform(key, shape=(n_nodes, n_nodes), minval=-stddev, maxval=stddev) # option 2 using uniform distribution
+        new_weight_matrix = random.normal(key, shape=(n_nodes, n_nodes)) * stddev # option 1 using normal distribution
+        #new_weight_matrix = random.uniform(key, shape=(n_nodes, n_nodes), minval=-stddev, maxval=stddev) # option 2 using uniform distribution
 
         # Step 3: Replace diagonal elements with 0
         for i in range(n_nodes):
