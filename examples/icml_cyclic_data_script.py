@@ -1,15 +1,26 @@
 import os
-import sys
 import argparse
+import sys
+
+# Argument Parsing (before importing GPU-dependent libraries)
+parser = argparse.ArgumentParser(description="Run structured experiments.")
+parser.add_argument("--exp_name", type=str, required=True, choices=["increase_k", "increase_d", "increase_n"],
+                    help="Specify the type of experiment (increase_k, increase_d, increase_n).")
+parser.add_argument("--graph_type", type=str, required=True, choices=["ER", "SF", "NWS"],
+                    help="Specify the graph type (ER, SF, NWS).")
+parser.add_argument("--num_seeds", type=int, required=True, help="Number of seeds to run experiments for.")
+parser.add_argument("--gpu", type=int, default=0, help="GPU index to use")
+
+args = parser.parse_args()
+
+# Set GPU before importing any ML/DL libraries
+os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+
 import pandas as pd
 import multiprocessing
 import random
 import json
-
-# choose the GPU to use
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-# disable preallocation of memory
-os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 # pcx
 import pcx as px
@@ -1014,50 +1025,78 @@ def save_results(results_list, output_file):
     except Exception as e:
         print(f"⚠️ Error saving results: {e}")
 
+
+
 if __name__ == "__main__":
-    # Argument Parsing
-    parser = argparse.ArgumentParser(description="Run structured experiments.")
-    parser.add_argument("--exp_name", type=str, required=True, choices=["increase_k", "increase_d", "increase_n"],
-                        help="Specify the type of experiment (increase_k, increase_d, increase_n).")
-    parser.add_argument("--num_seeds", type=int, required=True, help="Number of seeds to run experiments for.")
     
-    args = parser.parse_args()
-    
-    # Define dataset paths based on experiment type
+    # Define dataset paths based on experiment type and graph type
     data_dir = "/share/amine.mcharrak/cyclic_data_final"
     num_seeds = args.num_seeds
     seed_values = list(range(1, num_seeds + 1))
 
-    # **EXPERIMENT: Increasing k (k={1,2,3,4}, d=10)**
-    if args.exp_name == "increase_k":
-        base_paths = [
-            os.path.join(data_dir, "10ER10_linear_cyclic_GAUSS-EV_seed_1"),
-            os.path.join(data_dir, "10ER20_linear_cyclic_GAUSS-EV_seed_1"),
-            os.path.join(data_dir, "10ER30_linear_cyclic_GAUSS-EV_seed_1"),
-            os.path.join(data_dir, "10ER41_linear_cyclic_GAUSS-EV_seed_1")
-        ]
-        num_samples_list = [2000]  # Fixed sample size for this experiment
+    # Define base paths for different experiments and graph types
+    experiment_paths = {
+        "increase_k": {
+            "ER": [
+                "10ER10_linear_cyclic_GAUSS-EV_seed_1",
+                "10ER20_linear_cyclic_GAUSS-EV_seed_1",
+                "10ER30_linear_cyclic_GAUSS-EV_seed_1",
+                "10ER41_linear_cyclic_GAUSS-EV_seed_1",
+            ],
+            "SF": [
+                "10SF10_linear_cyclic_GAUSS-EV_seed_1",
+                "10SF20_linear_cyclic_GAUSS-EV_seed_1",
+                "10SF30_linear_cyclic_GAUSS-EV_seed_1",
+                "10SF41_linear_cyclic_GAUSS-EV_seed_1",
+            ],
+            "NWS": [
+                "10NWS11_linear_cyclic_GAUSS-EV_seed_1",
+                "10NWS20_linear_cyclic_GAUSS-EV_seed_1",
+                "10NWS31_linear_cyclic_GAUSS-EV_seed_1",
+                "10NWS41_linear_cyclic_GAUSS-EV_seed_1",
+            ],
+        },
+        "increase_d": {
+            "ER": [
+                "10ER30_linear_cyclic_GAUSS-EV_seed_1",
+                "15ER46_linear_cyclic_GAUSS-EV_seed_1",
+                "20ER59_linear_cyclic_GAUSS-EV_seed_1",
+            ],
+            "SF": [
+                "10SF30_linear_cyclic_GAUSS-EV_seed_1",
+                "15SF45_linear_cyclic_GAUSS-EV_seed_1",
+                "20SF60_linear_cyclic_GAUSS-EV_seed_1",
+            ],
+            "NWS": [
+                "10NWS31_linear_cyclic_GAUSS-EV_seed_1",
+                "15NWS44_linear_cyclic_GAUSS-EV_seed_1",
+                "20NWS60_linear_cyclic_GAUSS-EV_seed_1",
+            ],
+        },
+        "increase_n": {
+            "ER": ["10ER30_linear_cyclic_GAUSS-EV_seed_1"],
+            "SF": ["10SF30_linear_cyclic_GAUSS-EV_seed_1"],
+            "NWS": ["10NWS31_linear_cyclic_GAUSS-EV_seed_1"],
+        },
+    }
 
-    # **EXPERIMENT: Increasing d (d={10,15,20}, k=3)**
-    elif args.exp_name == "increase_d":
-        base_paths = [
-            os.path.join(data_dir, "10ER30_linear_cyclic_GAUSS-EV_seed_1"),
-            os.path.join(data_dir, "15ER46_linear_cyclic_GAUSS-EV_seed_1"),
-            os.path.join(data_dir, "20ER59_linear_cyclic_GAUSS-EV_seed_1")
-        ]
-        num_samples_list = [2000]  # Fixed sample size for this experiment
-
-    # **EXPERIMENT: Increasing n_samples (n={500,1000,2000,5000}, fixed k=3, d=10)**
-    elif args.exp_name == "increase_n":
-        base_paths = [os.path.join(data_dir, "10ER30_linear_cyclic_GAUSS-EV_seed_1")]
-        num_samples_list = [500, 1000, 2000, 5000]  # Different sample sizes
-
-    else:
-        print("⚠️ Invalid experiment name provided. Exiting.")
+    # Check if the specified experiment and graph type exist
+    if args.exp_name not in experiment_paths or args.graph_type not in experiment_paths[args.exp_name]:
+        print(f"⚠️ Invalid combination of experiment name '{args.exp_name}' and graph type '{args.graph_type}'. Exiting.")
         exit(1)
 
+    base_paths = [os.path.join(data_dir, path) for path in experiment_paths[args.exp_name][args.graph_type]]
+
+    # Define sample sizes for each experiment type
+    num_samples_dict = {
+        "increase_k": [2000],  # Fixed sample size for k experiments
+        "increase_d": [2000],  # Fixed sample size for d experiments
+        "increase_n": [500, 1000, 2000, 5000],  # Varying sample sizes for n experiments
+    }
+    num_samples_list = num_samples_dict[args.exp_name]
+
     # Run experiments and store results
-    output_dir = os.path.join(data_dir, "experiment_results", args.exp_name)
+    output_dir = os.path.join(data_dir, "experiment_results", args.exp_name, args.graph_type)
     os.makedirs(output_dir, exist_ok=True)
 
     for base_path in base_paths:
@@ -1068,7 +1107,7 @@ if __name__ == "__main__":
 
         for seed in seed_values:
             for num_samples in num_samples_list:
-                print(f"🚀 Running experiment: {args.exp_name}, Base: {base_folder}, Seed: {seed}, Samples: {num_samples}")
+                print(f"🚀 Running experiment: {args.exp_name}, Graph: {args.graph_type}, Base: {base_folder}, Seed: {seed}, Samples: {num_samples}")
                 results = run_experiment(seed, base_path, num_samples)
                 results_all.append(results)
 
@@ -1076,5 +1115,4 @@ if __name__ == "__main__":
         output_file = os.path.join(path_output_dir, "experiment_results.json")
         save_results(results_all, output_file)
 
-    print(f"✅ All experiments completed for {args.exp_name}!")
-
+    print(f"✅ All experiments completed for {args.exp_name} with graph type {args.graph_type}!")
