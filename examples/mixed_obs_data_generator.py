@@ -95,6 +95,25 @@ def is_DAG(B):
     G = ig.Graph.Weighted_Adjacency(B.tolist())
     return G.is_dag()
 
+def is_dag(B):
+    """Check if B is a dag or not.
+
+    Parameters
+    ----------
+    B : array-like, shape (n_nodes, n_nodes)
+        Binary adjacency matrix of DAG, where ``n_nodes``
+        is the number of features.
+
+    Returns
+    -------
+     G: boolean
+        Returns true or false.
+
+    """
+    G = ig.Graph.Weighted_Adjacency(B.tolist())
+    return G.is_dag()
+
+
 def sample_W(B, w_ranges=((-2.0, -0.5), (0.5, 2.0))):
     """Simulate SEM parameters for a DAG.
 
@@ -147,3 +166,73 @@ def simulate_linear_mixed_sem(
         Data generated from linear SEM with specified type of noise,
         where ``n_nodes`` is the number of variables.
     """
+
+    def _simulate_single_equation(X, w, scale, is_cont_j):
+        """Simulate samples from a single equation.
+        Parameters
+        ----------
+        X : array-like, shape (n_samples, n_nodes_parents)
+            Data of parents for a specified variable, where
+            n_nodes_parents is the number of parents.
+        w : array-like, shape (1, n_nodes_parents)
+            Weights of parents.
+        scale : scale parameter of additive noise.
+        is_cont_j : indicator of the j^th variable. If 1, the variable is continuous; if 0, the variable is discrete.
+        Returns
+        -------
+        x : array-like, shape (n_samples, 1)
+                    Data for the specified variable.
+        """
+        if sem_type == "gauss": # fully continuous SEM
+            z = np.random.normal(scale=scale, size=n_samples)
+            x = X @ w + z
+        elif sem_type == "mixed_random_i_dis": # mixed SEM with some continuous and some discrete variables
+            # randomly generated with fixed number of discrete variables.
+            if is_cont_j:  # 1:continuous;   0:discrete
+                # option A (Laplace)
+                #z = np.random.laplace(0, scale=scale, size=n_samples) # Laplace noise (non-Gaussian assumption for lingam based methods)
+                # option B (softplus(Normal))
+                z = np.random.normal(scale=scale, size=n_samples)   # Softplus(Normal) noise as done in csuite benchmark, also non-Gaussian
+                z = np.log(1 + np.exp(z))
+                x = X @ w + z
+            else:
+                prob = (np.tanh(X @ w) + 1) / 2
+                x = np.random.binomial(1, p=prob) * 1.0 # whenever a variable j has no parents, then it is generated from a Bernoulli distribution with probability sigmoid(0)
+        else:
+            raise ValueError("unknown sem type")
+        return x
+    
+    n_nodes = W.shape[0]
+    if noise_scale is None:
+        scale_vec = np.ones(n_nodes)
+    elif np.isscalar(noise_scale):
+        scale_vec = noise_scale * np.ones(n_nodes) # equal variances for all variables
+    else:
+        if len(noise_scale) != n_nodes:
+            raise ValueError("noise scale must be a scalar or has length n_nodes")
+        scale_vec = noise_scale
+    if not is_dag(W):
+        raise ValueError("W must be a DAG")
+    if np.isinf(n_samples):  # population risk for linear gauss SEM
+        if sem_type == "gauss":
+            # make 1/n_nodes X'X = true cov
+            X = (
+                np.sqrt(n_nodes)
+                * np.diag(scale_vec)
+                @ np.linalg.inv(np.eye(n_nodes) - W)
+            )
+            return X
+        else:
+            raise ValueError("population risk not available")
+    # empirical risk
+    G = ig.Graph.Weighted_Adjacency(W.tolist())
+    ordered_vertices = G.topological_sorting()
+    assert len(ordered_vertices) == n_nodes
+    X = np.zeros([n_samples, n_nodes])
+    for j in ordered_vertices:
+        parents = G.neighbors(j, mode=ig.IN)
+        # X[:, j] = _simulate_single_equation(X[:, parents], W[parents, j], scale_vec[j])
+        X[:, j] = _simulate_single_equation(
+            X[:, parents], W[parents, j], scale_vec[j], is_cont[0, j]
+        )
+    return X

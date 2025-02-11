@@ -73,6 +73,10 @@ def generate_dataset(i, total_datasets, seed, d, graph_type, e_to_d_ratio, num_s
             # Store `train.csv` for this specific `n_samples`
             pd.DataFrame(X).to_csv(f"{sub_dir}/train_n_samples_{n_samples}.csv", header=False, index=False)
 
+        # print the values of the dataset to the terminal despite being inside a function
+        print(X, flush=True)
+    
+
     print(f"({i}/{total_datasets}) Finished dataset with seed {seed}: {base_dir}")
 
 

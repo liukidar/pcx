@@ -1,3 +1,8 @@
+import multiprocessing as mp
+mp.set_start_method("fork", force=True)
+#mp.set_start_method("spawn", force=True)
+#mp.set_start_method("forkserver", force=True)
+
 import os
 import argparse
 import sys
@@ -16,83 +21,18 @@ args = parser.parse_args()
 # Set GPU before importing any ML/DL libraries
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.9"  
 
-import pandas as pd
-import multiprocessing
-import random
-import json
-
-# pcx
-import pcx as px
-import pcx.predictive_coding as pxc
-import pcx.nn as pxnn
-import pcx.functional as pxf
-import pcx.utils as pxu
-
-# 3rd party
-import jax
-from jax import jit
-import jax.numpy as jnp
-import jax.numpy.linalg as jax_numpy_linalg # for expm()
-import jax.scipy.linalg as jax_scipy_linalg # for slogdet()
-import jax.random as random
-import optax
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_float_dtype
-from ucimlrepo import fetch_ucirepo 
+import random
+import json
 
 import networkx as nx
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm.auto import tqdm
-import torch
 import timeit
-
-# own
-import causal_helpers
-from causal_model import Complete_Graph
-from causal_helpers import is_dag_nx, MAE, compute_binary_adjacency, compute_h_reg, notears_dag_constraint, dagma_dag_constraint
-from causal_helpers import simulate_dag, simulate_parameter, simulate_linear_sem, simulate_linear_sem_cyclic
-from causal_helpers import load_adjacency_matrix, set_random_seed, plot_adjacency_matrices
-from causal_helpers import load_graph, load_adjacency_matrix
-from causal_metrics import compute_F1_directed, compute_F1_skeleton, compute_AUPRC, compute_AUROC, compute_model_fit
-from causal_metrics import compute_cycle_F1, compute_cycle_SHD, compute_cycle_KLD, compute_CSS  # CSS: Cyclic Structure Score
-from connectome_cyclic_data_generator import sample_cyclic_data
-
-#################### NODAGS #########################
-
-from nodags_flows.models.resblock_trainer import resflow_train_test_wrapper
-
-##################### DGLearn ############################
-
-from dglearn.dglearn.dg.adjacency_structure import AdjacencyStucture
-from dglearn.dglearn.dg.graph_equivalence_search import GraphEquivalenceSearch
-from dglearn.dglearn.dg.converter import binary2array
-from dglearn.dglearn.learning.cyclic_manager import CyclicManager
-from dglearn.dglearn.dg.reduction import reduce_support
-from dglearn.dglearn.learning.search.virtual import virtual_refine
-from dglearn.dglearn.learning.search.tabu import tabu_search
-
-###################### LiNGD #########################
-
-from lingd import LiNGD
-
-##################### FRP ###########################
-
-from frp.run_causal_discovery import  run_filter_rank_prune, run_dglearn
-
-#####################################################
-
-# causal libraries
-import cdt, castle
-from castle.algorithms import GOLEM, Notears
-
-# causal metrics
-from cdt.metrics import precision_recall, SHD, SID
-from castle.metrics import MetricsDAG
-from castle.common import GraphDAG
-from causallearn.graph.SHD import SHD as SHD_causallearn
 
 ###################################################
 
@@ -835,7 +775,7 @@ def run_experiment(seed, base_path, num_samples):
         n_nodes=X.shape[1],
         batch_size=128,
         l1_reg=True, # default is False
-        lambda_c=1e-1, # default is 1e-2
+        lambda_c=5e-2, # default is 1e-2
         fun_type='lin-mlp',  # Linear version
         act_fun='none', # No activation function
         lr=1e-3, # default learning rate is 1e-3
@@ -855,7 +795,7 @@ def run_experiment(seed, base_path, num_samples):
     resblock.train([X], [[]], batch_size=128)
 
     # get the weighted adjacency matrix
-    W_est_nodags = resblock.get_adjacency()
+    W_est_nodags = np.array(resblock.get_adjacency())
     # get the binary adjacency matrix
     B_est_nodags = (W_est_nodags > 0.3).astype(int)
 
@@ -870,7 +810,7 @@ def run_experiment(seed, base_path, num_samples):
     
     ling = LiNGD(k=5, random_state=seed)
     ling.fit(X)
-    W_ling = ling._adjacency_matrices[0].T # 0 because we are using k=1, Transpose to make each row correspond to parents
+    W_ling = np.array(ling._adjacency_matrices[0].T) # 0 to get first candidate adjacency matrix, Transpose to make each row correspond to parents
     B_est_ling = compute_binary_adjacency(W_ling)
 
     # plot est_dag and true_dag
@@ -884,9 +824,10 @@ def run_experiment(seed, base_path, num_samples):
 
     tabu_length = 4
     patience = 4
-    max_iter = np.inf
+    #max_iter = np.inf
+    max_iter = 20
 
-    manager = CyclicManager(X, bic_coef=0.5, num_workers = 100)
+    manager = CyclicManager(X, bic_coef=0.5, num_workers = 200)
     B_est_dglearn, best_score, log = tabu_search(manager, tabu_length, patience, max_iter=max_iter, first_ascent=False, verbose=1) # returns a binary matrix as learned support
 
     # perform virtual edge correction
@@ -895,6 +836,7 @@ def run_experiment(seed, base_path, num_samples):
 
     # remove any reducible edges
     B_est_dglearn = reduce_support(B_est_dglearn, fill_diagonal=False) # same as done in FRP paper
+    B_est_dglearn = np.array(B_est_dglearn)
 
     # plot est_dag and true_dag
     GraphDAG(B_est_dglearn, B_true)
@@ -912,7 +854,7 @@ def run_experiment(seed, base_path, num_samples):
             reg_type="scad",
             reg_params={"lam": edge_penalty, "gamma": 3.7},
             edge_penalty=edge_penalty,
-            n_inits=3,
+            n_inits=5,
             n_threads=200,
             parcorr_thrs=0.1 * (X.shape[0] / 1000)**(-1/4),
             use_loss_cache=True,
@@ -920,7 +862,7 @@ def run_experiment(seed, base_path, num_samples):
             verbose=True,
     )
 
-    B_est_frp = frp_result["learned_support"].astype(int)
+    B_est_frp = np.array(frp_result["learned_support"].astype(int))
 
     # plot est_dag and true_dag
     GraphDAG(B_est_frp, B_true)
@@ -1026,9 +968,74 @@ def save_results(results_list, output_file):
         print(f"⚠️ Error saving results: {e}")
 
 
-
 if __name__ == "__main__":
-    
+
+    # pcx
+    import pcx as px
+    import pcx.predictive_coding as pxc
+    import pcx.nn as pxnn
+    import pcx.functional as pxf
+    import pcx.utils as pxu
+
+    # 3rd party
+    import torch
+    import jax
+    from jax import jit
+    import jax.numpy as jnp
+    import jax.numpy.linalg as jax_numpy_linalg # for expm()
+    import jax.scipy.linalg as jax_scipy_linalg # for slogdet()
+    import jax.random as random
+    import optax
+
+    # own
+    import causal_helpers
+    from causal_model import Complete_Graph
+    from causal_helpers import is_dag_nx, MAE, compute_binary_adjacency, compute_h_reg, notears_dag_constraint, dagma_dag_constraint
+    from causal_helpers import simulate_dag, simulate_parameter, simulate_linear_sem, simulate_linear_sem_cyclic
+    from causal_helpers import load_adjacency_matrix, set_random_seed, plot_adjacency_matrices
+    from causal_helpers import load_graph, load_adjacency_matrix
+    from causal_metrics import compute_F1_directed, compute_F1_skeleton, compute_AUPRC, compute_AUROC, compute_model_fit
+    from causal_metrics import compute_cycle_F1, compute_cycle_SHD, compute_cycle_KLD, compute_CSS  # CSS: Cyclic Structure Score
+    from connectome_cyclic_data_generator import sample_cyclic_data
+
+    #################### NODAGS #########################
+
+    from nodags_flows.models.resblock_trainer import resflow_train_test_wrapper
+
+    ##################### DGLearn ############################
+
+    from dglearn.dglearn.dg.adjacency_structure import AdjacencyStucture
+    from dglearn.dglearn.dg.graph_equivalence_search import GraphEquivalenceSearch
+    from dglearn.dglearn.dg.converter import binary2array
+    from dglearn.dglearn.learning.cyclic_manager import CyclicManager
+    from dglearn.dglearn.dg.reduction import reduce_support
+    from dglearn.dglearn.learning.search.virtual import virtual_refine
+    from dglearn.dglearn.learning.search.tabu import tabu_search
+
+    ###################### LiNGD #########################
+
+    from lingd import LiNGD
+
+    ##################### FRP ###########################
+
+    from frp.run_causal_discovery import  run_filter_rank_prune, run_dglearn
+
+    #####################################################
+
+    # causal libraries
+    import cdt, castle
+    from castle.algorithms import GOLEM, Notears
+
+    # causal metrics
+    from cdt.metrics import precision_recall, SHD, SID
+    from castle.metrics import MetricsDAG
+    from castle.common import GraphDAG
+    from causallearn.graph.SHD import SHD as SHD_causallearn
+
+    ##################################################################
+    ############################ START ###############################
+    ##################################################################
+
     # Define dataset paths based on experiment type and graph type
     data_dir = "/share/amine.mcharrak/cyclic_data_final"
     num_seeds = args.num_seeds
@@ -1100,19 +1107,22 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
 
     for base_path in base_paths:
-        results_all = []
         base_folder = os.path.basename(base_path)
         path_output_dir = os.path.join(output_dir, base_folder)
         os.makedirs(path_output_dir, exist_ok=True)
 
-        for seed in seed_values:
-            for num_samples in num_samples_list:
+        # Loop over sample sizes first so that we save one JSON file per sample size.
+        for num_samples in num_samples_list:
+            results_all = []  # create a new list for this sample size
+            for seed in seed_values:
                 print(f"🚀 Running experiment: {args.exp_name}, Graph: {args.graph_type}, Base: {base_folder}, Seed: {seed}, Samples: {num_samples}")
                 results = run_experiment(seed, base_path, num_samples)
+                # Add sample size info to the result dictionary (if run_experiment doesn't already do it)
+                results["num_samples"] = num_samples
                 results_all.append(results)
-
-        # Save results
-        output_file = os.path.join(path_output_dir, "experiment_results.json")
-        save_results(results_all, output_file)
+                
+            # Save results for this sample size in a separate JSON file.
+            output_file = os.path.join(path_output_dir, f"experiment_results_n{num_samples}.json")
+            save_results(results_all, output_file)
 
     print(f"✅ All experiments completed for {args.exp_name} with graph type {args.graph_type}!")

@@ -14,18 +14,28 @@ import pickle
 import torch
 
 
-# function to set random seed in JAX, NumPy, PyTorch and Python's random module 
+# Function to set random seed in JAX, NumPy, PyTorch, and Python's random module
 def set_random_seed(seed):
-    # Set the seed for reproducibility    
+    """Set random seed for reproducibility across Python, NumPy, JAX, and PyTorch."""
+
+    # 🔹 Set Python & NumPy seed
     random.seed(seed)
     np.random.seed(seed)
-    jax.random.PRNGKey(seed)
+
+    # 🔹 Set JAX PRNGKey properly (ensuring 64-bit precision)
+    jax.config.update("jax_enable_x64", True)
+    key = jax.random.PRNGKey(seed)  # Correct way to seed JAX
+
+    # 🔹 Set PyTorch seed **only on the main process** to avoid multiprocessing issues
     torch.manual_seed(seed)
+
+    # 🔹 Set CUDA seed **only if available and only on the main process**
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.deterministic = False # allow non-deterministic cuDNN functions
-        torch.backends.cudnn.benchmark = True # select fastest kernel
+        torch.backends.cudnn.deterministic = False  # allow non-deterministic cuDNN functions
+        torch.backends.cudnn.benchmark = True  # select fastest kernel
+
+    return key  # Return JAX PRNGKey if needed
 
 ############################ JAX Utility and Metric Functions ############################
 
@@ -149,6 +159,22 @@ def compute_binary_adjacency(W, threshold=0.3):
     return B_est
 
 ###################################### DAG Utility Functions ######################################
+
+def enforce_dag(B):
+    """Ensure B is a DAG by removing minimal edges to break cycles."""
+    G = nx.from_numpy_array(B, create_using=nx.DiGraph)
+
+    try:
+        while True:
+            cycle_edges = nx.find_cycle(G, orientation="original")  # Find a cycle
+            edge_to_remove = cycle_edges[0]  # Pick the first edge in the cycle
+            u, v = edge_to_remove[:2]  # Extract edge nodes
+            print(f"🚨 Removing edge {u} → {v} to break cycle")
+            G.remove_edge(u, v)  # Remove the edge to break the cycle
+    except nx.NetworkXNoCycle:
+        pass  # No cycles left, we're done!
+
+    return nx.to_numpy_array(G)
 
 def ensure_DAG(W):
     """
@@ -293,6 +319,71 @@ def is_dag_nx(adjacency_matrix: np.ndarray) -> bool:
 
     graph = nx.DiGraph(adjacency_matrix)  # Handles both weighted and binary
     return nx.is_directed_acyclic_graph(graph)
+
+def pick_source_target(B_true, random_state=None):
+    """
+    Given a true adjacency matrix B_true (binary or weighted, where a nonzero entry
+    indicates an edge from i to j), returns a tuple (source, target) such that target
+    is a descendant of source.
+
+    Parameters
+    ----------
+    B_true : numpy.ndarray
+        Adjacency matrix of shape (n, n).
+    random_state : int or np.random.Generator, optional
+        If an int is provided, a new Generator is created with that seed.
+        Otherwise, if a Generator is provided, it is used. Default uses a new generator.
+
+    Returns
+    -------
+    source : int
+        Index of the source (intervention) node.
+    target : int
+        Index of the target (effect) node, which is a descendant of source.
+
+    Raises
+    ------
+    ValueError
+        If no node with descendants exists.
+
+    # Example: create a simple true adjacency matrix for a DAG
+    B_true = np.array([
+        [0, 1, 0, 0],
+        [0, 0, 1, 1],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0]
+    ])
+    src, tgt = pick_source_target(B_true, random_state=42)
+    print("Source:", src, "Target:", tgt)
+    
+    """
+    # Create a random generator
+    if random_state is None:
+        rng = np.random.default_rng()
+    elif isinstance(random_state, int):
+        rng = np.random.default_rng(random_state)
+    else:
+        rng = random_state
+
+    # Create a directed graph from the adjacency matrix.
+    # Assume B_true[i, j] != 0 indicates an edge from i to j.
+    n = B_true.shape[0]
+    G = nx.DiGraph()
+    G.add_nodes_from(range(n))
+    for i in range(n):
+        for j in range(n):
+            if B_true[i, j] != 0:
+                G.add_edge(i, j)
+
+    # Find candidate source nodes: nodes that have at least one descendant.
+    candidate_sources = [node for node in G.nodes() if len(nx.descendants(G, node)) > 0]
+    if not candidate_sources:
+        raise ValueError("No node with descendants found in the graph.")
+
+    source = rng.choice(candidate_sources)
+    descendants = list(nx.descendants(G, source))
+    target = rng.choice(descendants)
+    return source, target
 
 ####################### Graph and Data Simulation #######################
 

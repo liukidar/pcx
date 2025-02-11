@@ -143,13 +143,14 @@ def compute_model_fit(W, X):
 
 #################################### CYCLIC GRAPH METRICS ######################################
 
-def compute_cycle_F1(B_true, B_est, verbose=False):
+def compute_cycle_F1(B_true, B_est, max_cycle_length=3, verbose=False):
     """
     Compute the F1 score based on all edges involved in cycles in B_true and B_est.
 
     Parameters:
         B_true (np.ndarray): The true directed cyclic graph.
         B_est (np.ndarray): The estimated directed cyclic graph.
+        max_cycle_length (int): The maximum length of cycles to consider.
         verbose (bool): If True, print debug information.
 
     Returns:
@@ -160,12 +161,12 @@ def compute_cycle_F1(B_true, B_est, verbose=False):
     G_est = nx.DiGraph(B_est)
 
     # Ensure B_true contains cycles
-    true_cycles = list(nx.simple_cycles(G_true))
+    true_cycles = list(nx.simple_cycles(G_true, length_bound=max_cycle_length))
     if not true_cycles:
         raise ValueError("B_true is not cyclic. Please provide a cyclic true graph.")
 
     # Ensure B_est contains cycles
-    est_cycles = list(nx.simple_cycles(G_est))
+    est_cycles = list(nx.simple_cycles(G_est, length_bound=max_cycle_length))
     if not est_cycles:
         print("B_est is not cyclic. Returning 0 F1-score.")
         return 0.0
@@ -342,29 +343,6 @@ def compute_cycle_KLD(prec_mat_true, B_est, thresh=1e-6, max_iters=50, patience=
 
 #################################### MIXED DATA METRICS ######################################
 
-class CustomLingamObject(lingam.DirectLiNGAM):
-    def set_adjacency_matrix(self, W):
-        """Set the adjacency matrix manually for the LiNGAM model."""
-        self._adjacency_matrix = W  # Manually set the adjacency matrix
-
-def compute_causal_order(adjacency_matrix):
-    """
-    Compute the causal order (topological order) of nodes from an adjacency matrix.
-
-    Parameters
-    ----------
-    adjacency_matrix : np.ndarray
-        Adjacency matrix of the DAG.
-
-    Returns
-    -------
-    list
-        List of nodes in causal order (from roots to leaves).
-    """
-    # Convert the adjacency matrix to a directed graph
-    G = nx.DiGraph(adjacency_matrix)
-    return list(nx.topological_sort(G))
-
 def compute_TE(W, from_index, to_index):
     """
     Compute total effect from source to target using matrix inversion.
@@ -383,46 +361,6 @@ def compute_TE(W, from_index, to_index):
         return T[from_index, to_index]
     except np.linalg.LinAlgError:
         raise ValueError("Matrix inversion failed, likely due to cycles (I - W is singular).")
-
-def _compute_TE(X, W, from_index, to_index):
-    """
-    Compute the total effect of an intervention on a variable in a causal graph.
-
-    Parameters
-    ----------
-    X : np.ndarray
-        Observational data of shape (n_samples, n_features).
-    W : np.ndarray
-        Adjacency matrix of the causal graph, either binary or weighted.
-    from_index : int
-        Index of the intervention/treatment variable (source).
-    to_index : int
-        Index of the target/response variable.
-
-    Returns
-    -------
-    float
-        Estimated total effect from `from_index` to `to_index`.
-    """
-    # Validate inputs
-    if W.shape[0] != W.shape[1]:
-        raise ValueError("Adjacency matrix must be square.")
-    if X.shape[1] != W.shape[0]:
-        raise ValueError("Number of features in X must match the size of the adjacency matrix.")
-
-    # Create an instance of the custom LiNGAM object
-    lingam_object = CustomLingamObject()
-
-    # Set the adjacency matrix
-    lingam_object.set_adjacency_matrix(W)
-
-    # Compute and set the causal order
-    causal_order = compute_causal_order(W)
-    lingam_object._causal_order = causal_order
-
-    # Estimate and return the total effect
-    total_effect = lingam_object.estimate_total_effect(X=X, from_index=from_index, to_index=to_index)
-    return total_effect
 
 def compute_TEE(W_true, W_est, from_index, to_index):
     """
@@ -509,3 +447,68 @@ def compute_ancestor_AID(B_true, B_est, edge_direction="from row to column"):
     normalised_AID, absolute_AID = ancestor_aid(B_true_binary, B_est_binary, edge_direction)
     return normalised_AID, absolute_AID
 
+############################ MISC  ############################
+
+class CustomLingamObject(lingam.DirectLiNGAM):
+    def set_adjacency_matrix(self, W):
+        """Set the adjacency matrix manually for the LiNGAM model."""
+        self._adjacency_matrix = W  # Manually set the adjacency matrix
+
+def compute_causal_order(adjacency_matrix):
+    """
+    Compute the causal order (topological order) of nodes from an adjacency matrix.
+
+    Parameters
+    ----------
+    adjacency_matrix : np.ndarray
+        Adjacency matrix of the DAG.
+
+    Returns
+    -------
+    list
+        List of nodes in causal order (from roots to leaves).
+    """
+    # Convert the adjacency matrix to a directed graph
+    G = nx.DiGraph(adjacency_matrix)
+    return list(nx.topological_sort(G))
+
+# this method is deprecated because it is based on lingam's internal implementation
+def _compute_TE(X, W, from_index, to_index):
+    """
+    Compute the total effect of an intervention on a variable in a causal graph.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Observational data of shape (n_samples, n_features).
+    W : np.ndarray
+        Adjacency matrix of the causal graph, either binary or weighted.
+    from_index : int
+        Index of the intervention/treatment variable (source).
+    to_index : int
+        Index of the target/response variable.
+
+    Returns
+    -------
+    float
+        Estimated total effect from `from_index` to `to_index`.
+    """
+    # Validate inputs
+    if W.shape[0] != W.shape[1]:
+        raise ValueError("Adjacency matrix must be square.")
+    if X.shape[1] != W.shape[0]:
+        raise ValueError("Number of features in X must match the size of the adjacency matrix.")
+
+    # Create an instance of the custom LiNGAM object
+    lingam_object = CustomLingamObject()
+
+    # Set the adjacency matrix
+    lingam_object.set_adjacency_matrix(W)
+
+    # Compute and set the causal order
+    causal_order = compute_causal_order(W)
+    lingam_object._causal_order = causal_order
+
+    # Estimate and return the total effect
+    total_effect = lingam_object.estimate_total_effect(X=X, from_index=from_index, to_index=to_index)
+    return total_effect

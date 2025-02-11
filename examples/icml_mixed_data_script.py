@@ -1,289 +1,98 @@
+import multiprocessing as mp
+mp.set_start_method("fork", force=True)
+#mp.set_start_method("spawn", force=True)
+#mp.set_start_method("forkserver", force=True)
+
 import os
 import argparse
 import pandas as pd
-import multiprocessing
-from multiprocessing import Pool, RawArray
 import json
-
-import csv
-import logging
-import multiprocessing
-from multiprocessing import Pool
 import networkx as nx
 import numpy as np
+from tqdm.auto import tqdm
+import timeit
 
-from abc import ABC, abstractmethod
-from datetime import datetime
-from itertools import combinations, product, chain
-from math import floor
-
-from scipy.spatial import KDTree
-from scipy.special import digamma
-from scipy.stats import rankdata
-
-
-parser = argparse.ArgumentParser(description="Run ICML Mixed Data Experiment")
-parser.add_argument("--seed", type=int, default=2, help="Random seed for experiment")
+# Parse command-line arguments
+parser = argparse.ArgumentParser(description="Run experiments on a single folder.")
+parser.add_argument("--path_name", type=str,
+                    default="/share/amine.mcharrak/mixed_data_final/10ER40_linear_mixed_seed_1",
+                    help="(For increase_n_disc) Base folder path (contains global files and n_disc_* subfolders).")
+parser.add_argument("--n_samples", type=int, default=2000,
+                    help="Number of training samples to use (to select the train_n_samples_<n>.csv file).")
+parser.add_argument("--num_seeds", type=int, default=5,
+                    help="Number of seeds to run experiments for.")
+parser.add_argument("--gpu", type=int, default=0, help="GPU index to use")
+parser.add_argument("--exp_name", type=str, required=True,
+                    choices=["mixed_confounding", "increase_n_disc"],
+                    help="Name of the experiment.")
 args = parser.parse_args()
 
-seed = args.seed
-
-# Define output directory
-output_dir = "experiment_results_mixed_data_new"
-os.makedirs(output_dir, exist_ok=True)
-output_file = os.path.join(output_dir, "results_all_seeds.json")
-
-# choose the GPU to use
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-# disable preallocation of memory
+# Set GPU-related environment variables
+os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.9"
+os.environ["JAX_PLATFORM_NAME"] = "cuda"  # Force JAX to use CUDA
 
-# pcx
-import pcx as px
-import pcx.predictive_coding as pxc
-import pcx.nn as pxnn
-import pcx.functional as pxf
-import pcx.utils as pxu
-
-# 3rd party
-import jax
-from jax import jit
-import jax.numpy as jnp
-import jax.numpy.linalg as jax_numpy_linalg # for expm()
-import jax.scipy.linalg as jax_scipy_linalg # for slogdet()
-import jax.random as random
-import optax
-import numpy as np
-from pandas.api.types import is_float_dtype
-from ucimlrepo import fetch_ucirepo 
-
-import networkx as nx
 import matplotlib.pyplot as plt
 import seaborn as sns
-from tqdm.auto import tqdm
-import torch
-import timeit
-from sklearn.metrics import f1_score
-
-# own
-import causal_helpers
-from causal_model import Complete_Graph
-from causal_helpers import is_dag_nx, MAE, compute_binary_adjacency, compute_h_reg, notears_dag_constraint, dagma_dag_constraint
-from causal_helpers import load_adjacency_matrix, set_random_seed, plot_adjacency_matrices
-from causal_helpers import load_graph, load_adjacency_matrix
-from causal_metrics import compute_F1_directed, compute_F1_skeleton, compute_AUPRC, compute_AUROC, compute_cycle_F1
-from causal_metrics import compute_SHD, compute_SID, compute_ancestor_AID, compute_TEE
-
-# causal libraries
-import lingam
-import cdt, castle
-
-from castle.algorithms import Notears, ICALiNGAM, PC
-from castle.algorithms import DirectLiNGAM, GOLEM
-from castle.algorithms.ges.ges import GES
-from castle.algorithms import PC
-
-# causal metrics
-from cdt.metrics import precision_recall, SHD, SID
-from castle.metrics import MetricsDAG
-from castle.common import GraphDAG
-from causallearn.graph.SHD import SHD as SHD_causallearn
-
-######################### mcmiknn #########################
-
-from causal_model import mCMIkNN
-from itertools import combinations, product, chain
-from multiprocessing import Pool, RawArray
-import logging
-from datetime import datetime
-
-var_dict = {} # might not be needed but keep it for now
-
-def _init_worker(data, data_shape, graph, vertices, test, alpha):
-    # Using a dictionary is not strictly necessary. You can also
-    # use global variables.
-    var_dict['data'] = data
-    var_dict['data_shape'] = data_shape
-
-    var_dict['graph'] = graph
-    var_dict['vertices'] = vertices
-
-    var_dict['alpha'] = alpha
-    var_dict['test'] = test
-
-def _test_worker(i, j, lvl):
-    test = var_dict['test']
-    alpha = var_dict['alpha']
-    data_arr = np.frombuffer(var_dict['data']).reshape(var_dict['data_shape'])
-    graph = np.frombuffer(var_dict['graph'], dtype="int32").reshape((var_dict['vertices'],
-                                                                    var_dict['vertices']))
-    
-    # unconditional
-    if lvl < 1:
-        p_val = test.compute_pval(data_arr[:, [i]], data_arr[:, [j]], z=None)
-        if (p_val > alpha):
-            return (i, j, p_val, [])
-    # conditional
-    else:
-        candidates_1 = np.arange(var_dict['vertices'])[(graph[i] == 1)]
-        candidates_1 = np.delete(candidates_1, np.argwhere((candidates_1==i) | (candidates_1==j)))
-
-        if (len(candidates_1) < lvl):
-            return None
-        
-        for S in [list(c) for c in combinations(candidates_1, lvl)]:
-            p_val = test.compute_pval(data_arr[:, [i]], data_arr[:, [j]], z=data_arr[:, list(S)])
-            if (p_val > alpha):
-                return (i, j, p_val, list(S))
-            
-    return None
-
-def _unid(g, i, j):
-    return g.has_edge(i, j) and not g.has_edge(j, i)
-
-def _bid(g, i, j):
-    return g.has_edge(i, j) and g.has_edge(j, i)
-
-def _adj(g, i, j):
-    return g.has_edge(i, j) or g.has_edge(j, i)
-
-def rule1(g, j, k):
-    for i in g.predecessors(j):
-        # i -> j s.t. i not adjacent to k
-        if _unid(g, i, j) and not _adj(g, i, k):
-            g.remove_edge(k, j)
-            return True
-    return False
-
-def rule2(g, i, j):
-    for k in g.successors(i):
-        # i -> k -> j
-        if _unid(g, k, j) and _unid(g, i, k):
-            g.remove_edge(j, i)
-            return True
-    return False
-
-def rule3(g, i, j):
-    for k, l in combinations(g.predecessors(j), 2):
-        # i <-> k -> j and i <-> l -> j s.t. k not adjacent to l
-        if (not _adj(g, k, l) and _bid(g, i, k) and _bid(g, i, l) and _unid(g, l, j) and _unid(g, k, j)):
-            g.remove_edge(j, i)
-            return True
-    return False
-
-def rule4(g, i, j):
-    for l in g.predecessors(j):
-        for k in g.predecessors(l):
-            # i <-> k -> l -> j s.t. k not adjacent to j and i adjacent to l
-            if (not _adj(g, k, j) and _adj(g, i, l) and _unid(g, k, l) and _unid(g, l, j) and _bid(g, i, k)):
-                g.remove_edge(j, i)
-                return True
-    return False
-
-def _direct_edges(graph, sepsets):
-    digraph = nx.DiGraph(graph)
-    for i in graph.nodes():
-        for j in nx.non_neighbors(graph, i):
-            for k in nx.common_neighbors(graph, i, j):
-                sepset = sepsets[(i, j)] if (i, j) in sepsets else []
-                if k not in sepset:
-                    if (k, i) in digraph.edges() and (i, k) in digraph.edges():
-                        digraph.remove_edge(k, i)
-                    if (k, j) in digraph.edges() and (j, k) in digraph.edges():
-                        digraph.remove_edge(k, j)
-
-    bidirectional_edges = [(i, j) for i, j in digraph.edges if digraph.has_edge(j, i)]
-    for i, j in bidirectional_edges:
-        if _bid(digraph, i, j):
-            continue
-        if (rule1(digraph, i, j) or rule2(digraph, i, j) or rule3(digraph, i, j) or rule4(digraph, i, j)):
-            continue
-
-    return digraph
-
-def parallel_stable_pc(data, estimator, alpha=0.05, processes=1, max_level=None):
-    """
-    Perform the Parallel Stable PC algorithm for causal discovery.
-
-    Parameters:
-    data (pd.DataFrame): The input data as a pandas DataFrame.
-    estimator: The conditional independence (CI) test to be used.
-    alpha (float): The significance level for the CI tests. Default is 0.05.
-    processes (int): The number of processes to use for parallel computation. Default is 1.
-    max_level (int or None): The maximum level of the PC algorithm. If None, no limit is set. Default is None.
-
-    Returns:
-    nx.DiGraph: The directed graph discovered by the algorithm.
-    dict: The separation sets for the discovered edges.
-    """
-    cols = data.columns
-    cols_map = np.arange(len(cols))
-
-    data_raw = RawArray('d', data.shape[0] * data.shape[1])
-    # Wrap X as an numpy array so we can easily manipulates its data.
-    data_arr = np.frombuffer(data_raw).reshape(data.shape)
-    # Copy data to our shared array.
-    np.copyto(data_arr, data.values)
-
-    # same magic as for data
-    vertices = len(cols)
-    graph_raw = RawArray('i', np.ones(vertices*vertices).astype(int))
-    graph = np.frombuffer(graph_raw, dtype="int32").reshape((vertices, vertices))
-    sepsets = {}
-
-    lvls = range((len(cols) - 1) if max_level is None else min(len(cols)-1, max_level+1))
-    for lvl in lvls:
-        configs = [(i, j, lvl) for i, j in product(cols_map, cols_map) if i != j and graph[i][j] == 1]
-
-        logging.info(f'Starting level {lvl} pool with {len(configs)} remaining edges at {datetime.now()}')
-        with Pool(processes=processes, initializer=_init_worker,
-                initargs=(data_raw, data.shape, graph_raw, vertices, estimator, alpha)) as pool:
-            result = pool.starmap(_test_worker, configs)
-
-        for r in result:
-            if r is not None:
-                graph[r[0]][r[1]] = 0
-                graph[r[1]][r[0]] = 0
-                sepsets[(r[0], r[1])] = {'p_val': r[2], 'sepset': r[3]}
-
-    nx_graph = nx.from_numpy_array(graph)
-    nx_graph.remove_edges_from(nx.selfloop_edges(nx_graph))
-    nx_digraph = _direct_edges(nx_graph, sepsets)
-    nx.relabel_nodes(nx_digraph, lambda i: cols[i], copy=False)
-    sepsets = {(cols[k[0]], cols[k[1]]): {'p_val': v['p_val'], 'sepset': [cols[e] for e in v['sepset']]}
-            for k, v in sepsets.items()}
-
-    return nx_digraph, sepsets
-
+import gc # garbage collection
 
 ###########################################################
 
+def check_and_log_cycles(B, model_name):
+    """Check if B is a DAG and log issues."""
+    G = nx.from_numpy_array(B, create_using=nx.DiGraph)
+    if not nx.is_directed_acyclic_graph(G):
+        print(f"🚨 Warning: {model_name} produced a cyclic B_est!")
+        print(f"Cycle: {list(nx.find_cycle(G))}")
+        return False  # Indicates a cycle is present
+    return True  # No cycles
 
-def run_experiment(seed):
-    """Runs the experiment for a given seed and returns results as a dictionary."""
-
-    # Set random seed
+# --- Define run_experiment ---
+def run_experiment(seed, sample_size, data_path, base_folder=None):
+    """
+    Runs the experiment for a given seed and sample size.
+    For exp_name "mixed_confounding": all files are in data_path.
+    For "increase_n_disc": base_folder is provided (global files are in base_folder)
+    and data_path points to one of the n_disc_* subfolders containing training files.
+    Returns a dictionary with computed metrics.
+    """
+    
     set_random_seed(seed)
+    print(f"🔄 Running experiment with seed {seed}")
 
-    # Reset var_dict before every run to ensure a clean state
     global var_dict
-    var_dict = {}  # reset var_dict to avoid contamination between runs    
+    var_dict = {}  # Reset any global variable if needed
 
-    path = '../data/custom_mixed_confounding_softplus/'
+    if base_folder is not None:
+        # For "increase_n_disc": load global matrices from base_folder
+        adj_matrix = pd.read_csv(os.path.join(base_folder, 'adj_matrix.csv'), header=None)
+        weighted_adj_matrix = pd.read_csv(os.path.join(base_folder, 'W_adj_matrix.csv'), header=None)
+        # And load the training data file from the subfolder
+        train_file = os.path.join(data_path, f"train_n_samples_{sample_size}.csv")
+    else:
+        # For "mixed_confounding": all files are in data_path
+        adj_matrix = pd.read_csv(os.path.join(data_path, 'adj_matrix.csv'), header=None)
+        weighted_adj_matrix = pd.read_csv(os.path.join(data_path, 'W_adj_matrix.csv'), header=None)
+        train_file = os.path.join(data_path, "train.csv")
+    
+    X_df = pd.read_csv(train_file, header=None)
 
-    # file name adjacency matrix in csv format
-    mixed_confounding_adjacency_matrix = 'adj_matrix.csv'
-    # file name observational data in csv format
-    mixed_confounding_obs_data = 'train.csv'
-
-    # load adjacency matrix and data as pandas dataframe, both files have no header
-    adj_matrix = pd.read_csv(path + mixed_confounding_adjacency_matrix, header=None)
-    X_df = pd.read_csv(path + mixed_confounding_obs_data, header=None)
-    weighted_adj_matrix = pd.read_csv(path + 'W_adj_matrix.csv', header=None)
-
+    # Convert to numpy
     B_true = adj_matrix.values
-    X = X_df.values
     W_true = weighted_adj_matrix.values
+    X = X_df.values  # This is needed for some models
+
+    print(f"Original X_df shape: {X_df.shape}")
+
+    # Subsample the data if sample_size is smaller than the full dataset
+    if sample_size < X.shape[0]:
+        np.random.seed(seed)  # Ensure same subsample for same seed
+        sampled_indices = np.random.choice(X.shape[0], sample_size, replace=False)
+        X = X[sampled_indices, :]  # Subsample X
+        X_df = X_df.iloc[sampled_indices, :].reset_index(drop=True)  # Subsample X_df too
+
+    print(f"Sampled X_df shape: {X_df.shape}")
 
     X_df.head()
     # show unique values in each column
@@ -345,7 +154,7 @@ def run_experiment(seed):
     h_learning_rate = 1e-4
     T = 1
 
-    nm_epochs = 1000 # not much happens after 2000 epochs
+    nm_epochs = 1500 # not much happens after 2000 epochs
     every_n_epochs = 1
     batch_size = 128
 
@@ -962,7 +771,6 @@ def run_experiment(seed):
     print(f"The number of edges in the true graph: {np.sum(B_true)}")
     print(f"The number of edges in the estimated graph: {np.sum(B_est)}")
 
-    # %%
     # plot est_dag and true_dag
     GraphDAG(B_est, B_true)
     # calculate accuracy
@@ -985,16 +793,17 @@ def run_experiment(seed):
     nt.learn(X)
 
     # plot est_dag and true_dag
-    GraphDAG(nt.causal_matrix, B_true)
+    W_est_nt = np.array(nt.weight_causal_matrix)
+    B_est_nt = np.array(nt.causal_matrix)
+    GraphDAG(B_est_nt, B_true)
 
     # calculate accuracy
-    nt_met = MetricsDAG(nt.causal_matrix, B_true)
-    print(nt_met.metrics)
+    met_nt = MetricsDAG(B_est_nt, B_true)
+    print(met_nt.metrics)
 
     ##################################################################################
-    # benchmark model 2 pc
-
-    # Peter & Clark (PC)
+    # benchmark model 2 pc (Peter & Clark)
+    
     # A variant of PC-algorithm, one of [`original`, `stable`, `parallel`]
     pc = PC(variant='parallel', alpha=0.03, ci_test='fisherz', random_state=seed) # F1 of 75%
     #pc = PC(variant='stable', alpha=0.03) # F1 of 66%
@@ -1002,149 +811,168 @@ def run_experiment(seed):
     pc.learn(X)
 
     # plot est_dag and true_dag
-    GraphDAG(pc.causal_matrix, B_true)
+    B_est_pc = np.array(pc.causal_matrix)
+    GraphDAG(B_est_pc, B_true)
 
     # calculate accuracy
-    pc_met = MetricsDAG(pc.causal_matrix, B_true)
-    print(pc_met.metrics)
+    met_pc = MetricsDAG(B_est_pc, B_true)
+    print(met_pc.metrics)
 
     ##################################################################################
     # benchmark model 3 icalingam
 
-    # ICALiNGAM learn
     # max_iter : int, optional (default=1000)
     g_ICAlingam = ICALiNGAM(max_iter=2000, random_state=seed) # F1 of 71%
     g_ICAlingam.learn(X)
 
     # plot est_dag and true_dag
-    GraphDAG(g_ICAlingam.causal_matrix, B_true)
+    B_est_icalingam = np.array(g_ICAlingam.causal_matrix)
+    W_est_icalingam = np.array(g_ICAlingam.weight_causal_matrix)
+    GraphDAG(B_est_icalingam, B_true)
 
     # calculate accuracy
-    g_ICAlingam_met = MetricsDAG(g_ICAlingam.causal_matrix, B_true)
-    print(g_ICAlingam_met.metrics)
+    met_icalingam = MetricsDAG(B_est_icalingam, B_true)
+    print(met_icalingam.metrics)
 
     ##################################################################################
     # benchmark model 4 lim
 
     # LiM from lingam library
-    LiM = lingam.LiM(w_threshold=0.3, max_iter=200, h_tol=1e-8, rho_max=1e12, lambda1=0.4, seed=seed) # default rho_max is 1e16
+    lim = lingam.LiM(w_threshold=0.3, max_iter=200, h_tol=1e-8, rho_max=1e12, lambda1=0.4, seed=seed) # default rho_max is 1e16
     # create array of shape (1, n_features) which indicates which columns/variables in data.values are discrete or continuous variables, where "1" indicates a continuous variable, while "0" a discrete variable.
     is_cont = np.array([(1 if X_df[col].nunique() > 2 else 0) for col in X_df.columns]).reshape(1, -1)
     #LiM.fit(X=X, dis_con=is_cont, only_global=False) # does not finish, even fater 375 minutes
-    LiM.fit(X=X, dis_con=is_cont, only_global=True)
+    lim.fit(X=X, dis_con=is_cont, only_global=True)
 
     # plot est_dag and true_dag
-    LiM_W_est = LiM.adjacency_matrix_
-    LiM_B_est = compute_binary_adjacency(LiM_W_est)
+    W_est_lim = np.array(lim.adjacency_matrix_)
+    B_est_lim = compute_binary_adjacency(W_est_lim)
 
-    GraphDAG(LiM_B_est, B_true)
+    GraphDAG(B_est_lim, B_true)
 
     # calculate accuracy
-    LiM_met = MetricsDAG(LiM_B_est, B_true)
-    print(LiM_met.metrics)
-    
+    met_lim = MetricsDAG(B_est_lim, B_true)
+    print(met_lim.metrics)
+
     ##################################################################################
     # benchmark model 5 mCMIkNN
 
-    ### parallel pc alg
-    # A global dictionary storing the variables passed from the initializer.
-    ### parameters
-    alpha = 0.05 # significance level, increasing it will increase the number of edges
-    processes = 100 # set number of cores
-    # set mCMIkNN parameters
-    kcmi = 25 # number of nearest neighbors to find for mutual information estimation
-    kperm = 5 # neighborhood size for local permutation scheme
-    Mperm = 100 # linear reduction in computational cost, total number of permutations to compute for p-value estimation
-    #subsample = 1000 # 2 mins
-    subsample = 500 # 1 min
-    # set maximum level of pcalg (None == infinite)
-    max_level = None # limits the maximum size of the conditioning set
+    # Import PCParallel from your module.
+    from pc_parallel import PCParallel
 
-    # Create an instance of the mCMIkNN class
-    indep_test = mCMIkNN(kcmi=kcmi, kperm=kperm, Mperm=Mperm, subsample=subsample, seed=seed)
+    # Set parameters for the PCParallel-based test.
+    alpha = 0.05       # Significance level, increasing it will increase the number of edges
+    processes = 100    # Number of processes
+    kcmi = 25          # k for mutual information estimation
+    kperm = 5          # Local permutation neighborhood size
+    Mperm = 100        # Number of permutations for p-value estimation
+    subsample = 500    # Subsample parameter (if desired) # 1 min
+    #subsample = 1000   # 2 mins
+    max_level = None   # Maximum conditioning set size (None == infinite)
 
-    # Run the parallel_stable_pc algorithm
-    graph, sepsets = parallel_stable_pc(X_df, indep_test, alpha=alpha, processes=processes, max_level=max_level)
+    # Create an instance of PCParallel; it automatically builds an mCMIkNN estimator.
+    pc_parallel_instance = PCParallel(
+        alpha=alpha,
+        processes=processes,
+        kcmi=kcmi,
+        kperm=kperm,
+        Mperm=Mperm,
+        max_level=max_level
+    )
+    # Set the subsample parameter on the estimator if needed.
+    pc_parallel_instance.estimator.subsample = subsample
 
-    # plot est_dag and true_dag
-    mCMIkNN_B_est = nx.to_numpy_array(graph)
+    # Run the parallel PC algorithm on the loaded DataFrame.
+    graph, sepsets = pc_parallel_instance.run(X_df)
 
-    GraphDAG(mCMIkNN_B_est, B_true)
+    # Convert the returned NetworkX graph to a NumPy array.
+    B_est_mcmiknn = nx.to_numpy_array(graph)
+
+    GraphDAG(B_est_mcmiknn, B_true)
 
     # calculate accuracy
-    mCMIkNN_met = MetricsDAG(mCMIkNN_B_est, B_true)
+    met_mcmiknn = MetricsDAG(B_est_mcmiknn, B_true)
 
-    print(mCMIkNN_met.metrics)
+    print(met_mcmiknn.metrics)
 
-    ##################################################### EVALUATION METRICS #####################################################
-
-    ###### PLACE METRIC COMPUTATION CODE HERE ######
+    ###### METRIC COMPUTATION ######
 
     # Define models and their corresponding adjacency/weight matrices
     models = {
         "Our (PC)": (B_est, W_est),
-        "Peter Clark": (pc.causal_matrix, None),
-        "NOTEARS": (nt.causal_matrix, nt.weight_causal_matrix),
-        "ICALiNGAM": (g_ICAlingam.causal_matrix, g_ICAlingam.weight_causal_matrix),
-        "LiM": (LiM_B_est, None),
-        "mCMIkNN": (mCMIkNN_B_est, None),
+        "Peter Clark": (B_est_pc, None),  
+        "NOTEARS": (B_est_nt, W_est_nt),
+        "ICALiNGAM": (B_est_icalingam, W_est_icalingam),
+        "LiM": (B_est_lim, W_est_lim),
+        "mCMIkNN": (B_est_mcmiknn, None),  
     }
 
     # Indices for treatment (intervention) and target variables
-    interv_node_idx = 0
-    target_node_idx = 11
-
-    # Initialize dictionary with lists for each metric
+    if args.exp_name == "mixed_confounding":
+        interv_node_idx = 0
+        target_node_idx = 11
+    elif args.exp_name == "increase_n_disc":
+        interv_node_idx, target_node_idx = pick_source_target(B_true, random_state=seed)
+    else:
+        raise ValueError(f"Invalid experiment name: {args.exp_name}")
+    
+    # Initialize results dictionary with metadata
     results = {
         "seed": seed,
-        "method": [],
-        "SHD_absolute": [],
-        "SHD_normalized": [],
-        "SID_absolute": [],
-        "SID_normalized": [],
-        "AID_absolute": [],
-        "AID_normalized": [],
-        "F1_Score": [],
-        "TEE": [],
-        "AUROC": [],
-        "AUPRC": [],
-        "True_Total_Effect": [],
-        "Estimated_Total_Effect": [],
+        "sample_size": sample_size,
+        "methods": list(models.keys()),
     }
 
-    # Compute metrics for each method
-    for model_name, (B, W) in models.items():
-        B_binary = (B > 0).astype(np.int8)  # Convert adjacency to binary
+    # Store metrics as key-value pairs where each metric maps method names to their values
+    results["SHD_absolute"] = {}
+    results["SHD_normalized"] = {}
+    results["SID_absolute"] = {}
+    results["SID_normalized"] = {}
+    results["AID_absolute"] = {}
+    results["AID_normalized"] = {}
+    results["F1_Score"] = {}
+    results["TEE"] = {}
+    results["AUROC"] = {}
+    results["AUPRC"] = {}
+    results["True_Total_Effect"] = {}
+    results["Estimated_Total_Effect"] = {}
 
-        # Append results for each method
-        results["method"].append(model_name)
-        results["SHD_absolute"].append(compute_SHD((B_true > 0).astype(np.int8), B_binary)[1])
-        results["SHD_normalized"].append(compute_SHD((B_true > 0).astype(np.int8), B_binary)[0])
-        results["SID_absolute"].append(compute_SID((B_true > 0).astype(np.int8), B_binary)[1])
-        results["SID_normalized"].append(compute_SID((B_true > 0).astype(np.int8), B_binary)[0])
-        results["AID_absolute"].append(compute_ancestor_AID((B_true > 0).astype(np.int8), B_binary)[1])
-        results["AID_normalized"].append(compute_ancestor_AID((B_true > 0).astype(np.int8), B_binary)[0])
-        results["F1_Score"].append(compute_F1_directed(B_true, B))
+    for model_name, (B, W) in models.items():
+        B_binary = (B > 0).astype(np.int8)
+
+        # Ensure acyclicity for all models
+        if not is_dag_nx(B_binary):
+            print(f"🚨 Warning: {model_name} produced a cyclic B_est!")
+            B_binary = enforce_dag(B_binary)  # Fix cycles minimally
+            print(f"✅ {model_name} is now acyclic after enforcing DAG constraints.")
+
+            # 🔥 Update the model dictionary with the corrected B_binary
+            models[model_name] = (B_binary, W)            
+
+        # Compute metrics
+        results["SHD_normalized"][model_name], results["SHD_absolute"][model_name] = compute_SHD((B_true > 0).astype(np.int8), B_binary)
+        results["SID_normalized"][model_name], results["SID_absolute"][model_name] = compute_SID((B_true > 0).astype(np.int8), B_binary)
+        results["AID_normalized"][model_name], results["AID_absolute"][model_name] = compute_ancestor_AID((B_true > 0).astype(np.int8), B_binary)
+        results["F1_Score"][model_name] = compute_F1_directed(B_true, B)
 
         # Compute Total Effect Estimation Error (TEE), AUROC, and AUPRC (if weights exist)
         if W is not None:
             true_effect, est_effect, tee = compute_TEE(W_true, W, interv_node_idx, target_node_idx)
             _B_true = (np.abs(W_true) > 0).astype(int)
 
-            results["TEE"].append(tee)
-            results["AUROC"].append(compute_AUROC(_B_true, W)[-1])
-            results["AUPRC"].append(compute_AUPRC(_B_true, W)[-1])
-            results["True_Total_Effect"].append(true_effect)
-            results["Estimated_Total_Effect"].append(est_effect)
+            results["TEE"][model_name] = tee
+            results["AUROC"][model_name] = compute_AUROC(_B_true, W)[-1]
+            results["AUPRC"][model_name] = compute_AUPRC(_B_true, W)[-1]
+            results["True_Total_Effect"][model_name] = true_effect
+            results["Estimated_Total_Effect"][model_name] = est_effect
         else:
-            results["TEE"].append(None)
-            results["AUROC"].append(None)
-            results["AUPRC"].append(None)
-            results["True_Total_Effect"].append(None)
-            results["Estimated_Total_Effect"].append(None)
+            results["TEE"][model_name] = None
+            results["AUROC"][model_name] = None
+            results["AUPRC"][model_name] = None
+            results["True_Total_Effect"][model_name] = None
+            results["Estimated_Total_Effect"][model_name] = None
 
     return results
-
 
 # Function to save results
 def save_results(results_list, output_file):
@@ -1153,13 +981,8 @@ def save_results(results_list, output_file):
     print("📁 Merging and saving results...")
 
     try:
-        # Ensure all values in each dictionary are lists
-        processed_results = []
-        for res in results_list:
-            processed_results.append({key: ([value] if not isinstance(value, list) else value) for key, value in res.items()})
-
-        # Convert processed results into a DataFrame
-        df = pd.DataFrame(processed_results)
+        # Convert list of result dictionaries into a pandas DataFrame
+        df = pd.DataFrame(results_list)
 
         # Convert NaN and Inf values to None before saving
         df = df.replace([np.nan, np.inf, -np.inf], None)
@@ -1171,12 +994,117 @@ def save_results(results_list, output_file):
     except Exception as e:
         print(f"⚠️ Error saving results: {e}")
 
-
 if __name__ == "__main__":
 
-    seed_values = [2]
+    # pcx
+    import pcx as px
+    import pcx.predictive_coding as pxc
+    import pcx.nn as pxnn
+    import pcx.functional as pxf
+    import pcx.utils as pxu
 
-    results_all = [run_experiment(seed) for seed in seed_values]
+    # 3rd party
+    import torch
+    import jax
+    from jax import jit
+    import jax.numpy as jnp
+    import jax.numpy.linalg as jax_numpy_linalg # for expm()
+    import jax.scipy.linalg as jax_scipy_linalg # for slogdet()
+    import jax.random as random
+    import optax
 
-    # Save merged results
-    save_results(results_all, output_file)
+    # own
+    import causal_helpers
+    from causal_model import Complete_Graph
+    from causal_helpers import enforce_dag, pick_source_target
+    from causal_helpers import is_dag_nx, MAE, compute_binary_adjacency, compute_h_reg, notears_dag_constraint, dagma_dag_constraint
+    from causal_helpers import load_adjacency_matrix, set_random_seed, plot_adjacency_matrices
+    from causal_helpers import load_graph, load_adjacency_matrix
+    from causal_metrics import compute_F1_directed, compute_F1_skeleton, compute_AUPRC, compute_AUROC, compute_cycle_F1
+    from causal_metrics import compute_SHD, compute_SID, compute_ancestor_AID, compute_TEE
+
+    # causal libraries
+    import lingam
+    os.environ["CASTLE_BACKEND"] = "pytorch"  # Prevents repeated backend initialization
+    import cdt, castle
+
+    from castle.algorithms import Notears, ICALiNGAM, PC
+    from castle.algorithms import DirectLiNGAM, GOLEM
+    from castle.algorithms.ges.ges import GES
+    from castle.algorithms import PC
+
+    # causal metrics
+    from cdt.metrics import precision_recall, SHD, SID
+    from castle.metrics import MetricsDAG
+    from castle.common import GraphDAG
+    from causallearn.graph.SHD import SHD as SHD_causallearn
+
+    ##################################################################
+    ############################ START ###############################
+    ##################################################################
+
+    if args.exp_name == "mixed_confounding":
+        # For mixed_confounding, use a fixed list of sample sizes and a fixed data path.
+        sample_sizes = [500, 1000, 2000, 4000]
+        seed_values = list(range(1, args.num_seeds + 1))
+        data_path = "../data/custom_mixed_confounding_softplus/"
+        
+        output_dir = os.path.join(data_path, "experiment_results")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        for sample_size in sample_sizes:
+            results_all = [run_experiment(seed, sample_size, data_path) for seed in seed_values]
+            output_file = os.path.join(output_dir, f"results_n{sample_size}.json")
+            save_results(results_all, output_file)
+            
+            del results_all
+            gc.collect()
+            jax.clear_caches()
+            if "torch" in globals():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+
+    elif args.exp_name == "increase_n_disc":
+        # For increase_n_disc, use the provided --path_name (default is now the base folder)
+        base_path = args.path_name  # e.g. "/share/amine.mcharrak/mixed_data_final/10ER30_linear_mixed_seed_1"
+        base_folder = os.path.basename(base_path)
+        print(f"Using base folder: {base_folder}")
+        
+        # Global files (adj_matrix.csv, W_adj_matrix.csv) are in base_path.
+        # Training files are in the subdirectories named "n_disc_*" and depend on the n_samples value.
+        sample_size = args.n_samples
+        print(f"Sample size to use (n_samples): {sample_size}")
+        
+        # List all subdirectories starting with "n_disc_"
+        disc_subdirs = [os.path.join(base_path, d) for d in os.listdir(base_path)
+                        if os.path.isdir(os.path.join(base_path, d)) and d.startswith("n_disc_")]
+        disc_subdirs.sort(key=lambda x: int(os.path.basename(x).split("_")[-1]))
+        print(f"Found {len(disc_subdirs)} disc subdirectories.")
+        
+        output_dir = os.path.join(base_path, "experiment_results")
+        os.makedirs(output_dir, exist_ok=True)
+        seed_values = list(range(1, args.num_seeds + 1))
+        
+        for disc_subdir in disc_subdirs:
+            disc_label = os.path.basename(disc_subdir)  # e.g., "n_disc_5"
+            results_all = []
+            for seed in seed_values:
+                print(f"🚀 Running experiment for {disc_label} with seed {seed}")
+                # For increase_n_disc, pass base_folder as well so that global files are read from there.
+                results = run_experiment(seed, sample_size, disc_subdir, base_folder=base_path)
+                # Augment results with additional information
+                results["seed"] = seed
+                results["sample_size"] = sample_size
+                results["n_disc"] = disc_label
+                results_all.append(results)
+            output_file = os.path.join(output_dir, f"experiment_results_{disc_label}.json")
+            save_results(results_all, output_file)
+            
+            del results_all
+            gc.collect()
+            jax.clear_caches()
+            if "torch" in globals():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+
+    print(f"✅ All experiments completed for {args.exp_name}!")
