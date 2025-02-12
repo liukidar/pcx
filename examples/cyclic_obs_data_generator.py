@@ -7,7 +7,7 @@ import networkx as nx
 ########################## graph sampling functions ##########################
 
 # ER cycle graph sampling
-def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0.3):
+def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0.3, n_tries=10):
     """
     Sample a Directed Cyclic Graph (DCG) with an Erdős-Rényi degree distribution.
 
@@ -23,7 +23,7 @@ def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0
         np.ndarray: Adjacency matrix representing the graph structure.
     """
     #while True:  # Repeat until a valid cyclic graph is generated
-    n_tries = 10
+    n_tries = n_tries
     for _ in range(n_tries):  # Repeat until a valid cyclic graph is generated
         def degree(var):
             """Calculate the degree of a node in the adjacency matrix."""
@@ -109,7 +109,7 @@ def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0
 
 
 # SF cycle graph sampling
-def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0.3):
+def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0.3, n_tries=10):
     """
     Sample a Directed Cyclic Graph (DCG) with a scale-free degree distribution.
 
@@ -124,7 +124,7 @@ def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0
     Returns:
         np.ndarray: Adjacency matrix representing the graph structure.
     """
-    n_tries = 10
+    n_tries = n_tries
     for _ in range(n_tries):  # Repeat until a valid cyclic graph is generated
     #while True:  # Repeat until a valid cyclic graph is generated
         def degree(var):
@@ -215,7 +215,7 @@ def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0
 
 
 # NWS cycle graph sampling
-def sample_NWS_dcg(d, max_degree, max_cycle, k=2, p=0.2, edge_add_prob=0.3):
+def sample_NWS_dcg(d, max_degree, max_cycle, k=2, p=0.2, edge_add_prob=0.3, n_tries=10):
     """
     Sample a Directed Cyclic Graph (DCG) using the Newman-Watts-Strogatz model.
 
@@ -230,7 +230,7 @@ def sample_NWS_dcg(d, max_degree, max_cycle, k=2, p=0.2, edge_add_prob=0.3):
     Returns:
         np.ndarray: Adjacency matrix of the directed cyclic graph.
     """
-    n_tries = 10
+    n_tries = n_tries
     for _ in range(n_tries):
     #while True:
         def degree(var):

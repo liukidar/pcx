@@ -9,14 +9,31 @@ import sys
 
 # Argument Parsing (before importing GPU-dependent libraries)
 parser = argparse.ArgumentParser(description="Run structured experiments.")
-parser.add_argument("--exp_name", type=str, required=True, choices=["increase_k", "increase_d", "increase_n"],
-                    help="Specify the type of experiment (increase_k, increase_d, increase_n).")
-parser.add_argument("--graph_type", type=str, required=True, choices=["ER", "SF", "NWS"],
+# Extend the choices for exp_name to include the compare experiments.
+parser.add_argument("--exp_name", type=str, required=True,
+                    choices=["increase_k", "increase_d", "increase_n",
+                             "compare_NWS", "compare_SF", "compare_ER"],
+                    help="Specify the type of experiment.")
+parser.add_argument("--graph_type", type=str, required=True,
+                    choices=["ER", "SF", "NWS"],
                     help="Specify the graph type (ER, SF, NWS).")
-parser.add_argument("--num_seeds", type=int, required=True, help="Number of seeds to run experiments for.")
-parser.add_argument("--gpu", type=int, default=0, help="GPU index to use")
-
+parser.add_argument("--num_seeds", type=int, required=True,
+                    help="Number of seeds to run experiments for.")
+parser.add_argument("--gpu", type=int, default=0,
+                    help="GPU index to use")
 args = parser.parse_args()
+
+# For compare experiments, we ignore the provided graph_type and derive it from exp_name.
+if args.exp_name.startswith("compare_"):
+    # Extract the part after "compare_" and use it as the graph type.
+    derived_graph = args.exp_name.split("_")[1].upper()
+    if args.graph_type != derived_graph:
+        print(f"⚠️ For experiment {args.exp_name}, overriding graph_type to '{derived_graph}'.")
+    args.graph_type = derived_graph
+
+print("Experiment name:", args.exp_name)
+print("Graph type:", args.graph_type)
+print("Number of seeds:", args.num_seeds)
 
 # Set GPU before importing any ML/DL libraries
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
@@ -825,7 +842,8 @@ def run_experiment(seed, base_path, num_samples):
     tabu_length = 4
     patience = 4
     #max_iter = np.inf
-    max_iter = 20
+    #max_iter = 20
+    max_iter = int(np.sum(B_true))
 
     manager = CyclicManager(X, bic_coef=0.5, num_workers = 200)
     B_est_dglearn, best_score, log = tabu_search(manager, tabu_length, patience, max_iter=max_iter, first_ascent=False, verbose=1) # returns a binary matrix as learned support
@@ -1085,6 +1103,54 @@ if __name__ == "__main__":
             "SF": ["10SF30_linear_cyclic_GAUSS-EV_seed_1"],
             "NWS": ["10NWS31_linear_cyclic_GAUSS-EV_seed_1"],
         },
+        "compare_NWS": {
+            "NWS": [
+                "10NWS9_linear_cyclic_GAUSS-EV_seed_1", 
+                "10NWS21_linear_cyclic_GAUSS-EV_seed_1", 
+                "10NWS31_linear_cyclic_GAUSS-EV_seed_1", 
+                "10NWS41_linear_cyclic_GAUSS-EV_seed_1", 
+                "15NWS17_linear_cyclic_GAUSS-EV_seed_1", 
+                "15NWS31_linear_cyclic_GAUSS-EV_seed_1", 
+                "15NWS48_linear_cyclic_GAUSS-EV_seed_1", 
+                "15NWS60_linear_cyclic_GAUSS-EV_seed_1", 
+                "20NWS19_linear_cyclic_GAUSS-EV_seed_1", 
+                "20NWS42_linear_cyclic_GAUSS-EV_seed_1", 
+                "20NWS60_linear_cyclic_GAUSS-EV_seed_1", 
+                "20NWS92_linear_cyclic_GAUSS-EV_seed_1"
+            ]
+        },
+        "compare_SF": {
+            "SF": [
+                "10SF10_linear_cyclic_GAUSS-EV_seed_1",
+                "10SF20_linear_cyclic_GAUSS-EV_seed_1",
+                "10SF30_linear_cyclic_GAUSS-EV_seed_1",
+                "10SF41_linear_cyclic_GAUSS-EV_seed_1",
+                "15SF16_linear_cyclic_GAUSS-EV_seed_1",
+                "15SF28_linear_cyclic_GAUSS-EV_seed_1",
+                "15SF45_linear_cyclic_GAUSS-EV_seed_1",
+                "15SF61_linear_cyclic_GAUSS-EV_seed_1",
+                "20SF50_linear_cyclic_GAUSS-EV_seed_1",
+                "20SF65_linear_cyclic_GAUSS-EV_seed_1",
+                "20SF79_linear_cyclic_GAUSS-EV_seed_1",
+                "20SF97_linear_cyclic_GAUSS-EV_seed_1"
+            ]
+        },
+        "compare_ER": {
+            "ER": [
+                "10ER10_linear_cyclic_GAUSS-EV_seed_1",
+                "10ER20_linear_cyclic_GAUSS-EV_seed_1",
+                "10ER30_linear_cyclic_GAUSS-EV_seed_1",
+                "10ER41_linear_cyclic_GAUSS-EV_seed_1",
+                "15ER16_linear_cyclic_GAUSS-EV_seed_1",
+                "15ER31_linear_cyclic_GAUSS-EV_seed_1",
+                "15ER46_linear_cyclic_GAUSS-EV_seed_1",
+                "15ER62_linear_cyclic_GAUSS-EV_seed_1",
+                "20ER22_linear_cyclic_GAUSS-EV_seed_1",
+                "20ER39_linear_cyclic_GAUSS-EV_seed_1",
+                "20ER59_linear_cyclic_GAUSS-EV_seed_1",
+                "20ER81_linear_cyclic_GAUSS-EV_seed_1"
+            ]
+        },
     }
 
     # Check if the specified experiment and graph type exist
@@ -1096,9 +1162,12 @@ if __name__ == "__main__":
 
     # Define sample sizes for each experiment type
     num_samples_dict = {
-        "increase_k": [2000],  # Fixed sample size for k experiments
-        "increase_d": [2000],  # Fixed sample size for d experiments
+        "increase_k": [2000],        # Fixed sample size for k experiments
+        "increase_d": [2000],        # Fixed sample size for d experiments
         "increase_n": [500, 1000, 2000, 5000],  # Varying sample sizes for n experiments
+        "compare_NWS": [2000],       # Fixed sample size for compare experiments
+        "compare_SF": [2000],
+        "compare_ER": [2000],
     }
     num_samples_list = num_samples_dict[args.exp_name]
 

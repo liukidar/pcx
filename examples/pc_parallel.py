@@ -274,6 +274,7 @@ class PCParallel:
         # Optionally, hide GPU from castle/torch as well:
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
         os.environ["CASTLE_BACKEND"] = ""
+        
         PCParallel.var_dict = {}
         PCParallel.var_dict['data'] = data
         PCParallel.var_dict['data_shape'] = data_shape

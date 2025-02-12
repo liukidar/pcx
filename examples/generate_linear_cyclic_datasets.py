@@ -172,9 +172,9 @@ def generate_dataset(seed, d, graph_type, noise_type, e_to_d_ratio, num_samples_
 # Define parameter ranges
 seeds = [1]
 num_samples_list = [500, 1000, 2000, 5000]  # ✅ Passed as a list
-num_vars_list = [10, 15]
-#graph_types = ["ER", "SF", "NWS"]
-graph_types = ["ER", "SF"]
+num_vars_list = [10, 15, 20]
+graph_types = ["ER", "SF", "NWS"]
+#graph_types = ["ER", "SF"]
 #graph_types = ["SF"]
 #graph_types = ["NWS"]
 #graph_types = ["ER"]

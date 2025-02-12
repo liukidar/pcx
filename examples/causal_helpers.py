@@ -532,7 +532,7 @@ def simulate_linear_sem(W, n, sem_type, noise_scale=None):
         if len(noise_scale) != d:
             raise ValueError('noise scale must be a scalar or has length d')
         scale_vec = noise_scale
-    if not is_dag(W):
+    if not is_dag_nx(W):
         raise ValueError('W must be a DAG')
     if np.isinf(n):  # population risk for linear gauss SEM
         if sem_type == 'gauss':
