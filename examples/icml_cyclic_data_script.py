@@ -14,22 +14,26 @@ parser.add_argument("--exp_name", type=str, required=True,
                     choices=["increase_k", "increase_d", "increase_n",
                              "compare_NWS", "compare_SF", "compare_ER"],
                     help="Specify the type of experiment.")
-parser.add_argument("--graph_type", type=str, required=True,
+parser.add_argument("--graph_type", type=str, default="ER",
                     choices=["ER", "SF", "NWS"],
-                    help="Specify the graph type (ER, SF, NWS).")
+                    help="Specify the graph type (ER, SF, NWS). Default is ER.")
 parser.add_argument("--num_seeds", type=int, required=True,
                     help="Number of seeds to run experiments for.")
 parser.add_argument("--gpu", type=int, default=0,
                     help="GPU index to use")
 args = parser.parse_args()
 
-# For compare experiments, we ignore the provided graph_type and derive it from exp_name.
+# For compare experiments, derive the graph type from exp_name.
 if args.exp_name.startswith("compare_"):
-    # Extract the part after "compare_" and use it as the graph type.
     derived_graph = args.exp_name.split("_")[1].upper()
     if args.graph_type != derived_graph:
         print(f"⚠️ For experiment {args.exp_name}, overriding graph_type to '{derived_graph}'.")
     args.graph_type = derived_graph
+elif args.exp_name.startswith("increase_"):
+    # For increase experiments, we ignore the provided graph_type for output purposes.
+    # Here we can set it to a default string (e.g., "Mixed") to indicate that the output
+    # will be organized by the base folder names.
+    args.graph_type = "Mixed"
 
 print("Experiment name:", args.exp_name)
 print("Graph type:", args.graph_type)
@@ -122,22 +126,32 @@ def run_experiment(seed, base_path, num_samples):
     search.search_dfs()
 
     B_true_EC = [binary2array(bstr) for bstr in search.visited_graphs]
-    print(f"Size of equivalence class of true graph for {base_path}: {len(B_true_EC)}")
+    print(f"Size of equivalence class of true graph for {base_path}: {len(B_true_EC)}\n")
 
     # Check if G_true is cyclic by listing all cycles
-    print(f"Number of cycles in G_true for {base_path}: {len(list(nx.simple_cycles(G_true)))}\n")
+    num_cycles = len(list(nx.simple_cycles(G_true)))
+    cycles = list(nx.simple_cycles(G_true))
+    print(f"Number of cycles in G_true for {base_path}: {num_cycles}\n")
+    print("Cycles in G_true: ", cycles)
 
-    # %%
-    data.head()
+    # Display the first few rows of the data
+    print("First few rows of data:")
+    print(data.head())
     # show unique values in each column
+    print("Unique values in each column:")
     print(data.nunique())
     # Determine if each variable is continuous or discrete based on the number of unique values
     is_cont_node = np.array([True if data[col].nunique() > 2 else False for col in data.columns])
     is_cont_node = is_cont_node.tolist()
-    print(is_cont_node)
+    print("Continuous variables:", is_cont_node)
 
     # print how many non-zero entries are in the true DAG
     print(f"Number of non-zero entries in the true DAG: {np.count_nonzero(B_true)}")
+
+    total_entries = data.size
+    data_shape = data.shape
+    print(f"Total entries in the dataset: {total_entries}")
+    print(f"Shape of the dataset: {data_shape}")
 
     # Usage
     input_dim = 1
@@ -1075,10 +1089,10 @@ if __name__ == "__main__":
                 "10SF41_linear_cyclic_GAUSS-EV_seed_1",
             ],
             "NWS": [
-                "10NWS11_linear_cyclic_GAUSS-EV_seed_1",
-                "10NWS20_linear_cyclic_GAUSS-EV_seed_1",
-                "10NWS31_linear_cyclic_GAUSS-EV_seed_1",
-                "10NWS41_linear_cyclic_GAUSS-EV_seed_1",
+                # "10NWS9_linear_cyclic_GAUSS-EV_seed_1",
+                # "10NWS18_linear_cyclic_GAUSS-EV_seed_1",
+                # "10NWS25_linear_cyclic_GAUSS-EV_seed_1",
+                # "10NWS34_linear_cyclic_GAUSS-EV_seed_1",
             ],
         },
         "increase_d": {
@@ -1153,45 +1167,73 @@ if __name__ == "__main__":
         },
     }
 
-    # Check if the specified experiment and graph type exist
-    if args.exp_name not in experiment_paths or args.graph_type not in experiment_paths[args.exp_name]:
-        print(f"⚠️ Invalid combination of experiment name '{args.exp_name}' and graph type '{args.graph_type}'. Exiting.")
-        exit(1)
+    # For compare experiments, we override args.graph_type (already done earlier)
 
-    base_paths = [os.path.join(data_dir, path) for path in experiment_paths[args.exp_name][args.graph_type]]
+    # Now, for storing output, we want to structure the output folders differently for increase experiments.
+    if args.exp_name.startswith("compare_"):
+        # For compare experiments, use the provided (overridden) graph type.
+        output_base = os.path.join(data_dir, "experiment_results", args.exp_name, args.graph_type)
+    else:
+        # For increase experiments, we ignore args.graph_type for output.
+        output_base = os.path.join(data_dir, "experiment_results", args.exp_name)
+
+    # Check if the specified experiment exists in our experiment_paths.
+    if args.exp_name not in experiment_paths:
+        print(f"⚠️ Invalid experiment name '{args.exp_name}'. Exiting.")
+        exit(1)
+    # For increase experiments, we ignore the provided graph_type for filtering base paths,
+    # so we simply use all paths across all graph types in that experiment.
+    if args.exp_name in ["increase_k", "increase_d", "increase_n"]:
+        base_paths = []
+        for g in experiment_paths[args.exp_name]:
+            base_paths.extend([os.path.join(data_dir, path) for path in experiment_paths[args.exp_name][g]])
+    else:
+        # For compare experiments, use the specified graph type.
+        if args.graph_type not in experiment_paths[args.exp_name]:
+            print(f"⚠️ Invalid combination of experiment name '{args.exp_name}' and graph type '{args.graph_type}'. Exiting.")
+            exit(1)
+        base_paths = [os.path.join(data_dir, path) for path in experiment_paths[args.exp_name][args.graph_type]]
 
     # Define sample sizes for each experiment type
     num_samples_dict = {
-        "increase_k": [2000],        # Fixed sample size for k experiments
-        "increase_d": [2000],        # Fixed sample size for d experiments
-        "increase_n": [500, 1000, 2000, 5000],  # Varying sample sizes for n experiments
-        "compare_NWS": [2000],       # Fixed sample size for compare experiments
+        "increase_k": [2000],
+        "increase_d": [2000],
+        "increase_n": [500, 1000, 2000, 5000],
+        "compare_NWS": [2000],
         "compare_SF": [2000],
         "compare_ER": [2000],
     }
     num_samples_list = num_samples_dict[args.exp_name]
 
-    # Run experiments and store results
-    output_dir = os.path.join(data_dir, "experiment_results", args.exp_name, args.graph_type)
-    os.makedirs(output_dir, exist_ok=True)
-
+    # Now run experiments and store results.
     for base_path in base_paths:
         base_folder = os.path.basename(base_path)
-        path_output_dir = os.path.join(output_dir, base_folder)
+        if args.exp_name.startswith("compare_"):
+            # For compare experiments, use args.graph_type as output subfolder.
+            folder_type = args.graph_type
+        else:
+            # For increase experiments, determine graph type from the base_folder name.
+            if "ER" in base_folder:
+                folder_type = "ER"
+            elif "SF" in base_folder:
+                folder_type = "SF"
+            elif "NWS" in base_folder:
+                folder_type = "NWS"
+            else:
+                folder_type = "unknown"
+        # Construct full output directory:
+        path_output_dir = os.path.join(output_base, folder_type, base_folder)
         os.makedirs(path_output_dir, exist_ok=True)
 
         # Loop over sample sizes first so that we save one JSON file per sample size.
         for num_samples in num_samples_list:
-            results_all = []  # create a new list for this sample size
+            results_all = []  # new list for this sample size
             for seed in seed_values:
-                print(f"🚀 Running experiment: {args.exp_name}, Graph: {args.graph_type}, Base: {base_folder}, Seed: {seed}, Samples: {num_samples}")
+                print(f"🚀 Running experiment: {args.exp_name}, Base: {base_folder}, Seed: {seed}, Samples: {num_samples}")
                 results = run_experiment(seed, base_path, num_samples)
-                # Add sample size info to the result dictionary (if run_experiment doesn't already do it)
                 results["num_samples"] = num_samples
                 results_all.append(results)
-                
-            # Save results for this sample size in a separate JSON file.
             output_file = os.path.join(path_output_dir, f"experiment_results_n{num_samples}.json")
             save_results(results_all, output_file)
 
-    print(f"✅ All experiments completed for {args.exp_name} with graph type {args.graph_type}!")
+    print(f"✅ All experiments completed for {args.exp_name}!")

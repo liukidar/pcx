@@ -172,17 +172,18 @@ def generate_dataset(seed, d, graph_type, noise_type, e_to_d_ratio, num_samples_
 # Define parameter ranges
 seeds = [1]
 num_samples_list = [500, 1000, 2000, 5000]  # ✅ Passed as a list
-num_vars_list = [10, 15, 20]
-graph_types = ["ER", "SF", "NWS"]
+#num_vars_list = [10, 15, 20]
+num_vars_list = [10]
+#graph_types = ["ER", "SF", "NWS"]
 #graph_types = ["ER", "SF"]
 #graph_types = ["SF"]
-#graph_types = ["NWS"]
+graph_types = ["NWS"]
 #graph_types = ["ER"]
 noise_types = ["GAUSS-EV"]
-p_densities = [0.7, 0.8, 0.9]  # Used only for NWS
+p_densities = [0.85, 0.9, 0.95]  # Used only for NWS
 e_to_d_ratios = [1, 2, 3, 4]  # Used for ER and SF
 max_cycle = 3
-k_nws = 2
+k_nws = 9
 edge_add_prob = 0.05
 
 # Compute total number of datasets (only counting graph generation cases)

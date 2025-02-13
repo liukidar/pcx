@@ -6,6 +6,24 @@ import networkx as nx
 
 ########################## graph sampling functions ##########################
 
+
+def remove_long_cycles(B, max_cycle):
+    """Remove edges from B until no simple cycle is longer than max_cycle."""
+    G = nx.DiGraph(B)
+    cycles = list(nx.simple_cycles(G))
+    while cycles and any(len(cycle) > max_cycle for cycle in cycles):
+        # Find one of the longest cycles
+        longest_cycle = max(cycles, key=len)
+        # Choose an edge to remove; here we remove the first edge in the cycle.
+        i = longest_cycle[0]
+        j = longest_cycle[1]
+        print(f"Removing edge [{i}, {j}] to break a cycle of length {len(longest_cycle)}")
+        B[i, j] = 0  # Remove this edge.
+        G = nx.DiGraph(B)
+        cycles = list(nx.simple_cycles(G))
+    return B
+
+
 # ER cycle graph sampling
 def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0.3, n_tries=10):
     """
@@ -90,6 +108,8 @@ def sample_ER_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0
                 # Check cycle length constraint
                 if len(find_scc(j)) > max_cycle:
                     B[i, j], B[j, i] = 0, 0  # Revert edge if cycle is too large
+
+        B = remove_long_cycles(B, max_cycle)
 
         # Validate degrees
         for i in range(d):
@@ -197,6 +217,8 @@ def sample_SF_dcg(d, max_degree, max_cycle, n_edges=None, p=0.2, edge_add_prob=0
                 if len(find_scc(j)) > max_cycle:
                     B[i, j], B[j, i] = 0, 0  # Revert edge if cycle is too large
 
+        B = remove_long_cycles(B, max_cycle)
+
         # Validate degrees
         for i in range(d):
             assert degree(i) <= max_degree, f"Node {i} exceeds max degree."
@@ -287,9 +309,20 @@ def sample_NWS_dcg(d, max_degree, max_cycle, k=2, p=0.2, edge_add_prob=0.3, n_tr
                 B[i, j] = direction
                 B[j, i] = 1 - direction  # Ensure directed nature
 
-                # Check cycle length constraint
-                if len(find_scc(j)) > max_cycle:
+                # # Check cycle length constraint
+                # if len(find_scc(j)) > max_cycle:
+                #     B[i, j], B[j, i] = 0, 0  # Revert edge if cycle is too long
+
+                # Create a temporary graph and list its cycles
+                G_temp = nx.DiGraph(B)
+                cycles = list(nx.simple_cycles(G_temp))
+                # Debug: print cycles if needed
+                # print(f"Cycles after adding edge [{i}, {j}]: {cycles}")
+                # If any cycle has length longer than max_cycle, revert the edge
+                if any(len(cycle) > max_cycle for cycle in cycles):
                     B[i, j], B[j, i] = 0, 0  # Revert edge if cycle is too long
+
+        B = remove_long_cycles(B, max_cycle)
 
         # Validate degrees
         for i in range(d):
