@@ -1108,3 +1108,9 @@ if __name__ == "__main__":
                 torch.cuda.synchronize()
 
     print(f"✅ All experiments completed for {args.exp_name}!")
+
+    # Clear GPU memory from torch and JAX
+    torch.cuda.empty_cache()
+    jax.clear_backends()
+    jax.clear_caches()
+    print("✅ GPU memory cleared.")
