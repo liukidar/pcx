@@ -83,7 +83,7 @@ class Complete_Graph(pxc.EnergyModule):
             reshaped_x = x.reshape(n_nodes, -1)  # Infer input_dim from x
             
             # Print the shape of reshaped_x[0] when x is not None
-            print("The shape of reshaped_x[0] when x is not None is: ", reshaped_x[0].shape)
+            #print("The shape of reshaped_x[0] when x is not None is: ", reshaped_x[0].shape)
 
             for i in range(n_nodes):
                 self.vodes[i](reshaped_x[i])
@@ -93,13 +93,13 @@ class Complete_Graph(pxc.EnergyModule):
             x_ = jnp.vstack([vode.get('h') for vode in self.vodes])
 
             # Print the shape of x_ when x is None
-            print("The shape of x_ when x is None is: ", x_.shape)
+            #print("The shape of x_ when x is None is: ", x_.shape)
 
             # Apply the linear transformation
             output = self.layers[0](x_)
 
             # Print the shape of output when x is None
-            print("The shape of output when x is None is: ", output.shape)
+            #print("The shape of output when x is None is: ", output.shape)
 
             # Update the vodes with the output
             for i in range(n_nodes):
@@ -109,7 +109,7 @@ class Complete_Graph(pxc.EnergyModule):
         output = jnp.vstack([vode.get('h') for vode in self.vodes])
 
         # Print the shape of the output
-        print("The shape of the output is: ", output.shape)
+        #print("The shape of the output is: ", output.shape)
 
         return output
     

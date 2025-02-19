@@ -42,7 +42,8 @@ print("Number of seeds:", args.num_seeds)
 # Set GPU before importing any ML/DL libraries
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.9"  
+#os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.9"
+os.environ["JAX_PLATFORM_NAME"] = "cuda"  # Force JAX to use CUDA
 
 import numpy as np
 import pandas as pd
@@ -134,12 +135,10 @@ def run_experiment(seed, base_path, num_samples):
     print(f"Number of cycles in G_true for {base_path}: {num_cycles}\n")
     print("Cycles in G_true: ", cycles)
 
-    # Display the first few rows of the data
-    print("First few rows of data:")
-    print(data.head())
     # show unique values in each column
     print("Unique values in each column:")
     print(data.nunique())
+
     # Determine if each variable is continuous or discrete based on the number of unique values
     is_cont_node = np.array([True if data[col].nunique() > 2 else False for col in data.columns])
     is_cont_node = is_cont_node.tolist()
@@ -161,39 +160,13 @@ def run_experiment(seed, base_path, num_samples):
     model = Complete_Graph(input_dim, n_nodes, has_bias=True, is_cont_node=is_cont_node, seed=seed)
     # Get weighted adjacency matrix
     W = model.get_W()
-    print("This is the weighted adjacency matrix:\n", W)
-    print()
-    print("The shape of the weighted adjacency matrix is: ", W.shape)
-    print()
-    #print(model)
-    print()
 
-    # Freezing all nodes
-    print("Freezing all nodes...")
-    model.freeze_nodes(freeze=True)
-    print()
-
-    # Check if all nodes are frozen after freezing
-    print("After freezing, are all nodes frozen?:", model.are_vodes_frozen())
-    print()
-
-    # Unfreezing all nodes
-    print("Unfreezing all nodes...")
-    model.freeze_nodes(freeze=False)
-    print()
-
-    # Check if all nodes are frozen after unfreezing
-    print("After unfreezing, are all nodes frozen?:", model.are_vodes_frozen())
-
-    model.is_cont_node
-
-    # %%
     # TODO: make the below params global or input to the functions in which it is used.
     w_learning_rate = 1e-3
     h_learning_rate = 1e-4
     T = 1
 
-    nm_epochs = 5000 # not much happens after 5000 epochs
+    nm_epochs = 10000 # not much happens after 5000 epochs
     every_n_epochs = nm_epochs // 20 # Print every 5% of the epochs
     batch_size = 256
 
@@ -203,7 +176,7 @@ def run_experiment(seed, base_path, num_samples):
     # NOTE: smaller lam_h (5e-4) gives better fit metric scores (log-likelihood, KL divergence, etc.) but worse cyclic structure score (CSS)
     
     lam_h = 5e0 # effective value depends on d, does not change during training
-    lam_l1 = 1e0 # effective value depends on Frob Norm of W at any time, thus changes during training
+    lam_l1 = 1e-1 # effective value depends on Frob Norm of W at any time, thus changes during training
 
     # Training an1d evaluation functions
     @pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), in_axes=(0,), out_axes=0)
@@ -214,23 +187,23 @@ def run_experiment(seed, base_path, num_samples):
     @pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), out_axes=(None, None, None, None, 0), axis_name="batch") # if multiple outputs
     def energy(*, model: Complete_Graph):
 
-        print("Energy: Starting computation")
+        #print("Energy: Starting computation")
         x_ = model(None)
-        print("Energy: Got model output")
+        #print("Energy: Got model output")
         
         W = model.get_W()
         # Dimensions of W
         d = W.shape[0]
-        print(f"Energy: Got W (shape: {W.shape}) and d: {d}")
+        #print(f"Energy: Got W (shape: {W.shape}) and d: {d}")
 
         # PC energy term
         pc_energy = jax.lax.pmean(model.energy(), axis_name="batch")
-        print(f"Energy: PC energy term: {pc_energy}")
+        #print(f"Energy: PC energy term: {pc_energy}")
 
         # L1 regularization using adjacency matrix (scaled by Frobenius norm)
         l1_reg = jnp.sum(jnp.abs(W)) / (jnp.linalg.norm(W, ord='fro') + 1e-8)
         #l1_reg = jnp.sum(jnp.abs(W)) / d
-        print(f"Energy: L1 reg term: {l1_reg}")
+        #print(f"Energy: L1 reg term: {l1_reg}")
 
         # DAG constraint (stable logarithmic form)
         #h_reg = notears_dag_constraint(W)
@@ -240,11 +213,11 @@ def run_experiment(seed, base_path, num_samples):
         #h_reg = dagma_dag_constraint(W)
         h_reg = dagma_dag_constraint(W) / (jnp.sqrt(d) + 1e-8)
         #h_reg = dagma_dag_constraint(W) / d  # with normalization
-        print(f"Energy: DAG constraint term: {h_reg}")
+        #print(f"Energy: DAG constraint term: {h_reg}")
             
         # Combined loss
         obj = pc_energy + lam_h * h_reg + lam_l1 * l1_reg
-        print(f"Energy: Final objective: {obj}")
+        #print(f"Energy: Final objective: {obj}")
 
         # Ensure obj is a scalar, not a (1,) array because JAX's grad and value_and_grad functions are designed
         # to compute gradients of *scalar-output functions*
@@ -254,19 +227,19 @@ def run_experiment(seed, base_path, num_samples):
 
     @pxf.jit(static_argnums=0)
     def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.Optim, optim_h: pxu.Optim):
-        print("1. Starting train_on_batch")  
+        #print("1. Starting train_on_batch")  
 
         model.train()
-        print("2. Model set to train mode")
+        #print("2. Model set to train mode")
 
         model.freeze_nodes(freeze=True)
-        print("3. Nodes frozen")
+        #print("3. Nodes frozen")
 
         # init step
         with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-            print("4. Doing forward for initialization")
+            #print("4. Doing forward for initialization")
             forward(x, model=model)
-            print("5. After forward for initialization")
+            #print("5. After forward for initialization")
 
         """
         # The following code might not be needed as we are keeping the vodes frozen at all times
@@ -283,38 +256,38 @@ def run_experiment(seed, base_path, num_samples):
         """
 
         with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-            print("6. Before computing gradients")
+            #print("6. Before computing gradients")
             (obj, (pc_energy, h_reg, l1_reg, x_)), g = pxf.value_and_grad(
                 pxu.M(pxnn.LayerParam).to([False, True]), 
                 has_aux=True
             )(energy)(model=model) # pxf.value_and_grad returns a tuple structured as ((value, aux), grad), not as six separate outputs.
             
-            print("7. After computing gradients")
+            #print("7. After computing gradients")
             #print("Gradient structure:", g)
 
-            print("8. Before zeroing out the diagonal gradients")
+            #print("8. Before zeroing out the diagonal gradients")
             # Zero out the diagonal gradients using jax.numpy.fill_diagonal
             weight_grads = g["model"].layers[0].nn.weight.get()
             weight_grads = jax.numpy.fill_diagonal(weight_grads, 0.0, inplace=False)
             # print the grad values using the syntax jax.debug.print("🤯 {x} 🤯", x=x)
             #jax.debug.print("{weight_grads}", weight_grads=weight_grads)
             g["model"].layers[0].nn.weight.set(weight_grads)
-            print("9. After zeroing out the diagonal gradients")
+            #print("9. After zeroing out the diagonal gradients")
 
             
-        print("10. Before optimizer step")
+        #print("10. Before optimizer step")
         optim_w.step(model, g["model"])
         #optim_w.step(model, g["model"], scale_by=1.0/x.shape[0])
-        print("11. After optimizer step")
+        #print("11. After optimizer step")
 
         with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-            print("12. Before final forward")
+            #print("12. Before final forward")
             forward(None, model=model)
             e_avg_per_sample = model.energy()
-            print("13. After final forward")
+            #print("13. After final forward")
 
         model.freeze_nodes(freeze=False)
-        print("14. Nodes unfrozen")
+        #print("14. Nodes unfrozen")
 
         return pc_energy, l1_reg, h_reg, obj
 
@@ -350,7 +323,6 @@ def run_experiment(seed, base_path, num_samples):
     W_zero = np.zeros_like(W_true)
     print("MAE between the true adjacency matrix and an all-zero matrix: ", MAE(W_true, W_zero))
     print("SHD between the true adjacency matrix and an all-zero matrix: ", SHD(B_true, compute_binary_adjacency(W_zero)))
-    #print("SID between the true adjacency matrix and an all-zero matrix: ", SID(W_true, W_zero))
 
     class CustomDataset(torch.utils.data.Dataset):
         def __init__(self, X):
@@ -707,16 +679,12 @@ def run_experiment(seed, base_path, num_samples):
     is_dag_B_est = is_dag_nx(B_est)
     print(f"Is the estimated binary adjacency matrix a DAG? {is_dag_B_est}")
 
-    print()
-
     # Compute the h_reg term for the true weighted adjacency matrix W_true
     h_reg_true = compute_h_reg(W_true)
     print(f"The h_reg term for the TRUE weighted adjacency matrix W_true is: {h_reg_true:.4f}")
     # Compute the h_reg term for the estimated weighted adjacency matrix W_est
     h_reg_est = compute_h_reg(W_est)
     print(f"The h_reg term for the EST weighted adjacency matrix W_est is: {h_reg_est:.4f}")
-
-    print()
 
     # print the number of edges in the true graph and the estimated graph
     print(f"The number of edges in the TRUE graph: {np.sum(B_true)}")
@@ -725,9 +693,7 @@ def run_experiment(seed, base_path, num_samples):
     # print first 5 rows and columsn of W_est and round values to 4 decimal places and show as non-scientific notation
     np.set_printoptions(precision=4, suppress=True)
 
-    print()
-
-    print("The first 5 rows and columns of the estimated weighted adjacency matrix W_est\n{}".format(W_est[:5, :5]))
+    #print("The first 5 rows and columns of the estimated weighted adjacency matrix W_est\n{}".format(W_est[:5, :5]))
 
     # now show the adjacency matrix of the true graph and the estimated graph side by side
     plot_adjacency_matrices(true_matrix=B_true, est_matrix=B_est, save_path=os.path.join(save_path, 'adjacency_matrices.png'))
@@ -806,12 +772,12 @@ def run_experiment(seed, base_path, num_samples):
         n_nodes=X.shape[1],
         batch_size=128,
         l1_reg=True, # default is False
-        lambda_c=5e-2, # default is 1e-2
+        lambda_c=1e-1, # default is 1e-2
         fun_type='lin-mlp',  # Linear version
         act_fun='none', # No activation function
         lr=1e-3, # default learning rate is 1e-3
         lip_const=0.99,
-        epochs=50, # default number of epochs is 10
+        epochs=20, # default number of epochs is 10
         optim='adam', # default optimizer is 'sgd'
         n_hidden=0, # default number of hidden layers is 1
         thresh_val=0.3, # default threshold value is 0.01
@@ -856,8 +822,8 @@ def run_experiment(seed, base_path, num_samples):
     tabu_length = 4
     patience = 4
     #max_iter = np.inf
-    #max_iter = 20
-    max_iter = int(np.sum(B_true))
+    max_iter = 20
+    #max_iter = int(np.sum(B_true))
 
     manager = CyclicManager(X, bic_coef=0.5, num_workers = 200)
     B_est_dglearn, best_score, log = tabu_search(manager, tabu_length, patience, max_iter=max_iter, first_ascent=False, verbose=1) # returns a binary matrix as learned support
@@ -886,7 +852,7 @@ def run_experiment(seed, base_path, num_samples):
             reg_type="scad",
             reg_params={"lam": edge_penalty, "gamma": 3.7},
             edge_penalty=edge_penalty,
-            n_inits=5,
+            n_inits=3,
             n_threads=200,
             parcorr_thrs=0.1 * (X.shape[0] / 1000)**(-1/4),
             use_loss_cache=True,
@@ -905,7 +871,7 @@ def run_experiment(seed, base_path, num_samples):
     ############################################################################################
     # benchmark model 5 NOTEARS
 
-    nt = Notears(lambda1=5e-2, h_tol=1e-5, max_iter=100, no_dag_constraint=True, loss_type='l2', seed=seed) # default loss_type is 'l2'
+    nt = Notears(lambda1=1e-1, h_tol=1e-5, max_iter=100, no_dag_constraint=True, loss_type='l2', seed=seed) # default loss_type is 'l2'
     #nt = Notears(lambda1=lambda1=5e-2, h_tol=1e-5, max_iter=100, no_dag_constraint=True, loss_type='laplace', seed=seed)
     #nt = Notears(lambda1=lambda1=5e-2, h_tol=1e-5, max_iter=100, no_dag_constraint=True, loss_type='logistic', seed=seed)
     nt.learn(X)
@@ -922,7 +888,7 @@ def run_experiment(seed, base_path, num_samples):
     ############################################################################################
     # benchmark model 6 GOLEM
 
-    gol = GOLEM(num_iter=50000, lambda_1=5e-2, lambda_2=0.0, equal_variances=True, device_type='gpu', no_dag_constraint=True, seed=seed) # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
+    gol = GOLEM(num_iter=10000, lambda_1=1e-1, lambda_2=0.0, equal_variances=True, device_type='gpu', no_dag_constraint=True, seed=seed) # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
     #gol = GOLEM(num_iter=50000, lambda_1=5e-2, lambda_2=0.0, device_type='gpu', no_dag_constraint=True, seed=seed) # we deactivate DAG constraint by setting lambda_2=0.0 as done in FRP paper
     gol.learn(X)
 
@@ -1089,10 +1055,10 @@ if __name__ == "__main__":
                 "10SF41_linear_cyclic_GAUSS-EV_seed_1",
             ],
             "NWS": [
-                # "10NWS9_linear_cyclic_GAUSS-EV_seed_1",
-                # "10NWS18_linear_cyclic_GAUSS-EV_seed_1",
-                # "10NWS25_linear_cyclic_GAUSS-EV_seed_1",
-                # "10NWS34_linear_cyclic_GAUSS-EV_seed_1",
+                "10NWS9_linear_cyclic_GAUSS-EV_seed_1",
+                "10NWS18_linear_cyclic_GAUSS-EV_seed_1",
+                "10NWS25_linear_cyclic_GAUSS-EV_seed_1",
+                "10NWS34_linear_cyclic_GAUSS-EV_seed_1",
             ],
         },
         "increase_d": {
@@ -1172,7 +1138,8 @@ if __name__ == "__main__":
     # Now, for storing output, we want to structure the output folders differently for increase experiments.
     if args.exp_name.startswith("compare_"):
         # For compare experiments, use the provided (overridden) graph type.
-        output_base = os.path.join(data_dir, "experiment_results", args.exp_name, args.graph_type)
+        #output_base = os.path.join(data_dir, "experiment_results", args.exp_name, args.graph_type) #TODO check this
+        output_base = os.path.join(data_dir, "experiment_results", args.exp_name)
     else:
         # For increase experiments, we ignore args.graph_type for output.
         output_base = os.path.join(data_dir, "experiment_results", args.exp_name)

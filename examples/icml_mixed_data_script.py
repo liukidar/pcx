@@ -30,7 +30,7 @@ args = parser.parse_args()
 # Set GPU-related environment variables
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.9"
+#os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.9"
 os.environ["JAX_PLATFORM_NAME"] = "cuda"  # Force JAX to use CUDA
 
 import matplotlib.pyplot as plt
@@ -154,8 +154,8 @@ def run_experiment(seed, sample_size, data_path, base_folder=None):
     h_learning_rate = 1e-4
     T = 1
 
-    nm_epochs = 1500 # not much happens after 2000 epochs
-    every_n_epochs = 1
+    nm_epochs = 5000 # not much happens after 2000 epochs
+    every_n_epochs = 500
     batch_size = 128
 
 
@@ -786,10 +786,10 @@ def run_experiment(seed, sample_size, data_path, base_folder=None):
     # benchmark model 1 notears
 
     # notears learn
-    nt = Notears(lambda1=0.1, h_tol=1e-5, max_iter=200, loss_type='l2', seed=seed) # takes 8 seconds, final loss @ 4.1
-    #nt = Notears(lambda1=0.1, h_tol=1e-5, max_iter=200, loss_type='laplace', seed=seed) # takes 16 seconds, final loss @ 8.2
-    #nt = Notears(lambda1=0.1, h_tol=1e-3, max_iter=100, loss_type='logistic', seed=seed) # takes over 5 minutes, final loss @ 245
-    #nt = Notears(lambda1=0.1, h_tol=1se-3, max_iter=100, loss_type='poisson', seed=seed)
+    #nt = Notears(lambda1=1e0, h_tol=1e-5, max_iter=100, loss_type='l2', seed=seed) # takes 8 seconds, final loss @ 4.1
+    nt = Notears(lambda1=1e0, h_tol=1e-5, max_iter=100, loss_type='laplace', seed=seed) # takes 16 seconds, final loss @ 8.2
+    #nt = Notears(lambda1=1e0, h_tol=1e-5, max_iter=100, loss_type='logistic', seed=seed) # takes over 5 minutes, final loss @ 245
+    #nt = Notears(lambda1=0.1, h_tol=1e-5, max_iter=100, loss_type='poisson', seed=seed)
     nt.learn(X)
 
     # plot est_dag and true_dag
@@ -805,7 +805,7 @@ def run_experiment(seed, sample_size, data_path, base_folder=None):
     # benchmark model 2 pc (Peter & Clark)
     
     # A variant of PC-algorithm, one of [`original`, `stable`, `parallel`]
-    pc = PC(variant='parallel', alpha=0.03, ci_test='fisherz', random_state=seed) # F1 of 75%
+    pc = PC(variant='parallel', alpha=0.2, ci_test='fisherz', random_state=seed) # F1 of 75%
     #pc = PC(variant='stable', alpha=0.03) # F1 of 66%
     #pc = PC(variant='original', alpha=0.03) # F1 of 55%
     pc.learn(X)
@@ -821,24 +821,36 @@ def run_experiment(seed, sample_size, data_path, base_folder=None):
     ##################################################################################
     # benchmark model 3 icalingam
 
+    # icalingam (castle based)
     # max_iter : int, optional (default=1000)
-    g_ICAlingam = ICALiNGAM(max_iter=2000, random_state=seed) # F1 of 71%
-    g_ICAlingam.learn(X)
+    # g_ICAlingam = ICALiNGAM(max_iter=1000, random_state=seed) # F1 of 71%
+    # g_ICAlingam.learn(X)
+    # B_est_icalingam = np.array(g_ICAlingam.causal_matrix)
+    # W_est_icalingam = np.array(g_ICAlingam.weight_causal_matrix)
+
+    g_dlingam = DirectLiNGAM()
+    g_dlingam.learn(X)
+    B_est_dlingam = np.array(g_dlingam.causal_matrix)
+    W_est_dlingam = np.array(g_dlingam.weight_causal_matrix)
+
+    # ICALiNGAM (lingam based)
+    # g_ICAlingam = lingam.ICALiNGAM(random_state=seed)
+    # g_ICAlingam.fit(X)
+    # W_est_icalingam = np.array(g_ICAlingam.adjacency_matrix_)
+    # B_est_icalingam = compute_binary_adjacency(W_est_icalingam)
 
     # plot est_dag and true_dag
-    B_est_icalingam = np.array(g_ICAlingam.causal_matrix)
-    W_est_icalingam = np.array(g_ICAlingam.weight_causal_matrix)
-    GraphDAG(B_est_icalingam, B_true)
+    GraphDAG(B_est_dlingam, B_true)
 
     # calculate accuracy
-    met_icalingam = MetricsDAG(B_est_icalingam, B_true)
+    met_icalingam = MetricsDAG(B_est_dlingam, B_true)
     print(met_icalingam.metrics)
 
     ##################################################################################
     # benchmark model 4 lim
 
     # LiM from lingam library
-    lim = lingam.LiM(w_threshold=0.3, max_iter=200, h_tol=1e-8, rho_max=1e12, lambda1=0.4, seed=seed) # default rho_max is 1e16
+    lim = lingam.LiM(w_threshold=0.3, max_iter=100, h_tol=1e-8, rho_max=1e12, lambda1=1e-2, seed=seed) # default rho_max is 1e16
     # create array of shape (1, n_features) which indicates which columns/variables in data.values are discrete or continuous variables, where "1" indicates a continuous variable, while "0" a discrete variable.
     is_cont = np.array([(1 if X_df[col].nunique() > 2 else 0) for col in X_df.columns]).reshape(1, -1)
     #LiM.fit(X=X, dis_con=is_cont, only_global=False) # does not finish, even fater 375 minutes
@@ -861,7 +873,7 @@ def run_experiment(seed, sample_size, data_path, base_folder=None):
     from pc_parallel import PCParallel
 
     # Set parameters for the PCParallel-based test.
-    alpha = 0.05       # Significance level, increasing it will increase the number of edges
+    alpha = 0.2       # Significance level, increasing it will increase the number of edges
     processes = 100    # Number of processes
     kcmi = 25          # k for mutual information estimation
     kperm = 5          # Local permutation neighborhood size
@@ -902,7 +914,8 @@ def run_experiment(seed, sample_size, data_path, base_folder=None):
         "Our (PC)": (B_est, W_est),
         "Peter Clark": (B_est_pc, None),  
         "NOTEARS": (B_est_nt, W_est_nt),
-        "ICALiNGAM": (B_est_icalingam, W_est_icalingam),
+        #"ICALiNGAM": (B_est_icalingam, W_est_icalingam),
+        "DirectLiNGAM": (B_est_dlingam, W_est_dlingam),
         "LiM": (B_est_lim, W_est_lim),
         "mCMIkNN": (B_est_mcmiknn, None),  
     }
@@ -1024,11 +1037,14 @@ if __name__ == "__main__":
     from causal_metrics import compute_SHD, compute_SID, compute_ancestor_AID, compute_TEE
 
     # causal libraries
+    
+    # lingam
     import lingam
+
     os.environ["CASTLE_BACKEND"] = "pytorch"  # Prevents repeated backend initialization
     import cdt, castle
 
-    from castle.algorithms import Notears, ICALiNGAM, PC
+    from castle.algorithms import Notears, ICALiNGAM, PC, DirectLiNGAM
     from castle.algorithms import DirectLiNGAM, GOLEM
     from castle.algorithms.ges.ges import GES
     from castle.algorithms import PC
@@ -1045,9 +1061,9 @@ if __name__ == "__main__":
 
     if args.exp_name == "mixed_confounding":
         # For mixed_confounding, use a fixed list of sample sizes and a fixed data path.
-        sample_sizes = [500, 1000, 2000, 4000]
+        sample_sizes = [250, 500, 750, 1000, 1500, 2000]
         seed_values = list(range(1, args.num_seeds + 1))
-        data_path = "../data/custom_mixed_confounding_softplus/"
+        data_path = "/share/amine.mcharrak/mixed_data_final/custom_mixed_confounding_softplus/"
         
         output_dir = os.path.join(data_path, "experiment_results")
         os.makedirs(output_dir, exist_ok=True)

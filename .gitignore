@@ -138,3 +138,12 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Ignore all .txt and .csv files
+*.txt
+*.csv
+*.tex
+
+# Ignore folders named "plots" and "tables" anywhere in the project
+**/plots*/
+**/tables*/
