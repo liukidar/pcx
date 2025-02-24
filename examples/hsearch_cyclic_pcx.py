@@ -13,8 +13,7 @@ args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 #os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.9"
-os.environ["JAX_PLATFORM_NAME"] = "cuda"  # Force JAX to use CUDAimport jax.numpy as jnp
-
+os.environ["JAX_PLATFORM_NAME"] = "cuda"  # Force JAX to use CUDA
 
 # Your experiment paths and parameters.
 data_dir = "/share/amine.mcharrak/cyclic_data_final"
@@ -126,7 +125,7 @@ lam_l1 = 1e-1    # effective value depends on Frobenius norm of W at any time
 num_samples = 2000
 w_learning_rate = 1e-3
 h_learning_rate = 1e-4
-nm_epochs = 5000
+nm_epochs = 3000
 batch_size = 256
 every_n_epochs = nm_epochs // 5
 
@@ -381,7 +380,7 @@ def objective(trial):
         raise ValueError("No graph-folder pairs found in experiment_paths.")
     
     # Set how many random (graph, seed) combinations to average over.
-    num_combinations = 6
+    num_combinations = 10
     if len(all_pairs) < num_combinations:
         num_combinations = len(all_pairs)
     
@@ -424,26 +423,24 @@ if __name__ == "__main__":
     import random
     import os
 
-    # Remove previous study database and log file if they exist.
+    # Define the storage path for the persistent study.
     storage_path = "/share/amine.mcharrak/hsearch/cyclic/optuna_study.db"
-    if os.path.exists(storage_path):
-        os.remove(storage_path)
     os.makedirs(os.path.dirname(storage_path), exist_ok=True)
-    
+
+    # Define the log file.
     intermediate_file = "hsearch_cyclic_intermediate_best.txt"
-    if os.path.exists(intermediate_file):
-        os.remove(intermediate_file)
+    # Do not remove the log file to preserve previous entries.
     
     # Create a new study with persistent storage.
     study = optuna.create_study(
-        study_name="my_study",
+        study_name="my_cyclic_study",
         storage=f"sqlite:///{storage_path}",
-        load_if_exists=False,
+        load_if_exists=True,
         direction="minimize"
     )
     
     # Run optimization.
-    study.optimize(objective, n_trials=1000, timeout=60*60*24*2, callbacks=[callback])
+    study.optimize(objective, n_trials=1000, timeout=60*60*24*4, callbacks=[callback])
     
     print("Best hyperparameters: ", study.best_params)
     print("Best Normalized Final CSS (per true edge): ", study.best_value)

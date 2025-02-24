@@ -2,9 +2,32 @@ import lingam
 import networkx as nx
 import numpy as np
 from gadjid import ancestor_aid, parent_aid, shd
+from cdt.metrics import SHD
 from dglearn.dglearn.evaluation.evaluation_shd import min_colperm_shd as _compute_cycle_SHD
 from dglearn.dglearn.evaluation.evaluation_kld import minimize_kld as _minimize_kld
 from scipy.optimize import minimize, Bounds, basinhopping
+
+########################################################################################################
+
+def compute_SHD_robust(B_true, B_est):
+    """
+    Compute Structural Hamming Distance (SHD) and normalised SHD.
+    Despite the graph being acyclic or cyclic, this function computes the SHD robustly.
+
+    Parameters:
+        B_true (np.ndarray): Ground truth adjacency matrix.
+        B_est (np.ndarray): Estimated adjacency matrix.
+
+    Returns:
+        tuple: (normalised SHD, absolute SHD)
+    """
+    B_true_binary = (B_true > 0).astype(np.int8)
+    B_est_binary = (B_est > 0).astype(np.int8)
+    # number of edges in the ground truth graph 
+    num_edges = np.sum(B_true_binary)
+    absolute_SHD = SHD(B_true_binary, B_est_binary, double_for_anticausal=False)
+    normalised_SHD = absolute_SHD / num_edges
+    return normalised_SHD, absolute_SHD
 
 
 def error_metrics(B_true, B_est):
