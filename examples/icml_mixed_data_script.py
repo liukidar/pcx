@@ -1,7 +1,11 @@
 import multiprocessing as mp
-mp.set_start_method("fork", force=True)
+#mp.set_start_method("fork", force=True)
 #mp.set_start_method("spawn", force=True)
-#mp.set_start_method("forkserver", force=True)
+mp.set_start_method("forkserver", force=True) 
+# Set multiprocessing start method to 'forkserver' to avoid CUDA initialization conflicts
+# between JAX and other libraries (e.g. mcmiknn). This prevents errors like:
+# "CUDA_ERROR_NOT_INITIALIZED: initialization error" and 
+# "Failed setting context" when running parallel computations with GPU.
 
 import os
 import argparse
@@ -165,7 +169,7 @@ def run_experiment(seed, sample_size, data_path, base_folder=None):
     # lam_h = 1e4
     # lam_l1 = 1e0
 
-    lam_h = 1e4
+    lam_h = 2e3
     lam_l1 = 1e0
 
     # Create a file name string for the hyperparameters
@@ -181,23 +185,18 @@ def run_experiment(seed, sample_size, data_path, base_folder=None):
     @pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), out_axes=(None, None, None, None, 0), axis_name="batch") # if multiple outputs
     def energy(*, model: Complete_Graph):
 
-        print("Energy: Starting computation")
         x_ = model(None)
-        print("Energy: Got model output")
         
         W = model.get_W()
         # Dimensions of W
         d = W.shape[0]
-        print(f"Energy: Got W (shape: {W.shape}) and d: {d}")
 
         # PC energy term
         pc_energy = jax.lax.pmean(model.energy(), axis_name="batch")
-        print(f"Energy: PC energy term: {pc_energy}")
 
         # L1 regularization using adjacency matrix (scaled by Frobenius norm)
         l1_reg = jnp.sum(jnp.abs(W)) / (jnp.linalg.norm(W, ord='fro') + 1e-8)
         #l1_reg = jnp.sum(jnp.abs(W)) / d
-        print(f"Energy: L1 reg term: {l1_reg}")
 
         # DAG constraint (stable logarithmic form)
         #h_reg = notears_dag_constraint(W)
@@ -207,11 +206,9 @@ def run_experiment(seed, sample_size, data_path, base_folder=None):
         #h_reg = dagma_dag_constraint(W)
         h_reg = dagma_dag_constraint(W) / (jnp.sqrt(d) + 1e-8)
         #h_reg = dagma_dag_constraint(W) / d  # with normalization
-        print(f"Energy: DAG constraint term: {h_reg}")
             
         # Combined loss
         obj = pc_energy + lam_h * h_reg + lam_l1 * l1_reg
-        print(f"Energy: Final objective: {obj}")
 
         # Ensure obj is a scalar, not a (1,) array because JAX's grad and value_and_grad functions are designed
         # to compute gradients of *scalar-output functions*
@@ -221,19 +218,14 @@ def run_experiment(seed, sample_size, data_path, base_folder=None):
 
     @pxf.jit(static_argnums=0)
     def train_on_batch(T: int, x: jax.Array, *, model: Complete_Graph, optim_w: pxu.Optim, optim_h: pxu.Optim):
-        print("1. Starting train_on_batch")  
 
         model.train()
-        print("2. Model set to train mode")
 
         model.freeze_nodes(freeze=True)
-        print("3. Nodes frozen")
 
         # init step
         with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-            print("4. Doing forward for initialization")
             forward(x, model=model)
-            print("5. After forward for initialization")
 
         """
         # The following code might not be needed as we are keeping the vodes frozen at all times
@@ -250,38 +242,30 @@ def run_experiment(seed, sample_size, data_path, base_folder=None):
         """
 
         with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-            print("6. Before computing gradients")
+
             (obj, (pc_energy, h_reg, l1_reg, x_)), g = pxf.value_and_grad(
                 pxu.M(pxnn.LayerParam).to([False, True]), 
                 has_aux=True
             )(energy)(model=model) # pxf.value_and_grad returns a tuple structured as ((value, aux), grad), not as six separate outputs.
             
-            print("7. After computing gradients")
             #print("Gradient structure:", g)
 
-            print("8. Before zeroing out the diagonal gradients")
             # Zero out the diagonal gradients using jax.numpy.fill_diagonal
             weight_grads = g["model"].layers[0].nn.weight.get()
             weight_grads = jax.numpy.fill_diagonal(weight_grads, 0.0, inplace=False)
             # print the grad values using the syntax jax.debug.print("🤯 {x} 🤯", x=x)
             #jax.debug.print("{weight_grads}", weight_grads=weight_grads)
             g["model"].layers[0].nn.weight.set(weight_grads)
-            print("9. After zeroing out the diagonal gradients")
 
             
-        print("10. Before optimizer step")
         optim_w.step(model, g["model"])
         #optim_w.step(model, g["model"], scale_by=1.0/x.shape[0])
-        print("11. After optimizer step")
 
         with pxu.step(model, clear_params=pxc.VodeParam.Cache):
-            print("12. Before final forward")
             forward(None, model=model)
             e_avg_per_sample = model.energy()
-            print("13. After final forward")
 
         model.freeze_nodes(freeze=False)
-        print("14. Nodes unfrozen")
 
         return pc_energy, l1_reg, h_reg, obj
 
@@ -843,8 +827,8 @@ def run_experiment(seed, sample_size, data_path, base_folder=None):
     GraphDAG(B_est_dlingam, B_true)
 
     # calculate accuracy
-    met_icalingam = MetricsDAG(B_est_dlingam, B_true)
-    print(met_icalingam.metrics)
+    met_dlingam = MetricsDAG(B_est_dlingam, B_true)
+    print(met_dlingam.metrics)
 
     ##################################################################################
     # benchmark model 4 lim

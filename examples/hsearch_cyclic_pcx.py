@@ -368,8 +368,10 @@ def objective(trial):
     import random
 
     # Sample only the hyperparameters.
-    lam_h_sample = trial.suggest_float("lam_h", 1e-5, 1e3, log=True)
-    lam_l1_sample = trial.suggest_float("lam_l1", 1e-5, 1e3, log=True)
+    # lam_h_sample = trial.suggest_float("lam_h", 1e-5, 1e5, log=True)
+    # lam_l1_sample = trial.suggest_float("lam_l1", 1e-5, 1e5, log=True)
+    lam_h_sample = trial.suggest_float("lam_h", 1e2, 1e5, log=True)
+    lam_l1_sample = trial.suggest_float("lam_l1", 1e-5, 1e5, log=True)
     
     # Combine all eligible (graph_type, folder) pairs.
     all_pairs = []
