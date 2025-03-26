@@ -73,11 +73,7 @@ def _make_tuple(x: Any):
 def _repr_function(f: Callable) -> str:
     """Human readable function representation."""
     _signature = inspect.signature(f)
-    _args = [
-        f"{k}={v.default}"
-        for k, v in _signature.parameters.items()
-        if v.default is not inspect.Parameter.empty
-    ]
+    _args = [f"{k}={v.default}" for k, v in _signature.parameters.items() if v.default is not inspect.Parameter.empty]
     _args = ", ".join(_args)
     while not hasattr(f, "__name__"):
         if not hasattr(f, "func"):
@@ -196,9 +192,7 @@ class _BaseTransform(abc.ABC):
 
     def __repr__(self):
         _fn = (
-            repr(self.__wrapped__)
-            if isinstance(self.__wrapped__, _BaseTransform)
-            else _repr_function(self.__wrapped__)
+            repr(self.__wrapped__) if isinstance(self.__wrapped__, _BaseTransform) else _repr_function(self.__wrapped__)
         )
         return f"{self.__class__.__name__}(fn={_fn})"
 
@@ -235,7 +229,7 @@ class _BaseTransform(abc.ABC):
 
         # kwargs is reffed so we don't have to worry about (un)flattening its parameters,
         # so no need to specify a is_leaf function.
-        mask = jtu.tree_map(map_fn, mask, kwargs)
+        mask = jtu.tree_map(map_fn, mask, kwargs, is_leaf=lambda mask: mask is None)
 
         # In case the custom mask overwrites the __RKG mask
         mask["__RKG"] = rkg_mask
@@ -299,9 +293,7 @@ class ValueAndGrad(_BaseTransform):
     easily be redesigned to allow for masking of the value if deemed to be a necessary feature.
     """
 
-    def __init__(
-        self, fn: "_BaseTransform" | Callable, kwargs_mask: Any = {}, **t_kwargs: Any
-    ):
+    def __init__(self, fn: "_BaseTransform" | Callable, kwargs_mask: Any = {}, **t_kwargs: Any):
         super().__init__(fn)
         self.kwargs_mask = kwargs_mask
         self.has_aux = t_kwargs["has_aux"]
@@ -360,9 +352,7 @@ class Vmap(_BaseTransform):
     NOTE: RKG is automatically handled by the transformation, so it must not be provided in the kwargs.
     """
 
-    def __init__(
-        self, fn: "_BaseTransform" | Callable, kwargs_mask: Any = {}, **t_kwargs: Any
-    ):
+    def __init__(self, fn: "_BaseTransform" | Callable, kwargs_mask: Any = {}, **t_kwargs: Any):
         super().__init__(fn)
         self.kwargs_mask = kwargs_mask
         self.t_kwargs = t_kwargs
@@ -373,10 +363,9 @@ class Vmap(_BaseTransform):
 
         # Compute vaxes dimension which is necessary to split the RKG key.
         def _extract_vaxes_dim(node, mask):
-            for param in filter(
-                lambda _node: hasattr(_node, "shape"), jtu.tree_leaves(node)
-            ):
-                return param.shape[mask]
+            if mask is not None:
+                for param in filter(lambda _node: hasattr(_node, "shape"), jtu.tree_leaves(node)):
+                    return param.shape[mask]
 
             return None
 
@@ -385,6 +374,7 @@ class Vmap(_BaseTransform):
                 lambda mask, node: _extract_vaxes_dim(node, mask),
                 _in_axes_mask,
                 (*args, kwargs),
+                is_leaf=lambda mask: mask is None,
             )
         )[0]
 

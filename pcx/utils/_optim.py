@@ -85,8 +85,7 @@ class Optim(BaseModule):
         _is_valid_grads = True
 
         if scale_by is not None:
-
-            def _map_grad(_, g):
+            def _map_grad(g):
                 nonlocal _is_valid_grads
                 if get(g) is None:
                     _is_valid_grads = False
@@ -95,8 +94,7 @@ class Optim(BaseModule):
 
                 return set(g, g * scale_by)
         else:
-
-            def _map_grad(_, g):
+            def _map_grad(g):
                 nonlocal _is_valid_grads
                 if get(g) is None:
                     _is_valid_grads = False
@@ -104,9 +102,10 @@ class Optim(BaseModule):
                 return g
 
         grads = jtu.tree_map(
-            _map_grad,
+            lambda f, g: None if f is None else _map_grad(g),
             self.filter.get(),
             grads,
+            is_leaf=lambda f: f is None
         )
 
         if _is_valid_grads is False:
@@ -115,9 +114,10 @@ class Optim(BaseModule):
             return None
 
         module = jtu.tree_map(
-            lambda _, x: x,
+            lambda f, x: None if f is None else x,
             self.filter.get(),
             module,
+            is_leaf=lambda f: f is None
         )
 
         updates, state = self.optax_opt.update(
@@ -231,13 +231,13 @@ class OptimTree(BaseModule):
 
         # Each optimizer independently checks if the gradients are None and skips the optimization step if so.
         updates = jtu.tree_map(
-            lambda optim, g, m: optim.step(
+            lambda optim, g, m: None if optim is None else optim.step(
                 m, g, scale_by=scale_by, apply_updates=apply_updates, allow_none=True
             ),
             self.state.get(),
             grads,
             module,
-            is_leaf=lambda x: isinstance(x, Optim),
+            is_leaf=lambda x: x is None or isinstance(x, Optim),
         )
 
         return updates
@@ -245,11 +245,11 @@ class OptimTree(BaseModule):
     def apply_updates(self, module: PyTree, updates: PyTree) -> None:
         # TODO: check this works properly as intended
         jtu.tree_map(
-            lambda optim, u, m: optim.apply_updates(m, u),
+            lambda optim, u, m: None if optim is None else optim.apply_updates(m, u),
             self.state.get(),
             updates,
             module,
-            is_leaf=lambda x: isinstance(x, Optim),
+            is_leaf=lambda x: x is None or isinstance(x, Optim),
         )
 
     def clear(self) -> None:
