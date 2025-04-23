@@ -1,7 +1,7 @@
 # PCX -- Predictive Coding Networks Made Simple
 
 ## Notes
-I've uploaded some old research [notes](https://github.com/liukidar/pcx/blob/main/notes.pdf) I never had time to dive deeper into, if anyone finds any of it interesting, I am always happy to chat about it.
+I've uploaded some old research [notes](https://github.com/liukidar/pcx/blob/main/notes.pdf) I never had time to dive deeper into. I'm not sure if they are still relevant, but if anyone finds any of it interesting, I am always happy to chat about it.
 In particular:
 - the weights initialisation may not be generating "good" gradients according to the xavier initialisation paper formulae, when used for PC networks (until page 9);
 - rec-lra (https://arxiv.org/abs/2002.03911) does something that the authors don't make explicit in the paper that maybe can be mathematically formalised and generalised to be applied to PC as well in order to create more interconnected networks (that propagate the energy faster) (page 9-10);
