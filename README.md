@@ -1,5 +1,12 @@
 # PCX -- Predictive Coding Networks Made Simple
 
+## Notes
+I've uploaded some old research [notes](https://github.com/liukidar/pcx/blob/main/notes.pdf) I never had time to dive deeper into, if anyone finds any of it interesting, I am always happy to chat about it.
+In particular:
+- the weights initialisation may not be generating "good" gradients according to the xavier initialisation paper formulae, when used for PC networks (until page 9);
+- rec-lra (https://arxiv.org/abs/2002.03911) does something that the authors don't make explicit in the paper that maybe can be mathematically formalised and generalised to be applied to PC as well in order to create more interconnected networks (that propagate the energy faster) (page 9-10);
+- It could be that waiting for the network to converge during inference is actually wrong with the current formulation. This would explain a lot of the behvaiours/tricks we have experineced to make PCNs train effectively. However it is a big problem for PC since its theoretical formulation is based around the idea of state convergence via inference (page 11-12, sorry if it's a bit messy).
+
 ## Introduction
 
 PCX is a Python JAX-based library designed to develop highly configurable predictive coding networks. Please refer to the tutorial notebooks in the examples folder to get started. PCX can be installed by following one of the listed three methods.
