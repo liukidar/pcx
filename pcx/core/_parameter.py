@@ -309,7 +309,7 @@ class ParamDict(DynamicParam):
         self._value[__key] = __value
 
     def __contains__(self, __key: str) -> bool:
-        return __key in self._value
+        return self._value is not None and __key in self._value
 
     def get(
         self, key: str | None = None, default: jax.Array | Any | None = None
