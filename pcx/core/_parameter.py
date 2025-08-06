@@ -314,7 +314,7 @@ class ParamDict(DynamicParam):
     def get(
         self, key: str | None = None, default: jax.Array | Any | None = None
     ) -> Any:
-        return self._value.get(key, default) if key is not None else self._value
+        return self._value.get(key, default) if self._value is not None and key is not None else self._value
 
     def set(self, value) -> None:
         self._value = value
