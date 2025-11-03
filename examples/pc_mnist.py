@@ -290,7 +290,9 @@ def main(run_info: stune.RunInfo):
 
 
 if __name__ == "__main__":
-   
+    import torch.multiprocessing as mp
+    mp.set_start_method('spawn', force=True)
+
     run_info={
         "hp/act_fn": "gelu",
         "hp/batch_size": 128,
