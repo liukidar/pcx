@@ -10,13 +10,13 @@ import jax
 import jax.numpy as jnp
 import optax
 
-# pcax
-import pcax as px
-import pcax.predictive_coding as pxc
-import pcax.nn as pxnn
-import pcax.utils as pxu
-import pcax.functional as pxf
-from omegacli import OmegaConf
+# pcx
+import pcx as px
+import pcx.predictive_coding as pxc
+import pcx.nn as pxnn
+import pcx.utils as pxu
+import pcx.functional as pxf
+from omegaconf import OmegaConf
 # stune
 import stune
 import json

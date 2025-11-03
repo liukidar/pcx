@@ -21,6 +21,7 @@ from omegaconf import OmegaConf
 import stune
 import json
 import copy
+import time
 
 # We create our model, which inherits from pxc.EnergyModule, so to have access to the notion
 # energy. The constructor takes in input all the hyperparameters of the model. Being static
@@ -240,11 +241,11 @@ def main(run_info: stune.RunInfo):
 
     model = LinearModel(
         input_dim=784,
-        hidden_dim=128,
-        nm_layers=4,
+        hidden_dim=run_info["hp/hidden_dim"],
+        nm_layers=run_info["hp/nm_layers"],
         output_dim=10, 
         act_fn=getattr(jax.nn, run_info["hp/act_fn"]))
-    
+
     train_dataloader, test_dataloader = get_dataloaders(batch_size)
 
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
@@ -273,14 +274,28 @@ def main(run_info: stune.RunInfo):
     best_accuracy = 0
     accuracies = []
     beta = 1.0
+    epoch_times = []
+
+    t_start = time.perf_counter()
     for e in range(nm_epochs):
+        t0 = time.perf_counter()
+
         train(train_dataloader, T=run_info["hp/T"], model=model, optim_w=optim_w, optim_h=optim_h, beta=beta)
         a, y = eval(test_dataloader, model=model)
         accuracies.append(float(a))
+
         
+        epoch_time = time.perf_counter() - t0
+
+        if e > 1:
+            epoch_times.append(epoch_time)
+
         if a > best_accuracy:
             best_accuracy = a
-        print(f"Epoch {e+1}/{nm_epochs}, Accuracy: {a:.4f}")
+        #print(f"Epoch {e+1}/{nm_epochs}, Accuracy: {a:.4f}, Epoch time: {epoch_time:.2f}s")
+
+    total_time = time.perf_counter() - t_start
+    print(f"T={run_info['hp/T']}; L={run_info['hp/nm_layers']}; Average epoch time: {np.mean(epoch_times):.2f}s,Best accuracy: {best_accuracy:.4f}")
 
     del train_dataloader
     del test_dataloader
@@ -290,17 +305,22 @@ def main(run_info: stune.RunInfo):
 
 
 if __name__ == "__main__":
-   
-    run_info={
-        "hp/act_fn": "gelu",
-        "hp/batch_size": 128,
-        "hp/epochs": 25,
-        "hp/T": 8,
-        "hp/beta": 1.0,
-        "hp/optim/w/lr": 0.0002968930522737348,
-        "hp/optim/w/wd": 0.0003550241114984682,
-        "hp/optim/x/lr": 0.010534787245955935,
-        "hp/optim/x/momentum": 0.65,
-    }
 
-    main(run_info)
+
+    for L in [10, 20, 30, 40]:
+
+        run_info={
+            "hp/act_fn": "gelu",
+            "hp/batch_size": 128,
+            "hp/epochs": 10,
+            "hp/T": 30,
+            "hp/beta": 1.0,
+            "hp/optim/w/lr": 0.0002968930522737348,
+            "hp/optim/w/wd": 0.0003550241114984682,
+            "hp/optim/x/lr": 0.010534787245955935,
+            "hp/optim/x/momentum": 0.65,
+            "hp/nm_layers": L,
+            "hp/hidden_dim": 32,
+        }
+
+        main(run_info)
