@@ -241,7 +241,7 @@ def main(run_info: stune.RunInfo):
     model = LinearModel(
         input_dim=784,
         hidden_dim=128,
-        nm_layers=6,
+        nm_layers=4,
         output_dim=10, 
         act_fn=getattr(jax.nn, run_info["hp/act_fn"]))
     
