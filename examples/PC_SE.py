@@ -16,7 +16,7 @@ import pcx.predictive_coding as pxc
 import pcx.nn as pxnn
 import pcx.utils as pxu
 import pcx.functional as pxf
-from omegacli import OmegaConf
+from omegaconf import OmegaConf
 # stune
 import stune
 import json
@@ -241,7 +241,7 @@ def main(run_info: stune.RunInfo):
     model = LinearModel(
         input_dim=784,
         hidden_dim=128,
-        nm_layers=4,
+        nm_layers=6,
         output_dim=10, 
         act_fn=getattr(jax.nn, run_info["hp/act_fn"]))
     
@@ -258,12 +258,16 @@ def main(run_info: stune.RunInfo):
         end_value=0.1 * run_info["hp/optim/w/lr"],
         exponent=1.0)
 
+    # FIX: Wrap optimizers in lambda functions as shown in all pcax examples
     optim_h = pxu.Optim(
-        optax.chain(
+        lambda: optax.chain(
             optax.sgd(run_info["hp/optim/x/lr"], momentum=run_info["hp/optim/x/momentum"]),
         ),
     )
-    optim_w = pxu.Optim(optax.adamw(schedule,weight_decay=run_info["hp/optim/w/wd"]), pxu.M(pxnn.LayerParam)(model))
+    optim_w = pxu.Optim(
+        lambda: optax.adamw(schedule, weight_decay=run_info["hp/optim/w/wd"]), 
+        pxu.M(pxnn.LayerParam)(model)
+    )
     
     
     best_accuracy = 0
