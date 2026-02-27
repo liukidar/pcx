@@ -181,10 +181,10 @@ def forward(x, y, *, model: LinearModel, beta=1.0):
 @pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), in_axes=(0,), out_axes=(None, 0), axis_name="batch")
 def energy(x, *, model: LinearModel):
     y_ = model(x, None)
-    return jax.lax.psum(model.energy(), "batch"), y_
+    return jax.lax.psum(model.batch_energy(), "batch"), y_
 
 
-@pxf.jit(static_argnums=0, donate_argnames=("model", "optim"))
+@pxf.jit(static_argnums=0, donate_argnames=("model",))
 def train_on_batch(T: int, x: jax.Array, y: jax.Array, *, model: LinearModel, optim_w: pxu.Optim, optim_h: pxu.Optim, beta: float = 1.0):
     model.train()
 
@@ -200,7 +200,7 @@ def train_on_batch(T: int, x: jax.Array, y: jax.Array, *, model: LinearModel, op
                 energy
             )(x, model=model)
 
-        optim_h.step(model, g["model"], True)
+        optim_h.step(model, g["model"])
     optim_h.clear()
 
     # Learning step
@@ -244,11 +244,11 @@ def main(run_info: stune.RunInfo):
 
     model = LinearModel(
         input_dim=784,
-        hidden_dim=run_info["hp/hidden_dim"],
+        hidden_dim=32,
         nm_layers=run_info["hp/nm_layers"],
         output_dim=10, 
         act_fn=getattr(jax.nn, run_info["hp/act_fn"]))
-
+    
     train_dataloader, test_dataloader = get_dataloaders(batch_size)
 
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
@@ -262,16 +262,14 @@ def main(run_info: stune.RunInfo):
         end_value=0.1 * run_info["hp/optim/w/lr"],
         exponent=1.0)
 
-    # FIX: Wrap optimizers in lambda functions as shown in all pcax examples
     optim_h = pxu.Optim(
-        lambda: optax.chain(
-            optax.sgd(run_info["hp/optim/x/lr"], momentum=run_info["hp/optim/x/momentum"]),
-        ),
+        lambda: optax.sgd(run_info["hp/optim/x/lr"], momentum=run_info["hp/optim/x/momentum"]),
     )
     optim_w = pxu.Optim(
         lambda: optax.adamw(schedule, weight_decay=run_info["hp/optim/w/wd"]), 
         pxu.M(pxnn.LayerParam)(model)
     )
+    
     
     
     best_accuracy = 0
@@ -311,7 +309,7 @@ def main(run_info: stune.RunInfo):
 
 if __name__ == "__main__":
 
-    for L in [5, 10, 15]:
+    for L in [10, 20, 30]:
 
         run_info={
             "hp/act_fn": "gelu",

@@ -26,67 +26,74 @@ import json
 import copy
 import time
 
-# We create our model, which inherits from pxc.EnergyModule, so to have access to the notion
-# energy. The constructor takes in input all the hyperparameters of the model. Being static
-# values, if we intend to save them withing the model we must wrap them into a 'StaticParam'.
-class LinearModel(pxc.EnergyModule):
+
+class VGG5Model(pxc.EnergyModule):
     def __init__(
         self,
-        input_dim: int,
-        hidden_dim: int,
+        input_channels: int,
         output_dim: int,
-        nm_layers: int,
         act_fn: Callable[[jax.Array], jax.Array]
     ) -> None:
         super().__init__()
 
         self.act_fn = px.static(act_fn)
         
-        self.layers = [pxnn.Linear(input_dim, hidden_dim)] + [
-            pxnn.Linear(hidden_dim, hidden_dim) for _ in range(nm_layers - 2)
-        ] + [pxnn.Linear(hidden_dim, output_dim)]
-
-        # the default ruleset for a Vode is: `{"STATUS.INIT": ("h, u <- u",),}` which means:
-        # "if the status is set to 'STATUS.INIT', everytime I set 'u', save that value not only
-        # in 'u', but also in 'x', which is exactly the behvaiour of a forward pass.
-        # By default if not specified, the behaviour is '* <- *', i.e., save everything passed
-        # to the vode via __call__ (remember vode(a) equals to vode.set("u", a)).
-        #
-        # Since we are doing classification, we replace the last energy with the equivalent of
-        # cross entropy loss for predictive coding.
-        self.vodes = [
-            pxc.Vode() for _ in range(nm_layers - 1)
-        ] + [pxc.Vode(pxc.se_energy)]
+        # VGG-5 architecture from table:
+        # Channel Sizes: [128, 256, 512, 512]
+        # Kernel Sizes: [3, 3, 3, 3]
+        # Strides: [1, 1, 1, 1]
+        # Paddings: [1, 1, 1, 0]
+        # Pool: 2×2 with stride 2
         
-        # 'frozen' is not a magic word, we define it here and use it later to distinguish between
-        # vodes we want to differentiate or not.
-        # NOTE: any attribute of a Param (except its value) is treated automatically as static,
-        # no need to specify it (but it's possible if you like more consistency,
-        # i.e., ...frozen = px.static(True)).
-        self.vodes[-1].h.frozen = True
+        self.conv_blocks = [
+            # Block 1: input_channels -> 128
+            (pxnn.Conv2d(input_channels, 128, kernel_size=3, stride=1, padding=1),
+             pxnn.MaxPool2d(kernel_size=2, stride=2)),
+            # Block 2: 128 -> 256
+            (pxnn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
+             pxnn.MaxPool2d(kernel_size=2, stride=2)),
+            # Block 3: 256 -> 512
+            (pxnn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1),
+             pxnn.MaxPool2d(kernel_size=2, stride=2)),
+            # Block 4: 512 -> 512 with padding=0
+            (pxnn.Conv2d(512, 512, kernel_size=3, stride=1, padding=0),
+             pxnn.MaxPool2d(kernel_size=2, stride=2)),
+        ]
+        
+        # Vodes for each conv block (4 vodes for conv layers)
+        self.vodes = [pxc.Vode() for _ in range(len(self.conv_blocks))]
+        
+        # After all conv+pool operations on 32×32 input:
+        # 32 -> pool -> 16 -> pool -> 8 -> pool -> 4 -> conv(p=0) -> 2 -> pool -> 1
+        # Final feature map: 512 × 1 × 1 = 512
+        
+        # Classifier head
+        self.classifier = pxnn.Linear(512, output_dim)
+        
+        # Use cross-entropy energy for classification
+        self.classifier_vode = pxc.Vode(pxc.ce_energy)
+        self.classifier_vode.h.frozen = True
 
     def __call__(self, x, y, beta=1.0):
-        for v, l in zip(self.vodes[:-1], self.layers[:-1]):
-            # remember 'x = v(a)' corresponds to v.set("u", a); x = v.get("x")
-            #
-            # note that 'self.act_fn' is a StaticParam, so to access it we would have to do
-            # self.act_fn.get()(...), however, all standard methods such as __call__ and
-            # __getitem__ are overloaded such that 'self.act_fn.__***__' becomes
-            # 'self.act_fn.get().__***__'
-            x = v(self.act_fn(l(x)))
-
-        x = self.vodes[-1](self.layers[-1](x))
+        # Process through conv blocks
+        for (conv, pool), vode in zip(self.conv_blocks, self.vodes):
+            x = conv(x)
+            x = self.act_fn(x)
+            x = pool(x)
+            x = vode(x)
+        
+        # Flatten for classifier
+        x = x.flatten()
+        
+        # Classifier
+        x = self.classifier(x)
+        x = self.classifier_vode(x)
 
         if y is not None:
             # Nudging
-            self.vodes[-1].set("h", self.vodes[-1].get("u") - beta * (self.vodes[-1].get("u") - y))
+            self.classifier_vode.set("h", self.classifier_vode.get("u") - beta * (self.classifier_vode.get("u") - y))
            
-        return self.vodes[-1].get("u")
-
-
-# This is a simple collate function that stacks numpy arrays used to interface
-# the PyTorch dataloader with JAX. In the future we hope to provide custom dataloaders
-# that are independent of PyTorch.
+        return self.classifier_vode.get("u")
 
 
 def numpy_collate(batch):
@@ -99,9 +106,6 @@ def numpy_collate(batch):
         return np.array(batch)
 
 
-# The dataloader assumes cuda is being used, as such it sets 'pin_memory = True' and
-# 'prefetch_factor = 2'. Note that the batch size should be constant during training, so
-# we set 'drop_last = True' to avoid having to deal with variable batch sizes.
 class TorchDataloader(torch.utils.data.DataLoader):
     def __init__(
         self,
@@ -135,16 +139,25 @@ class TorchDataloader(torch.utils.data.DataLoader):
 
 
 def get_dataloaders(batch_size: int):
-    t = transforms.Compose([
-    transforms.ToTensor(),  # Converts to tensor
-    transforms.Normalize((0.5,), (0.5,)),  # Normalize with mean and std dev
-    transforms.Lambda(lambda x: torch.flatten(x)),  # Flatten the tensor
-    lambda x: x.numpy()
+    # Standard CIFAR-10 data augmentation for training
+    train_transform = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        lambda x: x.numpy()
+    ])
+    
+    # Test transform without augmentation
+    test_transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        lambda x: x.numpy()
     ])
 
-    train_dataset = torchvision.datasets.MNIST(
-        "~/tmp/mnist/",
-        transform=t,
+    train_dataset = torchvision.datasets.CIFAR10(
+        "~/tmp/cifar10/",
+        transform=train_transform,
         download=True,
         train=True,
     )
@@ -156,9 +169,9 @@ def get_dataloaders(batch_size: int):
         num_workers=4,
     )
 
-    test_dataset = torchvision.datasets.MNIST(
-        "~/tmp/mnist/",
-        transform=t,
+    test_dataset = torchvision.datasets.CIFAR10(
+        "~/tmp/cifar10/",
+        transform=test_transform,
         download=True,
         train=False,
     )
@@ -174,18 +187,18 @@ def get_dataloaders(batch_size: int):
 
 
 @pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), in_axes=(0, 0), out_axes=0, axis_name="batch")
-def forward(x, y, *, model: LinearModel, beta=1.0):
+def forward(x, y, *, model: VGG5Model, beta=1.0):
     return model(x, y, beta=beta)
 
 
 @pxf.vmap(pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0)), in_axes=(0,), out_axes=(None, 0), axis_name="batch")
-def energy(x, *, model: LinearModel):
+def energy(x, *, model: VGG5Model):
     y_ = model(x, None)
     return jax.lax.psum(model.energy(), "batch"), y_
 
 
 @pxf.jit(static_argnums=0, donate_argnames=("model", "optim"))
-def train_on_batch(T: int, x: jax.Array, y: jax.Array, *, model: LinearModel, optim_w: pxu.Optim, optim_h: pxu.Optim, beta: float = 1.0):
+def train_on_batch(T: int, x: jax.Array, y: jax.Array, *, model: VGG5Model, optim_w: pxu.Optim, optim_h: pxu.Optim, beta: float = 1.0):
     model.train()
 
     # Init step
@@ -208,8 +221,9 @@ def train_on_batch(T: int, x: jax.Array, y: jax.Array, *, model: LinearModel, op
         _, g = pxf.value_and_grad(pxu.M(pxnn.LayerParam).to([False, True]), has_aux=True)(energy)(x, model=model)
     optim_w.step(model, g["model"], scale_by=1.0 / x.shape[0])
 
+
 @pxf.jit()
-def eval_on_batch(x: jax.Array, y: jax.Array, *, model: LinearModel):
+def eval_on_batch(x: jax.Array, y: jax.Array, *, model: VGG5Model):
     model.eval()
 
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache | pxc.VodeParam):
@@ -218,15 +232,16 @@ def eval_on_batch(x: jax.Array, y: jax.Array, *, model: LinearModel):
     return (y_ == y).mean(), y_
 
 
-def train(dl, T, *, model: LinearModel, optim_w: pxu.Optim, optim_h: pxu.Optim, beta: float = 1.0):
+def train(dl, T, *, model: VGG5Model, optim_w: pxu.Optim, optim_h: pxu.Optim, beta: float = 1.0):
     
     for i, (x, y) in enumerate(dl):
+        # CIFAR-10 images are channels-first format from PyTorch: (B, C, H, W)
         train_on_batch(
             T, x, jax.nn.one_hot(y, 10), model=model, optim_w=optim_w, optim_h=optim_h, beta=beta
         )
 
 
-def eval(dl, *, model: LinearModel):
+def eval(dl, *, model: VGG5Model):
     acc = []
     ys_ = []
 
@@ -242,17 +257,17 @@ def main(run_info: stune.RunInfo):
     batch_size = run_info["hp/batch_size"]
     nm_epochs = run_info["hp/epochs"]
 
-    model = LinearModel(
-        input_dim=784,
-        hidden_dim=run_info["hp/hidden_dim"],
-        nm_layers=run_info["hp/nm_layers"],
-        output_dim=10, 
+    model = VGG5Model(
+        input_channels=3,  # RGB images
+        output_dim=10,     # CIFAR-10 has 10 classes
         act_fn=getattr(jax.nn, run_info["hp/act_fn"]))
 
     train_dataloader, test_dataloader = get_dataloaders(batch_size)
 
+    # Initialize model with a dummy batch
+    dummy_input = jnp.zeros((batch_size, 3, 32, 32))
     with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
-        forward(jnp.zeros((batch_size, 784)), None, model=model)
+        forward(dummy_input, None, model=model)
 
     schedule = optax.warmup_cosine_decay_schedule(
         init_value=run_info["hp/optim/w/lr"],
@@ -262,7 +277,7 @@ def main(run_info: stune.RunInfo):
         end_value=0.1 * run_info["hp/optim/w/lr"],
         exponent=1.0)
 
-    # FIX: Wrap optimizers in lambda functions as shown in all pcax examples
+    # Wrap optimizers in lambda functions
     optim_h = pxu.Optim(
         lambda: optax.chain(
             optax.sgd(run_info["hp/optim/x/lr"], momentum=run_info["hp/optim/x/momentum"]),
@@ -292,15 +307,13 @@ def main(run_info: stune.RunInfo):
 
         if e > 1:
             epoch_times.append(epoch_time)
-        if e == 0:
-            jit_time = epoch_time
 
         if a > best_accuracy:
             best_accuracy = a
         #print(f"Epoch {e+1}/{nm_epochs}, Accuracy: {a:.4f}, Epoch time: {epoch_time:.2f}s")
 
     total_time = time.perf_counter() - t_start
-    print(f"T={run_info['hp/T']}; L={run_info['hp/nm_layers']}; Average epoch time: {np.mean(epoch_times):.2f}s,Best accuracy: {best_accuracy:.4f}, JIT time: {jit_time:.2f}s")
+    print(f"T={run_info['hp/T']}; VGG-5; Average epoch time: {np.mean(epoch_times):.2f}s, Best accuracy: {best_accuracy:.4f}")
 
     del train_dataloader
     del test_dataloader
@@ -311,20 +324,18 @@ def main(run_info: stune.RunInfo):
 
 if __name__ == "__main__":
 
-    for L in [5, 10, 15]:
+    for T in [10, 20, 30, 40]:
 
         run_info={
             "hp/act_fn": "gelu",
             "hp/batch_size": 128,
             "hp/epochs": 10,
-            "hp/T": 40,
+            "hp/T": T,
             "hp/beta": 1.0,
             "hp/optim/w/lr": 0.0002968930522737348,
             "hp/optim/w/wd": 0.0003550241114984682,
             "hp/optim/x/lr": 0.010534787245955935,
             "hp/optim/x/momentum": 0.65,
-            "hp/nm_layers": L,
-            "hp/hidden_dim": 32,
         }
 
         main(run_info)
