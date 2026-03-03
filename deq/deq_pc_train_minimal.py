@@ -17,12 +17,13 @@ from deq.deq_pc_minimal_core import DEQPCModel, get_dataloaders, train_on_batch
 
 # Tunable parameters
 SEED = 0
-N_EPOCHS = 3
-T_STEPS = 20
+N_EPOCHS = 15
+T_STEPS = 100
 N_CLASSES = 10
 N_CHANNELS = 48
 N_INNER = 64
 NUDGING = 0.01
+INIT_SCALE = 0.001
 
 TRAIN_BATCH_SIZE = 256
 TEST_BATCH_SIZE = 1000
@@ -34,6 +35,7 @@ WEIGHT_DECAY_W = 5e-3
 LR_H = 0.25
 MOMENTUM_H = 0.5
 H_LR_DECAY = 0.97
+STOP_GRAD_F = True
 
 
 def assert_gpu_backend():
@@ -71,6 +73,8 @@ def main():
         n_inner=N_INNER,
         n_classes=N_CLASSES,
         nudging=NUDGING,
+        init_scale=INIT_SCALE,
+        stop_grad_f=STOP_GRAD_F,
     )
 
     schedule_h = optax.exponential_decay(

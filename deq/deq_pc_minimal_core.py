@@ -67,7 +67,7 @@ def nudged_ce_energy(nudging: float):
 
 
 class DEQPCModel(pxc.EnergyModule):
-    def __init__(self, n_channels: int = 48, n_inner: int = 64, n_classes: int = 10, nudging: float = 0.01, init_scale: float = 0.01):
+    def __init__(self, n_channels: int = 48, n_inner: int = 64, n_classes: int = 10, nudging: float = 0.01, init_scale: float = 0.001, stop_grad_f: bool = False):
         super().__init__()
         self.n_classes = px.static(n_classes)
         self.n_channels = px.static(n_channels)
@@ -87,6 +87,7 @@ class DEQPCModel(pxc.EnergyModule):
 
         self.x_inj_cache = pxc.VodeParam()
         self.x_inj_cache.frozen = True
+        self.stop_grad_f = px.static(stop_grad_f)
 
     def embed(self, x: jax.Array) -> jax.Array:
         x_inj = self.gn_in(self.input_conv(x))
@@ -145,6 +146,8 @@ def _run_inference_loop(T, z_h, x_inj, label_h, h_opt, model):
     @jax.checkpoint
     def per_sample_energy(z, x_i, lab):
         u_z = model.f(z, x_i)
+        if model.stop_grad_f.get():
+            u_z = jax.lax.stop_gradient(u_z)
         diff = z - u_z
         e_z = (0.5 * diff * diff).sum()
 
