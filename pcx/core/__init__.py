@@ -1,44 +1,36 @@
 __all__ = [
+    "RKG",
     "BaseModule",
-    "Module",
     "BaseParam",
+    "Module",
     "Param",
-    "ParamDict",
     "ParamCache",
+    "ParamDict",
+    "RandomKeyGenerator",
     "get",
     "set",
-    "RKG",
-    "RandomKeyGenerator",
+    "static",
     "tree_apply",
-    "tree_ref",
-    "tree_unref",
     "tree_extract",
     "tree_inject",
-    "static",
+    "tree_ref",
+    "tree_unref",
 ]
 
 
 from ._module import BaseModule, Module
-
-
-from ._parameter import BaseParam, Param, ParamDict, ParamCache, get, set
-
-
+from ._parameter import BaseParam, Param, ParamCache, ParamDict, get, set
 from ._random import (
     RKG,
     RandomKeyGenerator,
 )
-
-
-from ._tree import (
-    tree_apply,
-    tree_ref,
-    tree_unref,
-    tree_extract,
-    tree_inject,
-)
-
-
 from ._static import (
     static,
+)
+from ._tree import (
+    tree_apply,
+    tree_extract,
+    tree_inject,
+    tree_ref,
+    tree_unref,
 )

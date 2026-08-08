@@ -1,51 +1,45 @@
 __all__ = [
-    "Layer",
-    "Linear",
+    "AdaptiveAvgPool2d",
+    "AdaptiveMaxPool2d",
+    "AdaptivePool",
+    "AvgPool2d",
+    "BatchNorm",
     "Conv",
     "Conv2d",
     "ConvTranspose",
-    "Pool",
-    "AvgPool2d",
-    "MaxPool2d",
-    "AdaptivePool",
-    "AdaptiveAvgPool2d",
-    "AdaptiveMaxPool2d",
     "Dropout",
+    "Layer",
     "LayerNorm",
     "LayerParam",
     "LayerState",
-    "shared",
+    "Linear",
+    "MaxPool2d",
+    "Pool",
     "StateParam",
     "StatefulLayer",
-    "BatchNorm",
+    "shared",
 ]
 
 from ._layer import (
-    Layer,
-    Linear,
+    AdaptiveAvgPool2d,
+    AdaptiveMaxPool2d,
+    AdaptivePool,
+    AvgPool2d,
     Conv,
     Conv2d,
     ConvTranspose,
-    Pool,
-    AvgPool2d,
-    MaxPool2d,
-    AdaptivePool,
-    AdaptiveAvgPool2d,
-    AdaptiveMaxPool2d,
     Dropout,
+    Layer,
     LayerNorm,
+    Linear,
+    MaxPool2d,
+    Pool,
 )
-
-
 from ._parameter import (
     LayerParam,
     LayerState,
 )
-
-
 from ._shared import (
     shared,
 )
-
-
-from ._stateful import StateParam, StatefulLayer, BatchNorm
+from ._stateful import BatchNorm, StatefulLayer, StateParam

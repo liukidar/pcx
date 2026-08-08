@@ -2,49 +2,27 @@
 
 The docs are available on [![Documentation Status](https://readthedocs.org/projects/pcx/badge/?version=latest)](https://pcx.readthedocs.io/en/latest/?badge=latest)
 
-## Contribute
+The docs are built with `Sphinx` from the `/docs` folder. Read the Docs rebuilds and publishes them
+automatically on every push to `main`; see [.readthedocs.yaml](../.readthedocs.yaml) for that pipeline.
 
-You need to compile docs yourself using `Sphinx`. Once, closer to deployment this will be automated.
+## Build locally
 
-The docs are in the `/docs` folder. You need the `sphinx` related requirements from the poetry `dev` group to build it.
+From the repository root:
 
-## Build
-
-To build the documentation, do the following.
-
-1. Activate an environment where `pcax` is installed. The script here assumes that `import pcax` works.
-
-2. Open docs folder
-
-```
-cd /path/to/repo/docs
+```shell
+just docs
 ```
 
-3. Copy the newest version of the example notebooks:
+That installs the `docs` dependency group, mirrors the tutorial notebooks into the docs tree, refreshes the
+API stubs and writes HTML to `docs/_build/html/index.html`.
 
+The recipe is three steps, which you can also run by hand:
+
+```shell
+cp -r examples/* docs/source/examples/                       # mirror the newest tutorial notebooks
+uv run --group docs sphinx-apidoc -f -o docs/source/ pcx/    # only needed when modules are added
+uv run --group docs sphinx-build -b html docs docs/_build/html
 ```
-cp ../examples/* source/examples
-```
-
-4. When new modules are added, and not just updated, run this command:
-
-```
-sphinx-apidoc -f -o ../docs/source/ ../pcax/
-```
-
-5. To compile the docs run:
-
-```
-make html
-```
-
-Now you should have them in `/docs/_build/html/index.html` to launch from browser.
-
-## Outlook
-
-> :warning: WARNING: Right now you have to compile them yourself everytime you change something.
-
-Once, we are closer to release, the docs will be automatically compiled everytime git `main` is updated and releases are created and uploaded to a webserver.
 
 If something doesn't work, raise an issue with Cornelius (cemde on gh).
 

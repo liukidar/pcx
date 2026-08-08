@@ -2,39 +2,41 @@
 # Select the tag that matches the CUDA version on the host.
 # Make sure to select a CuDNN image!
 # See the compatibility matrix here: https://docs.nvidia.com/deploy/cuda-compatibility/index.html#use-the-right-compat-package
-# Also make sure to change the fix at the very end of this file.
 FROM nvidia/cuda:12.2.2-cudnn8-devel-ubuntu22.04
 
-# Install Python 3.10 and pip3
+# Only the CLI tools the dev container expects. The interpreter comes from uv,
+# which provisions the version named in .python-version; the base image ships
+# Python 3.10, which is below this project's floor.
 RUN apt update \
-    && apt install --fix-missing -y python3 python3-pip curl vim less openssh-client \
-    && ln -s $(which python3) /usr/bin/python
+    && apt install --fix-missing -y curl ca-certificates vim less openssh-client git
 
-# Switch to a non-root user
-# Dev containers should substitute for the current user on startup but that doesn't work: https://code.visualstudio.com/remote/advancedcontainers/add-nonroot-user
-RUN groupadd -g 1000 pcax \
-    && useradd -m -u 1000 -g pcax pcax \
-    # Allow the user to install packages
-    && chmod -R a+rwx /usr/local /usr/include/python3.10
-USER pcax:pcax
-WORKDIR /home/pcax/workspace
+# Dev containers should substitute the current user on startup, but that doesn't work:
+# https://code.visualstudio.com/remote/advancedcontainers/add-nonroot-user
+RUN groupadd -g 1000 pcx \
+    && useradd -m -u 1000 -g pcx pcx \
+    && chmod -R a+rwx /usr/local
+USER pcx:pcx
+WORKDIR /home/pcx/workspace
 
-# Install Poetry
-RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH="/home/pcx/.local/bin:$PATH" \
+    # Prevent JAX from allocating 90% of GPU memory.
+    XLA_PYTHON_CLIENT_PREALLOCATE="false" \
+    # Build the venv inside the image at a fixed path rather than in the bind-mounted
+    # workspace, so a rebuild doesn't fight with the host's own .venv.
+    UV_PROJECT_ENVIRONMENT="/home/pcx/.venv" \
+    UV_LINK_MODE="copy" \
+    UV_COMPILE_BYTECODE="1" \
+    UV_PYTHON_DOWNLOADS="automatic"
 
-# Add poetry to PATH
-ENV PATH="$PATH:/home/pcax/.local/bin:" \
-    # Disable keyring so poetry doesn't get stuck
-    # See this issue: https://github.com/python-poetry/poetry/issues/5250
-    # and this PR: https://github.com/python-poetry/poetry/pull/5251
-    PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring \
-    # Prevent JAX from allocating 90% of GPU memory:
-    XLA_PYTHON_CLIENT_PREALLOCATE="false"
+# Install uv and just.
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
+       | bash -s -- --to /home/pcx/.local/bin
 
-RUN poetry config virtualenvs.create false
+# Resolve dependencies in their own layer so edits to the source don't invalidate it.
+# The bracket in 'uv.loc[k]' makes the lockfile optional at build time.
+COPY --chown=pcx:pcx pyproject.toml uv.loc[k] README.md ./
+RUN uv sync --group dev --no-install-project
 
-# https://stackoverflow.com/a/31532674/4119680
-COPY --chown=pcax:pcax pyproject.toml poetry.loc[k] ./
-
-RUN poetry install --no-root
-
+# Put the environment first on PATH so `python` is the project interpreter.
+ENV PATH="/home/pcx/.venv/bin:$PATH"

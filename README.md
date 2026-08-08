@@ -1,141 +1,148 @@
-# PCX -- Predictive Coding Networks Made Simple
+# PCX — Predictive Coding Networks Made Simple
 
-## Notes
-I've uploaded some old research [notes](https://github.com/liukidar/pcx/blob/main/notes.pdf) I never had time to dive deeper into. I'm not sure if they are still relevant, but if anyone finds any of it interesting, I am always happy to chat about it.
-In particular:
-- the weights initialisation may not be generating "good" gradients according to the xavier initialisation paper formulae, when used for PC networks (until page 9);
-- rec-lra (https://arxiv.org/abs/2002.03911) does something that the authors don't make explicit in the paper that maybe can be mathematically formalised and generalised to be applied to PC as well in order to create more interconnected networks (that propagate the energy faster) (page 9-10);
-- It could be that waiting for the network to converge during inference is actually wrong with the current formulation. This would explain a lot of the behvaiours/tricks we have experineced to make PCNs train effectively. However it is a big problem for PC since its theoretical formulation is based around the idea of state convergence via inference (page 11-12, sorry if it's a bit messy).
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![PyPI version](https://badge.fury.io/py/pcx.svg)](https://badge.fury.io/py/pcx)
+[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://pcx.readthedocs.io/en/latest/)
+[![CI](https://github.com/liukidar/pcx/actions/workflows/ci.yml/badge.svg)](https://github.com/liukidar/pcx/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/liukidar/pcx/graph/badge.svg)](https://codecov.io/gh/liukidar/pcx)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
+[![arXiv](https://img.shields.io/badge/arXiv-2407.01163-b31b1b.svg)](https://arxiv.org/abs/2407.01163)
 
-## Introduction
+A JAX library for building highly configurable predictive coding networks.
 
-PCX is a Python JAX-based library designed to develop highly configurable predictive coding networks. Please refer to the tutorial notebooks in the examples folder to get started. PCX can be installed by following one of the listed three methods.
+- **[Tutorials](examples/)** — nine notebooks, start with [`0_two_moons`](examples/0_two_moons.ipynb)
+- **[Documentation](https://pcx.readthedocs.io/en/latest/)** — API reference and guides
+- **[Benchmarking paper](https://arxiv.org/abs/2407.01163)** and the [code for its experiments](https://github.com/liukidar/pcax/releases/tag/v0.6.1)
+- **[Research notes](notes.pdf)** — open questions Luca never had time to chase, summarised [below](#open-questions)
+- **[Contributing](CONTRIBUTING.md)** — dev setup, tests, release process
 
-## Default: Installation via PIP [Method #1].
+## Installation
 
-First, create an environment with Python >= 3.10 and [install JAX](https://github.com/google/jax#installation) in the correct version for your accelerator device. For cuda >= 12.0, the command is
-
-```shell
-pip install -U "jax[cuda12]"
-```
-
-For CPU only:
-
-```shell
-pip install -U "jax[cpu]"
-```
-
-Then you hav two options:
-
--   Install a stable version
--   Clone this repository and install the package by linking to the this folder. The installation of this libary only links to this folder and thus dynamically updates with all your changes.
-
-### Install stable version
-
-On the right side of the repository, click on "releases" and download the wheel file. You can install it using
+PCX needs Python 3.11 or newer.
 
 ```shell
-pip install path/to/wheel_file.whl
+pip install pcx                 # CPU
+pip install "pcx[cuda12]"       # NVIDIA GPU on Linux, pulls the CUDA build of JAX
 ```
 
-Alternatively you can use the PyPi version by [work in progress...]
+### Platform support
 
-### Install dynamically from github
+PCX is pure Python and ships a single universal wheel, so it installs anywhere Python does. Which accelerators you can actually use is decided by JAX rather than by PCX, so see [JAX's supported platforms](https://docs.jax.dev/en/latest/installation.html#supported-platforms). The one that catches people out: there are no CUDA wheels for native Windows, so GPU work there needs WSL2.
 
-Clone this repository locally and then:
+CI runs the test suite on Linux, macOS and Windows, across Python 3.11 to 3.14 and three JAX versions.
+
+### Installing from source
+
+To work on PCX itself, or to track `main`:
 
 ```shell
-pip install -e /path/to/this/repo/ --config-settings editable_mode=strict
+git clone https://github.com/liukidar/pcx.git
+cd pcx
+uv sync --group dev
 ```
 
-## Ensuring Reproducibility: Installation via `poetry` [Method #2]
+That creates a `.venv` from the locked dependency set in `uv.lock`, so the environment is reproducible across machines. If you do not have [uv](https://docs.astral.sh/uv/) yet, install it with `curl -LsSf https://astral.sh/uv/install.sh | sh`.
 
-**TL;DR** This is an alternative installation method that creates a fully configured environment to ensure your results are reproducible (no pip install, see previous section for that; no docker install, see the next section for docker install):
+Prefer a plain editable install? `pip install -e .` also works.
 
-1. Install [conda](https://www.anaconda.com/).
-2. Install [poetry](https://python-poetry.org/).
-3. `poetry config virtualenvs.create false`.
-4. Create a conda environment with python>=3.10: `conda create -n pcax python=3.10`.
-5. Activate the environment: `conda activate pcax`.
-6. `cd` into the root pcax folder.
-7. `poetry install --no-root`.
+## Quick start
 
-In this way, we use [poetry](https://python-poetry.org/) to make sure the environment is 100% reproducible. If you are not familiar with `poetry`, now is a good time to skim through the docs.
+One training step on a two-layer network: the output node is clamped to the target, hidden nodes relax, then the weights update.
 
-### Development Notes:
+```python
+import jax, jax.numpy as jnp, optax
+import pcx.functional as pxf, pcx.nn as pxnn, pcx.predictive_coding as pxc, pcx.utils as pxu
 
-1. If you need to add a Python package to the environment, use `poetry add package`. Avoid `pip install`!
-2. If you want to update a version of an existing package, run `poetry update package`. It will update the package to the latest available version that fits the constraints.
-3. **DO NOT** update the package versions in the `pyproject.toml` file manually. Surprisingly, `pyproject.toml` **DOES NOT** specify the versions that will be installed, `poetry.lock` does. So, first check the package version in `poetry.lock`.
-4. **DO NOT** update the package versions in the `poetry.lock` file manually. Use `poetry update package` instead. `poetry.lock` **HAS** to be generated and signed automatically.
-5. If `pyproject.toml` and `poetry.lock` have diverged for some reason (for example, you've merged another branch and resolved conflicts in `poetry.lock`), use `poetry lock --no-update` to fix the `poetry.lock` file.
-6. **DO NOT** commit changes to `pyproject.toml` without running `poetry lock --no-update` to synchronize the `poetry.lock` file. If you commit `pyproject.toml` that is not in sync with `poetry.lock` this will break the automatic environment configuration for everyone.
 
-## Fully Automatic: Environment in Docker with Dev Containers [Method #3]
+class Model(pxc.EnergyModule):
+    def __init__(self, dims):
+        super().__init__()
+        self.layers = [pxnn.Linear(i, o) for i, o in zip(dims[:-1], dims[1:])]
+        self.vodes = [pxc.Vode() for _ in self.layers]
+        self.vodes[-1].h.frozen = True  # clamp the output to the target
 
-Run your development environment in a docker container. This is the most straightforward option to work with `pcx`, as the development environment is pre-configured for you.
+    def __call__(self, x, y=None):
+        for layer, vode in zip(self.layers, self.vodes):
+            x = vode(jax.nn.tanh(layer(x)))
+        if y is not None:
+            self.vodes[-1].set("h", y)
+        return self.vodes[-1].get("u")
 
-The `Dockerfile` is located in `pcx/docker`, with the `run.sh` script that builds and runs it. You can play with the `Dockerfile` directly if you know what you are doing or if you don't use VSCode. If you want a fully automated environment setup, then forget about the `pcx/docker` directory and read on.
 
-**Warning**: This image should run on CUDA 12.2 or later, but not earlier. Make sure that your `nvidia-smi` reports CUDA >=12.2. If not, update the base `nvidia/cuda` image and the fix at the bottom in the `docker/Dockerfile` to use the same version of CUDA as your host does.
+mask = pxu.M(pxc.VodeParam | pxc.VodeParam.Cache).to((None, 0))
 
-Requirements:
 
-1. A CUDA >=12.2 enabled machine with an NVIDIA GPU. You can do without a GPU, probably, just omit the steps related to the GPU passthrough and configuration.
-2. [Install docker](https://docs.docker.com/engine/install/).
-3. Install [nvidia-container-toolkit](https://github.com/NVIDIA/nvidia-container-toolkit) to enable docker to use the GPU.
-4. **Make sure to re-start the docker daemon after the previous step**. For example, on Ubuntu this will be `sudo systemctl restart docker`.
-5. Install [Visual Studio Code](https://code.visualstudio.com/download).
-6. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) in VSCode.
-7. Optionally, [read how to develop inside container with VS Code](https://code.visualstudio.com/docs/devcontainers/containers).
+@pxf.vmap(mask, in_axes=(0, 0), out_axes=0)
+def forward(x, y, *, model):
+    return model(x, y)
 
-Once everything is done, open this project in VS Code and execute the `Dev Containers: Reopen in Container` command (Ctrl/Cmd+Shift+P). This will build the docker image and open the project inside that docker image. Building the docker image for the first time may take around 15-30 minutes, depending on your internet speed.
 
-You can always exit the container by running the `Dev Containers: Reopen folder locally` command.
-You can rebuild the container by running the `Dev Containers: Rebuild Container` command.
+@pxf.vmap(mask, in_axes=(0,), out_axes=(None, 0), axis_name="b")
+def energy(x, *, model):
+    y_ = model(x, None)
+    return jax.lax.pmean(model.energy().sum(), "b"), y_
 
-You can check that you're running inside a container by running `hostname`. If it outputs meaningless 12 characters, then you are inside a container. If it outputs the name of your machine, you are not in a container.
 
-When running a Jupyter Notebook it will prompt you to select an environment. Select Python Environments -> Python 3.10 (any of them, as they are the same).
+model = Model([2, 16, 2])
+x, y = jnp.zeros((8, 2)), jnp.ones((8, 2))
 
-**Important notes**:
+with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
+    forward(x, y, model=model)  # forward-initialise the value nodes
 
-- You are not supposed to modify the `docker/Dockerfile` unless you perfectly know what you are doing and why.
-- You are not supposed to run the docker container directly. The Dev Containers extension will do this for you. If you think you need to `docker run -it` then something is really wrong.
-- Use `poetry` to add a python package to the environment: `poetry add --group dev [package]`. The `--group dev` part should be omitted if this package is needed for the core `pcx` code. Try not to install packages with `pip`.
-- Please update your docker to >>20.10.9. [This image is known not to work with docker <= 20.10.9](https://stackoverflow.com/questions/71941032/why-i-cannot-run-apt-update-inside-a-fresh-ubuntu22-04). It failes with the following message: `E: Problem executing scripts APT::Update::Post-Invoke 'rm -f /var/cache/apt/archives/*.deb /var/cache/apt/archives/partial/*.deb /var/cache/apt/*.bin || true'`.
-- Sometimes Pylance fails to start because it depends on the Python extension that starts later. In this case, just reload the window by running the `Developer: Reload window` command.
+optim = pxu.Optim(lambda: optax.adamw(1e-3), pxu.M(pxnn.LayerParam)(model))
 
-**PyTorch with GPU support**: By default, the image will install a CPU-only PyTorch. If you need GPU support with PyTorch, do the following:
+with pxu.step(model, clear_params=pxc.VodeParam.Cache):
+    (e, _), g = pxf.value_and_grad(pxu.M(pxnn.LayerParam).to((False, True)), has_aux=True)(energy)(x, model=model)
 
-1. Open the project in a container using DevContainers as described above.
-2. Replace ALL occurrences of `source = "torch-cpu"` with `source = "torch-gpu"` in the [pyproject.toml](./pyproject.toml) file.
-3. Run `poetry lock --no-update` to re-generate the `poetry.lock` file. Note that you should do it while running inside the container.
-4. Run `poetry install`. Make sure you run it inside the container. It will take up to 20 minutes.
+optim.step(model, g["model"])
+```
+
+The [tutorials](examples/) build this up properly, and cover randomness, control flow, convolutional models and Z-IL.
+
+## Development
+
+```shell
+just install    # create the dev environment
+just all        # fix, check and test, run this before opening a PR
+just            # list every recipe
+```
+
+The toolchain is [uv](https://docs.astral.sh/uv/), [ruff](https://docs.astral.sh/ruff/), [ty](https://github.com/astral-sh/ty) and [pytest](https://docs.pytest.org/). See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, container setup and release process.
+
+## Documentation
+
+The documentation is available at [pcx.readthedocs.io](https://pcx.readthedocs.io/en/latest/). To build it yourself, see [docs/README.md](docs/README.md) or run `just docs`.
+
+## Open questions
+
+From Luca, alongside the [research notes](notes.pdf):
+
+> I've uploaded some old research [notes](https://github.com/liukidar/pcx/blob/main/notes.pdf) I never had time to dive deeper into. I'm not sure if they are still relevant, but if anyone finds any of it interesting, I am always happy to chat about it.
+> In particular:
+> - the weights initialisation may not be generating "good" gradients according to the xavier initialisation paper formulae, when used for PC networks (until page 9);
+> - rec-lra (https://arxiv.org/abs/2002.03911) does something that the authors don't make explicit in the paper that maybe can be mathematically formalised and generalised to be applied to PC as well in order to create more interconnected networks (that propagate the energy faster) (page 9-10);
+> - It could be that waiting for the network to converge during inference is actually wrong with the current formulation. This would explain a lot of the behvaiours/tricks we have experineced to make PCNs train effectively. However it is a big problem for PC since its theoretical formulation is based around the idea of state convergence via inference (page 11-12, sorry if it's a bit messy).
 
 ## Citation
-If you found this library to be useful in your work, then please cite: [arXiv link](https://arxiv.org/abs/2407.01163)
+
+If this library was useful in your work, please cite [our paper](https://arxiv.org/abs/2407.01163):
 
 ```bibtex
 @article{pinchetti2024benchmarkingpredictivecodingnetworks,
-      title={Benchmarking Predictive Coding Networks -- Made Simple}, 
+      title={Benchmarking Predictive Coding Networks -- Made Simple},
       author={Luca Pinchetti and Chang Qi and Oleh Lokshyn and Gaspard Olivers and Cornelius Emde and Mufeng Tang and Amine M'Charrak and Simon Frieder and Bayar Menzat and Rafal Bogacz and Thomas Lukasiewicz and Tommaso Salvatori},
       year={2024},
       eprint={2407.01163},
       archivePrefix={arXiv},
       primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2407.01163}, 
+      url={https://arxiv.org/abs/2407.01163},
 }
 ```
 
-For the code relative to the experiments performed in the above paper, please refer to the [Submission of Benchmark Paper](https://github.com/liukidar/pcax/releases/tag/v0.6.1) code release.
+For the code behind the experiments in that paper, see the [benchmark paper release](https://github.com/liukidar/pcax/releases/tag/v0.6.1).
 
-## Documentation
+## Contributing
 
-The documentation is available at: [https://pcx.readthedocs.io/en/stable/](https://pcx.readthedocs.io/en/stable/)
-
-To learn how to build it yourself, go to `/docs/README.md`.
-
-## Contributing
-
-If you want to contribute to the project, please read [CONTRIBUTING.md](CONTRIBUTING.md)
+Read [CONTRIBUTING.md](CONTRIBUTING.md), and record user-visible changes in [CHANGELOG.md](CHANGELOG.md).

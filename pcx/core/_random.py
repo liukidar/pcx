@@ -1,14 +1,12 @@
-__all__ = ["RKGState", "RKG", "RandomKeyGenerator"]
+__all__ = ["RKG", "RKGState", "RandomKeyGenerator"]
 
-from typing import Tuple
-from jaxtyping import ArrayLike
 import time
 
 import jax
+from jaxtyping import ArrayLike
 
-from ._parameter import Param
 from ._module import BaseModule
-
+from ._parameter import Param
 
 ########################################################################################################################
 #
@@ -81,7 +79,7 @@ class RandomKeyGenerator(BaseModule):
         """
         self.key.seed(seed)
 
-    def __call__(self, n: int = 1) -> Tuple[ArrayLike, ...] | ArrayLike:
+    def __call__(self, n: int = 1) -> tuple[ArrayLike, ...] | ArrayLike:
         """Generate n random keys.
 
         Args:

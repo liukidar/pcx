@@ -5,7 +5,6 @@ from typing import Any
 
 from ._parameter import BaseParam, get
 
-
 ########################################################################################################################
 #
 # STATIC
@@ -118,7 +117,7 @@ class StaticParam(BaseParam):
         return self.get() == get(__value)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({repr(self._static_value)})"
+        return f"{self.__class__.__name__}({self._static_value!r})"
 
 
 # Utils ################################################################################################################

@@ -1,0 +1,178 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep JAX from grabbing the whole device and keep CI runs deterministic.
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  JAX_PLATFORMS: "cpu"
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Lint
+        run: uv run ruff check .
+
+  typecheck:
+    name: Type Check (advisory)
+    runs-on: ubuntu-latest
+    # pcx carries a pre-existing baseline of type errors from its dynamic pytree
+    # design. This job reports them without blocking; flip to a hard gate once the
+    # baseline reaches zero.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Run ty
+        run: uv run ty check
+
+  test:
+    name: py${{ matrix.python-version }} / jax ${{ matrix.jax }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        # Oldest supported, a mid-range release, and current.
+        jax: ["0.4.33", "0.7.2", "0.11.0"]
+        exclude:
+          # jaxlib 0.4.33 has no wheels for 3.13 or 3.14.
+          - { python-version: "3.13", jax: "0.4.33" }
+          - { python-version: "3.14", jax: "0.4.33" }
+          # jax 0.11 requires Python >= 3.12.
+          - { python-version: "3.11", jax: "0.11.0" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      # Resolved fresh rather than from uv.lock, which pins one jax per Python
+      # version. The lock is exercised by the `locked` job below. equinox is
+      # left unpinned on purpose: it tracks jax internals closely, so the
+      # resolver picks the compatible release for whichever jax is under test.
+      - name: Run tests
+        run: >
+          uv run --isolated --no-project --python ${{ matrix.python-version }}
+          --with "jax==${{ matrix.jax }}" --with equinox --with optax
+          --with pytest --with jaxtyping --with .
+          python -m pytest -p no:cacheprovider
+
+  locked:
+    name: Locked environment
+    runs-on: ubuntu-latest
+    # What `just install` actually gives a contributor. Also the source of the
+    # coverage report, so it comes from one deterministic environment.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Run tests with coverage
+        run: uv run coverage run --parallel-mode -m pytest -v
+
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-locked
+          path: .coverage.*
+          include-hidden-files: true
+
+  coverage:
+    name: Coverage Report
+    needs: [locked]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+
+      - name: Combine and report
+        run: |
+          uv run coverage combine
+          uv run coverage xml
+          uv run coverage report
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  build:
+    name: Build Distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Verify the wheel installs and imports on a clean interpreter
+        run: |
+          uv run --isolated --no-project --with dist/*.whl python -c "import pcx; print(pcx.__name__, 'ok')"
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

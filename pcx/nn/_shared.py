@@ -1,14 +1,14 @@
 __all__ = ["shared"]
 
-from typing import Type, Callable, Any
-from jaxtyping import PyTree
+from collections.abc import Callable
 from types import UnionType
+from typing import Any
 
 import jax.tree_util as jtu
+from jaxtyping import PyTree
 
 from ..core._parameter import BaseParam
 from ..core._tree import tree_ref, tree_unref
-
 
 ####################################################################################################
 #
@@ -19,9 +19,7 @@ from ..core._tree import tree_ref, tree_unref
 ####################################################################################################
 
 
-def shared(
-    module: PyTree, filter: Callable[[Any], bool] | Type[BaseParam] = BaseParam
-) -> PyTree:
+def shared(module: PyTree, filter: Callable[[Any], bool] | type[BaseParam] = BaseParam) -> PyTree:
     """Creates a copy of the input pytree which shares all the target parameters with the original.
     It can be used to create modules with weight sharing:
 
@@ -70,9 +68,7 @@ def shared(
     # not shared, any reference to it would get duplicated in the new tree).
     _tree, _structure = jtu.tree_flatten(
         tree_ref(module),
-        is_leaf=filter
-        if not isinstance(filter, type | UnionType)
-        else lambda x: isinstance(x, filter),
+        is_leaf=filter if not isinstance(filter, type | UnionType) else lambda x: isinstance(x, filter),
     )
 
     return tree_unref(jtu.tree_unflatten(_structure, _tree))

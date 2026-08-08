@@ -1,32 +1,31 @@
 __all__ = [
-    "Layer",
-    "Linear",
+    "AdaptiveAvgPool2d",
+    "AdaptiveMaxPool2d",
+    "AdaptivePool",
+    "AvgPool2d",
     "Conv",
     "Conv2d",
     "ConvTranspose",
-    "Pool",
-    "MaxPool2d",
-    "AvgPool2d",
-    "AdaptivePool",
-    "AdaptiveAvgPool2d",
-    "AdaptiveMaxPool2d",
     "Dropout",
+    "Layer",
     "LayerNorm",
+    "Linear",
+    "MaxPool2d",
+    "Pool",
 ]
 
 
-from typing import Tuple, Sequence, Callable
+from collections.abc import Callable, Sequence
 
+import equinox as eqx
 import jax
 import jax.tree_util as jtu
-import equinox as eqx
 
 from ..core._module import Module
-from ..core._random import RandomKeyGenerator, RKG
 from ..core._parameter import BaseParam
+from ..core._random import RKG, RandomKeyGenerator
 from ..core._static import StaticParam
 from ._parameter import LayerParam
-
 
 ########################################################################################################################
 #
@@ -89,7 +88,7 @@ class Conv(Layer):
         out_channels: int,
         kernel_size: int | Sequence[int],
         stride: int | Sequence[int] = 1,
-        padding: int | Sequence[int] | Sequence[Tuple[int, int]] = 0,
+        padding: int | Sequence[int] | Sequence[tuple[int, int]] = 0,
         dilation: int | Sequence[int] = 1,
         groups: int = 1,
         use_bias: bool = True,
@@ -124,7 +123,7 @@ class Conv2d(Conv):
         out_channels: int,
         kernel_size: int | Sequence[int],
         stride: int | Sequence[int] = 1,
-        padding: int | Sequence[int] | Sequence[Tuple[int, int]] = 0,
+        padding: int | Sequence[int] | Sequence[tuple[int, int]] = 0,
         dilation: int | Sequence[int] = 1,
         groups: int = 1,
         use_bias: bool = True,
@@ -222,13 +221,11 @@ class MaxPool2d(Layer):
         self,
         kernel_size: int | Sequence[int],
         stride: int | Sequence[int] = 1,
-        padding: int | Sequence[int] | Sequence[Tuple[int, int]] = 0,
+        padding: int | Sequence[int] | Sequence[tuple[int, int]] = 0,
         use_ceil: bool = False,
         **kwargs,
     ):
-        super().__init__(
-            eqx.nn.MaxPool2d, kernel_size, stride, padding, use_ceil, **kwargs
-        )
+        super().__init__(eqx.nn.MaxPool2d, kernel_size, stride, padding, use_ceil, **kwargs)
 
 
 class AvgPool2d(Layer):
@@ -236,13 +233,11 @@ class AvgPool2d(Layer):
         self,
         kernel_size: int | Sequence[int],
         stride: int | Sequence[int] = 1,
-        padding: int | Sequence[int] | Sequence[Tuple[int, int]] = 0,
+        padding: int | Sequence[int] | Sequence[tuple[int, int]] = 0,
         use_ceil: bool = False,
         **kwargs,
     ):
-        super().__init__(
-            eqx.nn.AvgPool2d, kernel_size, stride, padding, use_ceil, **kwargs
-        )
+        super().__init__(eqx.nn.AvgPool2d, kernel_size, stride, padding, use_ceil, **kwargs)
 
 
 class AdaptivePool(Layer):
@@ -253,9 +248,7 @@ class AdaptivePool(Layer):
         operation: Callable,
         **kwargs,
     ):
-        super().__init__(
-            eqx.nn.AdaptivePool, target_shape, num_spatial_dims, operation, **kwargs
-        )
+        super().__init__(eqx.nn.AdaptivePool, target_shape, num_spatial_dims, operation, **kwargs)
 
 
 class AdaptiveAvgPool2d(Layer):
@@ -290,7 +283,7 @@ class Dropout(Layer):
 class LayerNorm(Layer):
     def __init__(
         self,
-        shape: Tuple[int, ...] | None = None,
+        shape: tuple[int, ...] | None = None,
         eps: float = 1e-05,
         use_weight: bool = True,
         use_bias: bool = True,

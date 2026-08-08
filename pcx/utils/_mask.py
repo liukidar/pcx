@@ -1,13 +1,13 @@
-__all__ = ["M", "M_is", "M_has", "M_hasnot"]
+__all__ = ["M", "M_has", "M_hasnot", "M_is"]
 
-from typing import Any, Tuple, Dict, Type, Callable
 import types
+from collections.abc import Callable
+from typing import Any
 
 import jax.tree_util as jtu
 
-from ..core._parameter import Param, BaseParam
+from ..core._parameter import BaseParam, Param
 from ..core._tree import tree_ref
-
 
 #######################################################################################################################
 #
@@ -49,7 +49,7 @@ class M:
     selects paraameters of class A or B that are not of class C and have an attribute `attr1` equal to 1.
     """
 
-    def __init__(self, mask: Type | types.UnionType | "M" | Callable):
+    def __init__(self, mask: "type | types.UnionType | M | Callable"):
         """Mask constructor.
 
         Args:
@@ -91,7 +91,7 @@ class M:
 
         return t
 
-    def to(self, map_to: Tuple[Any, Any] | None) -> "M":
+    def to(self, map_to: tuple[Any, Any] | None) -> "M":
         """Sets the `map_to` value, this allows to map the target pytree to the desired pair of masked/unmasked values,
         instead of relying on the default behaviour of simply filtering out (i.e., substite with `None`) values that
         do not meet the mask requirements.
@@ -110,7 +110,7 @@ class M:
         return self
 
     @staticmethod
-    def _resolve(mask: Type | types.UnionType | "M" | Callable, leaf: Any) -> Any:
+    def _resolve(mask: "type | types.UnionType | M | Callable", leaf: Any) -> Any:
         """Recursively applies the mask to a leaf.
 
         Returns:
@@ -156,7 +156,7 @@ class _M_not(M):
 class _M_or(M):
     """Computes the logical or between two masks or types"""
 
-    def __init__(self, *mask: Tuple[Any, ...]):
+    def __init__(self, *mask: tuple[Any, ...]):
         super().__init__(mask)
 
     def apply(self, leaf: Any):
@@ -173,14 +173,13 @@ class _M_and(_M_or):
 class _M_hasattr(M):
     """Filters parameters based on their attributes"""
 
-    def __init__(self, mask: M, **attrs: Dict[str, Any]):
+    def __init__(self, mask: M, **attrs: dict[str, Any]):
         super().__init__(mask)
         self.attrs = attrs
 
     def apply(self, leaf: Any):
         return M._resolve(self.mask, leaf) and all(
-            hasattr(leaf, attr) and getattr(leaf, attr) == value
-            for attr, value in self.attrs.items()
+            hasattr(leaf, attr) and getattr(leaf, attr) == value for attr, value in self.attrs.items()
         )
 
 
@@ -189,29 +188,28 @@ class _M_hasnotattr(_M_hasattr):
 
     def apply(self, leaf: Any):
         return M._resolve(self.mask, leaf) and all(
-            (not hasattr(leaf, attr)) or (getattr(leaf, attr) != value)
-            for attr, value in self.attrs.items()
+            (not hasattr(leaf, attr)) or (getattr(leaf, attr) != value) for attr, value in self.attrs.items()
         )
 
 
 # Public methods ######################################################################################################
 
 
-def M_is(*mask: Tuple[Any, ...]) -> _M_and:
+def M_is(*mask: tuple[Any, ...]) -> _M_and:
     """Creates a mask that filters parameters if they satisfy all the conditions.
     Equivalent to `M(mask[0]) & M(mask[1]) & ... & M(mask[n])`."""
 
     return _M_and(*mask)
 
 
-def M_has(mask: M, **attrs: Dict[str, Any]) -> _M_hasattr:
+def M_has(mask: M, **attrs: dict[str, Any]) -> _M_hasattr:
     """Creates a mask that filters parameters if they satisfy all the conditions.
     Equivalent to `M(mask).has(**attrs)`."""
 
     return _M_hasattr(mask, **attrs)
 
 
-def M_hasnot(mask: M, **attrs: Dict[str, Any]) -> _M_hasnotattr:
+def M_hasnot(mask: M, **attrs: dict[str, Any]) -> _M_hasnotattr:
     """Creates a mask that filters parameters if they satisfy all the conditions.
     Equivalent to `M(mask).hasnot(**attrs)`."""
 

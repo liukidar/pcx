@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # Actions only. GitHub retires action versions, so a workflow that passed last
+  # month starts failing with no change on our side; upload-artifact@v3 is the
+  # usual example. A few PRs a year, and each one prevents breakage you would
+  # otherwise debug cold.
+  #
+  # Deliberately no Python ecosystem here. uv.lock is the contributor's dev
+  # environment, and the runtime constraints in pyproject.toml are loose ranges,
+  # so a lock bump changes nothing for users. The CI matrix tests jax 0.4.33,
+  # 0.7.2 and 0.11.0 explicitly, which catches real version drift better than a
+  # lockfile PR would.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"

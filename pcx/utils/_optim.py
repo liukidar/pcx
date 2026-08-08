@@ -1,15 +1,16 @@
 __all__ = ["Optim"]
 
-from typing import Callable, Any
-from jaxtyping import PyTree
-import optax
-import jax.tree_util as jtu
+from collections.abc import Callable
+from typing import Any
+
 import equinox as eqx
+import jax.tree_util as jtu
+import optax
+from jaxtyping import PyTree
 
 from ..core._module import BaseModule
-from ..core._parameter import Param, DynamicParam, BaseParam, set, get
+from ..core._parameter import BaseParam, DynamicParam, Param, get, set
 from ..core._static import static
-
 
 ########################################################################################################################
 #
@@ -32,9 +33,7 @@ from ..core._static import static
 class Optim(BaseModule):
     """Optim inherits from core.BaseModule and thus it is a pytree. It is a thin wrapper around the optax library."""
 
-    def __init__(
-        self, optax_opt: optax.GradientTransformation, parameters: PyTree | None = None
-    ):
+    def __init__(self, optax_opt: optax.GradientTransformation, parameters: PyTree | None = None):
         """Optim constructor.
 
         Args:
@@ -85,6 +84,7 @@ class Optim(BaseModule):
         _is_valid_grads = True
 
         if scale_by is not None:
+
             def _map_grad(g):
                 nonlocal _is_valid_grads
                 if get(g) is None:
@@ -94,6 +94,7 @@ class Optim(BaseModule):
 
                 return set(g, g * scale_by)
         else:
+
             def _map_grad(g):
                 nonlocal _is_valid_grads
                 if get(g) is None:
@@ -102,10 +103,7 @@ class Optim(BaseModule):
                 return g
 
         grads = jtu.tree_map(
-            lambda f, g: None if f is None else _map_grad(g),
-            self.filter.get(),
-            grads,
-            is_leaf=lambda f: f is None
+            lambda f, g: None if f is None else _map_grad(g), self.filter.get(), grads, is_leaf=lambda f: f is None
         )
 
         if _is_valid_grads is False:
@@ -114,10 +112,7 @@ class Optim(BaseModule):
             return None
 
         module = jtu.tree_map(
-            lambda f, x: None if f is None else x,
-            self.filter.get(),
-            module,
-            is_leaf=lambda f: f is None
+            lambda f, x: None if f is None else x, self.filter.get(), module, is_leaf=lambda f: f is None
         )
 
         updates, state = self.optax_opt.update(
@@ -170,8 +165,9 @@ class Optim(BaseModule):
 
 
 class OptimTree(BaseModule):
-    """OptimTree creates multiple optimizers for each leaf of the provided parameters, specified by `leaf_fn`. This is useful when
-    different set of parameters are optimized at separate times. By default, a different optimizer is created for each Param.
+    """OptimTree creates multiple optimizers for each leaf of the provided parameters, specified by
+    `leaf_fn`. This is useful when different set of parameters are optimized at separate times. By
+    default, a different optimizer is created for each Param.
     """
 
     def __init__(
@@ -184,8 +180,8 @@ class OptimTree(BaseModule):
 
         Args:
             optax_opt (optax.GradientTransformation): the optax constructor function.
-            leaf_fn (Callable[[Any], bool]): function to specify which nodes to target for optimization. For each node a separate
-                optimizer is created.
+            leaf_fn (Callable[[Any], bool]): function to specify which nodes to target for
+                optimization. For each node a separate optimizer is created.
             parameters (PyTree | None, optional): target parameters. The init method can be called separately by passing
                 None.
         """
@@ -231,8 +227,10 @@ class OptimTree(BaseModule):
 
         # Each optimizer independently checks if the gradients are None and skips the optimization step if so.
         updates = jtu.tree_map(
-            lambda optim, g, m: None if optim is None else optim.step(
-                m, g, scale_by=scale_by, apply_updates=apply_updates, allow_none=True
+            lambda optim, g, m: (
+                None
+                if optim is None
+                else optim.step(m, g, scale_by=scale_by, apply_updates=apply_updates, allow_none=True)
             ),
             self.state.get(),
             grads,

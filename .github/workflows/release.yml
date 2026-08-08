@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*" # e.g. v0.6.3
+  workflow_dispatch: # must be dispatched from a tag, not a branch
+
+jobs:
+  release:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pcx
+    permissions:
+      contents: write # create the GitHub release
+      id-token: write # PyPI trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Verify tag matches the packaged version
+        env:
+          GIT_REF: ${{ github.ref }}
+        run: |
+          if [[ "$GIT_REF" != refs/tags/v* ]]; then
+            echo "::error::This workflow must run from a version tag (got '$GIT_REF')."
+            echo "Push a tag (git tag v0.X.Y && git push origin v0.X.Y), or when using"
+            echo "workflow_dispatch pick the TAG in the 'Use workflow from' dropdown."
+            exit 1
+          fi
+          TAG_VERSION="${GIT_REF#refs/tags/v}"
+          PROJECT_VERSION=$(uv run --no-project python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [[ "$TAG_VERSION" != "$PROJECT_VERSION" ]]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match pyproject.toml version ($PROJECT_VERSION)."
+            exit 1
+          fi
+          if ! grep -q "^## \[$TAG_VERSION\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$TAG_VERSION]' section."
+            exit 1
+          fi
+          echo "Releasing $TAG_VERSION"
+
+      - name: Extract release notes from CHANGELOG.md
+        env:
+          GIT_REF: ${{ github.ref }}
+        run: |
+          uv run --no-project python .github/scripts/extract_changelog.py "${GIT_REF#refs/tags/v}" > release-notes.md
+          cat release-notes.md
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Check the wheel imports on a clean interpreter
+        run: uv run --isolated --no-project --with dist/*.whl python -c "import pcx"
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          body_path: release-notes.md

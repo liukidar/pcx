@@ -2,5 +2,5 @@
 
 set -ex
 
-docker image build -t pcax:latest -f ./Dockerfile ..
-docker run --gpus all -it pcax:latest /bin/bash
+docker image build -t pcx:latest -f ./Dockerfile ..
+docker run --gpus all -it pcx:latest /bin/bash
