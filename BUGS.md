@@ -174,8 +174,9 @@ def f(x, count):
     count = count + x
     return (count + x,), None
 
+
 Scan(f, xs=jax.numpy.arange(5))(0)  # [0, 1, 3, 6, 10], None   <- documented
-                                    # ((20,), None)            <- actual
+# ((20,), None)            <- actual
 ```
 
 Two independent reasons it cannot match. The body adds `x` twice per step, so the
