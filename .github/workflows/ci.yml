@@ -120,6 +120,27 @@ jobs:
           path: .coverage.*
           include-hidden-files: true
 
+  known-bugs:
+    name: Known Defects (advisory)
+    runs-on: ubuntu-latest
+    # Every test here asserts correct behaviour that a catalogued defect
+    # currently violates, so this job is expected to fail. It exists to make the
+    # backlog visible and to flag when a defect is fixed. See BUGS.md.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Run the known-defect catalogue
+        run: uv run pytest -m bug -v
+
   coverage:
     name: Coverage Report
     needs: [locked]

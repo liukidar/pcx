@@ -47,14 +47,29 @@ typecheck-strict:
 # Run every read-only quality gate
 check: format-check lint typecheck
 
-# Format and auto-fix lint issues
-fix: format lint-fix
+# Auto-fix lint issues, then format. Order matters: `ruff check --fix` can leave
+# its rewrites unformatted, so formatting has to run last.
+fix: lint-fix format
 
 # ─── Testing ──────────────────────────────────────────────────────────────────
 
-# Run the test suite
+# Run the test suite (excludes known-bug and device tests)
 test *ARGS:
     uv run pytest -v {{ ARGS }}
+
+# Run the known-defect tests. These are EXPECTED TO FAIL — each asserts correct
+# behaviour that a current bug violates. See BUGS.md.
+test-bugs *ARGS:
+    -uv run pytest -m bug -v {{ ARGS }}
+
+# Run accelerator smoke tests locally. Backends that aren't present are skipped.
+# JAX_PLATFORMS is cleared so jax can see the GPU/Metal devices.
+test-devices *ARGS:
+    JAX_PLATFORMS='' uv run pytest -m device -v {{ ARGS }}
+
+# Everything: normal suite, then the bug catalogue, then device smokes
+test-all *ARGS:
+    uv run pytest -m "" -v {{ ARGS }}
 
 # Run tests with coverage and print a report
 coverage *ARGS:
@@ -95,3 +110,7 @@ all: fix check test
 clean:
     rm -rf .coverage .coverage.* htmlcov/ dist/ .pytest_cache/ .ruff_cache/ docs/_build/
     find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+# Mutation testing: inject deliberate defects and check the suite catches them
+mutation-test:
+    uv run python scripts/mutation_test.py

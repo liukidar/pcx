@@ -48,11 +48,37 @@ Commit `pyproject.toml` and `uv.lock` together. A `pyproject.toml` that has drif
 
 ## Tests
 
-Tests live in `tests/` and run against the CPU backend — `tests/conftest.py` pins `JAX_PLATFORMS=cpu` before JAX is imported, so results do not depend on whether a GPU is present. Use the `key` fixture for anything that draws randomness, so failures are reproducible.
+Tests live in `tests/`, organised in four tiers:
 
-Add tests for any behaviour you add or change. CI runs the suite on Linux, macOS and Windows across Python 3.11–3.14.
+| Directory | What it proves | Oracle |
+| --- | --- | --- |
+| `tests/core/` | pytree and parameter machinery | structural invariants |
+| `tests/functional/` | the jax-wrapper transforms | hand-written raw jax |
+| `tests/numerics/` | energies, gradients, optimiser, layers | closed forms, `optax`, bare `equinox` |
+| `tests/devices/` | a training step per backend | local only, never CI |
 
-GPU code paths cannot be exercised on GitHub Actions. If your change touches them, test on a GPU machine locally and say so in the pull request.
+**Derive every expectation from what the code is meant to do, never from what it currently returns.** Write the closed form, or the raw-jax equivalent, or drive `optax` directly, and compare against that. A test written by observing the implementation will faithfully encode its bugs and hand you a green tick over broken behaviour. If a test must pin current behaviour instead of asserting correctness, name it `test_characterises_*` and say so in the docstring.
+
+Tests run against the CPU backend: `tests/conftest.py` pins `JAX_PLATFORMS=cpu` before JAX is imported. An autouse fixture reseeds `pcx.RKG` around every test, since it is wall-clock-seeded module-level state and the default argument of every layer and Vode constructor, so without that the suite is order-dependent. Use the `key` and `rkg` fixtures for anything that draws randomness.
+
+### Markers
+
+```shell
+just test           # default gate: excludes bug and device
+just test-bugs      # the known-defect catalogue, expected to fail
+just test-devices   # accelerator smokes; absent backends skip
+just test-all       # everything
+```
+
+`bug` marks a test that asserts correct behaviour a catalogued defect currently violates. They are deliberately **not** `xfail`-ed: `xfail` makes a real defect invisible in the ordinary green run, which is how these bugs survived in the first place. Each carries a one-line rationale and an entry in [BUGS.md](BUGS.md). When you fix a defect, delete both the marker and the entry, and the test then guards the fix.
+
+`device` marks tests needing a real accelerator. GitHub Actions has no GPU, so these never run there.
+
+`just mutation-test` injects deliberate defects into the library and checks the suite notices. Use it when you are unsure whether a new test would actually catch anything.
+
+Add tests for any behaviour you add or change. CI runs the suite across Linux, macOS and Windows, Python 3.11 to 3.14 and three JAX versions, plus an advisory job reporting the bug catalogue.
+
+GPU code paths cannot be exercised on GitHub Actions. If your change touches them, run `just test-devices` locally and say so in the pull request.
 
 ## Changelog
 

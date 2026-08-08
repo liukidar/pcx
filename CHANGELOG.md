@@ -19,6 +19,11 @@ GitHub release notes.
 
 ### Added
 
+- Test suite of 442 tests across four tiers: structural (`tests/core/`), transform equivalence against hand-written raw jax (`tests/functional/`), numerical correctness against closed forms and `optax` (`tests/numerics/`), plus `tests/utils/`, `tests/nn/` and per-backend smoke tests (`tests/devices/`). Coverage of `pcx/` is 96%.
+- `BUGS.md` cataloguing 29 verified defects, each with a failing test asserting the correct behaviour. Marked `bug` and excluded from the default run; reported by an advisory CI job.
+- `scripts/mutation_test.py`, which injects deliberate defects to confirm the suite detects them. It currently catches 10 of 10.
+- Autouse fixture reseeding the global `pcx.RKG` around every test, since it is wall-clock-seeded module state and the default argument of every layer and Vode constructor, so without it the suite is order-dependent.
+- `device` marker and `just test-devices` for accelerator smoke tests (CPU, CUDA, Apple Metal), which skip when a backend is absent and never run in CI.
 - `uv` as the package and environment manager, replacing Poetry. Dependencies are locked in `uv.lock`.
 - `ty` as the type checker, wired into CI as an advisory (non-blocking) job.
 - `pytest` test suite with a `tests/` package, coverage configuration and Codecov reporting.
@@ -45,6 +50,7 @@ GitHub release notes.
 
 ### Fixed
 
+- `just fix` ran the formatter before the linter, so `ruff check --fix` could leave its rewrites unformatted and `just all` would then fail its own format check.
 - Various lint findings across `pcx`: unsorted imports, deprecated `typing` aliases, implicit `Optional` annotations, stale `# noqa` codes, and an unnecessary `map`/`zip` pairing in `BaseModule.flatten_module_with_keys`.
 
 ## [0.6.2.post3] - 2024-11-03

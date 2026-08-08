@@ -112,7 +112,15 @@ python-version = "3.11"
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-addopts = "-ra -q"
+# `device` needs a real accelerator; `bug` asserts behaviour that is currently
+# broken, so both are excluded from the default run. See CONTRIBUTING.md.
+addopts = "-ra -q -m 'not (device or bug)'"
+markers = [
+    "bug: asserts correct behaviour that a known defect currently violates — expected to fail, see BUGS.md",
+    "device: requires a specific accelerator backend (cuda/metal); local only, never runs in CI",
+    "slow: takes more than a couple of seconds",
+]
+filterwarnings = ["ignore::DeprecationWarning:jax.*"]
 
 [tool.coverage.run]
 source = ["pcx"]
