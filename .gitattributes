@@ -1,0 +1,11 @@
+# Normalise line endings. Git stores LF; Windows checkouts convert on the fly.
+# See issue #64.
+* text=auto eol=lf
+
+# Never touch binaries
+*.pdf binary
+*.png binary
+*.jpg binary
+
+# Notebooks are JSON: keep them LF so nbformat diffs stay readable
+*.ipynb text eol=lf
