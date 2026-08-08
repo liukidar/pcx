@@ -216,7 +216,7 @@ def test_value_and_grad_through_scan_matches_jax_grad_of_lax_scan():
 
 
 @pytest.mark.bug(
-    "the Scan docstring example returns the final carry (20), not the '[0, 1, 3, 6, 10], None' it documents"
+    "BUGS.md#20: the Scan docstring example returns the final carry (20), not the '[0, 1, 3, 6, 10], None' it documents"
 )
 def test_scan_docstring_example_produces_its_documented_output():
     """The `Scan` class docstring carries the library's only executable example of
@@ -545,7 +545,7 @@ def test_switch_matches_jax_lax_switch_for_every_index(index):
 
 
 @pytest.mark.bug(
-    "pxf.switch([...]) raises TypeError: _make_tuple leaves a list alone, collapsing all branches into one"
+    "#74: pxf.switch([...]) raises TypeError: _make_tuple leaves a list alone, collapsing all branches into one"
 )
 def test_switch_accepts_a_list_of_branches():
     """`pcx.functional.switch` is typed `branches: Sequence[...]` and mirrors
@@ -709,7 +709,7 @@ def test_cond_advances_the_global_rkg_exactly_like_a_raw_jax_split():
     assert jnp.array_equal(pcx.RKG.key.get(), fresh[0]), "the global key must be advanced past the consumed one"
 
 
-@pytest.mark.bug("the global RKG key is left holding a jax tracer when a flow function raises (no try/finally)")
+@pytest.mark.bug("#71: the global RKG key is left holding a jax tracer when a flow function raises (no try/finally)")
 def test_global_rkg_holds_a_concrete_array_after_a_flow_function_raises():
     """`_BaseTransform` swaps `RKG.key` for the traced key on the way in and
     restores it on the way out, but the restore is a plain statement rather than a

@@ -100,7 +100,7 @@ def test_repr_of_a_callable_object_names_its_class():
 
 
 @pytest.mark.bug(
-    "_BaseTransform.__init__ collapses __wrapped__ to the innermost function, so repr() of a composed transform "
+    "#77: _BaseTransform.__init__ collapses __wrapped__ to the innermost function, so repr() of a composed transform "
     "hides every intermediate layer and the recursive branch in __repr__ is unreachable"
 )
 def test_repr_of_a_nested_transform_names_every_layer():
@@ -189,7 +189,7 @@ def test_a_single_argument_callable_mask_leaf_is_applied_to_its_kwarg_subtree():
 
 
 @pytest.mark.bug(
-    "_process_mask's `except TypeError` fallback swallows a TypeError raised inside a user's mask callable and "
+    "#78: _process_mask's `except TypeError` fallback swallows a TypeError raised inside a user's mask callable and "
     "calls it a second time, so a broken mask runs twice and reports a confusing chained error"
 )
 def test_a_mask_callable_that_raises_a_type_error_is_not_invoked_twice():
@@ -233,7 +233,7 @@ def test_value_and_grad_with_a_tuple_argnums_returns_positional_and_keyword_grad
     have to be right: a mis-sliced repack would hand the optimiser the gradient with
     respect to the *input data* as if it were the gradient of the weights.
 
-    (The documented `argnums=0` integer spelling is rejected outright — BUGS.md#15 —
+    (The documented `argnums=0` integer spelling is rejected outright — #74 —
     so this uses the `(0,)` tuple form that does work.)
     """
     w = jnp.array([0.5, -1.25])

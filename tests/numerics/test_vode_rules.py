@@ -103,7 +103,7 @@ def test_every_matching_input_rule_fires_and_the_last_write_to_a_target_wins():
 
 
 @pytest.mark.bug(
-    "Vode.set interpolates the key into the regex as '({key}.*)', so set('u', ...) fires rules written for u2, "
+    "#69: Vode.set interpolates the key into the regex as '({key}.*)', so set('u', ...) fires rules written for u2, "
     "u_target or any key that merely starts with 'u' — and then never stores u itself"
 )
 def test_setting_one_key_does_not_fire_a_rule_written_for_a_different_key():
@@ -183,7 +183,7 @@ def test_status_none_does_not_fire_a_rule_registered_for_a_named_status():
 
 
 @pytest.mark.bug(
-    "Ruleset.filter uses re.match, not re.fullmatch, so a status is matched by prefix: any status starting with "
+    "#69: Ruleset.filter uses re.match, not re.fullmatch, so a status is matched by prefix: any status starting with "
     "'init' fires the forward-initialisation rule"
 )
 @pytest.mark.parametrize("status", ["initialise", "initialisation", "init_weights", "initial"], ids=lambda s: s)
@@ -326,7 +326,7 @@ def test_only_the_first_matching_output_rule_is_applied():
 
 
 @pytest.mark.bug(
-    "Vode.get print()s 'WARNING: Multiple output rules matched...' to stdout instead of calling warnings.warn "
+    "#79: Vode.get print()s 'WARNING: Multiple output rules matched...' to stdout instead of calling warnings.warn "
     "(the source carries a '# TODO: use warnings')"
 )
 def test_multiple_matching_output_rules_report_through_the_warnings_module():

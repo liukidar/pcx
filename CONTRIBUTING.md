@@ -48,21 +48,6 @@ Commit `pyproject.toml` and `uv.lock` together. A `pyproject.toml` that has drif
 
 ## Tests
 
-Tests live in `tests/`, organised in four tiers:
-
-| Directory | What it proves | Oracle |
-| --- | --- | --- |
-| `tests/core/` | pytree and parameter machinery | structural invariants |
-| `tests/functional/` | the jax-wrapper transforms | hand-written raw jax |
-| `tests/numerics/` | energies, gradients, optimiser, layers | closed forms, `optax`, bare `equinox` |
-| `tests/devices/` | a training step per backend | local only, never CI |
-
-**Derive every expectation from what the code is meant to do, never from what it currently returns.** Write the closed form, or the raw-jax equivalent, or drive `optax` directly, and compare against that. A test written by observing the implementation will faithfully encode its bugs and hand you a green tick over broken behaviour. If a test must pin current behaviour instead of asserting correctness, name it `test_characterises_*` and say so in the docstring.
-
-Tests run against the CPU backend: `tests/conftest.py` pins `JAX_PLATFORMS=cpu` before JAX is imported. An autouse fixture reseeds `pcx.RKG` around every test, since it is wall-clock-seeded module-level state and the default argument of every layer and Vode constructor, so without that the suite is order-dependent. Use the `key` and `rkg` fixtures for anything that draws randomness.
-
-### Markers
-
 ```shell
 just test           # default gate: excludes bug and device
 just test-bugs      # the known-defect catalogue, expected to fail
@@ -70,15 +55,21 @@ just test-devices   # accelerator smokes; absent backends skip
 just test-all       # everything
 ```
 
-`bug` marks a test that asserts correct behaviour a catalogued defect currently violates. They are deliberately **not** `xfail`-ed: `xfail` makes a real defect invisible in the ordinary green run, which is how these bugs survived in the first place. Each carries a one-line rationale and an entry in [BUGS.md](BUGS.md). When you fix a defect, delete both the marker and the entry, and the test then guards the fix.
+**Read [tests/README.md](tests/README.md) before adding tests.** It covers the tiers and their oracles, the `bug` / `device` / `slow` markers, the shared fixtures, and how mutation testing is used to check the suite actually catches things. The one rule worth repeating here:
 
-`device` marks tests needing a real accelerator. GitHub Actions has no GPU, so these never run there.
-
-`just mutation-test` injects deliberate defects into the library and checks the suite notices. Use it when you are unsure whether a new test would actually catch anything.
+**Derive every expectation from what the code is meant to do, never from what it currently returns.** A test written by observing the implementation faithfully encodes its bugs and hands you a green tick over broken behaviour.
 
 Add tests for any behaviour you add or change. CI runs the suite across Linux, macOS and Windows, Python 3.11 to 3.14 and three JAX versions, plus an advisory job reporting the bug catalogue.
 
 GPU code paths cannot be exercised on GitHub Actions. If your change touches them, run `just test-devices` locally and say so in the pull request.
+
+### Investigated and deliberately not treated as defects
+
+Recorded so they are not re-raised:
+
+- **`tree_apply` visiting an aliased param once per occurrence.** Documented with a worked example, and `clear_params` depends on it. Correct as specified.
+- **`Param` being unhashable.** `__eq__` is elementwise, so unhashability matches numpy and jax array semantics rather than contradicting them.
+- **A module reachable through two attributes being counted twice in the energy.** The library is designed on the assumption that a module is reachable exactly once, so this is out of contract rather than wrong. Shared *parameters* are a different matter and are supported.
 
 ## Changelog
 

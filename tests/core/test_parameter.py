@@ -106,7 +106,7 @@ def test_tree_map_over_a_subclass_returns_that_subclass():
         pytest.param(
             operator.itruediv,
             2.0,
-            marks=pytest.mark.bug("Param defines __idiv__ (Python 2) but no __itruediv__, so `p /= x` rebinds"),
+            marks=pytest.mark.bug("#70: Param defines __idiv__ (Python 2) but no __itruediv__, so `p /= x` rebinds"),
         ),
     ],
     ids=["iadd", "isub", "imul", "itruediv"],
@@ -195,7 +195,9 @@ def test_set_unwraps_a_parameter_source():
     assert_allclose(dst.get(), 7.0)
 
 
-@pytest.mark.bug("pcx.set on a non-param calls set(x) with one argument: TypeError, missing required argument 'x'")
+@pytest.mark.bug(
+    "BUGS.md#12: pcx.set on a non-param calls set(x) with one argument: TypeError, missing required argument 'x'"
+)
 def test_set_on_a_plain_value_returns_the_new_value():
     """Documented contract: "otherwise return the new value itself".
 
@@ -259,7 +261,9 @@ def test_cleared_paramdict_accepts_new_entries():
     assert_allclose(pd["b"], jnp.zeros(1))
 
 
-@pytest.mark.bug("ParamDict.__contains__ does not guard against a None value: TypeError, 'NoneType' is not iterable")
+@pytest.mark.bug(
+    "BUGS.md#7: ParamDict.__contains__ does not guard against a None value: TypeError, 'NoneType' is not iterable"
+)
 def test_membership_test_on_a_cleared_paramdict_is_false():
     """A cleared `ParamDict` is documented to be equivalent to an empty one —
     `__setitem__` says so explicitly by resetting `_value` to `{}`. Membership
@@ -275,7 +279,7 @@ def test_membership_test_on_a_cleared_paramdict_is_false():
     assert ("a" in pd) is False
 
 
-@pytest.mark.bug("ParamDict.__getitem__ does not guard against a None value: TypeError, not subscriptable")
+@pytest.mark.bug("BUGS.md#7: ParamDict.__getitem__ does not guard against a None value: TypeError, not subscriptable")
 def test_indexing_a_cleared_paramdict_raises_key_error():
     """An empty mapping raises `KeyError` on a missing key — that is the error
     callers catch. A `TypeError` from `None` instead escapes any `except KeyError`
@@ -287,7 +291,7 @@ def test_indexing_a_cleared_paramdict_raises_key_error():
         pd["a"]
 
 
-@pytest.mark.bug("ParamDict.get does not guard against a None value: AttributeError on NoneType.get")
+@pytest.mark.bug("BUGS.md#7: ParamDict.get does not guard against a None value: AttributeError on NoneType.get")
 def test_get_on_a_cleared_paramdict_returns_the_default():
     """`get(key, default)` exists to be safe on absent keys; a cleared cache is
     the most absent a key can be, so it must yield the default rather than

@@ -80,7 +80,7 @@ def test_batch_draw_returns_n_distinct_keys(n: int):
     assert len(unique) == n, f"only {len(unique)} distinct keys among {n}"
 
 
-@pytest.mark.bug("rkg(1) returns a bare key of shape (2,) instead of one key of shape (1, 2); see BUGS.md")
+@pytest.mark.bug("#75: rkg(1) returns a bare key of shape (2,) instead of one key of shape (1, 2)")
 def test_batch_draw_is_uniform_in_n():
     """`rkg(n)` must always yield `n` keys, including `n == 1`.
 

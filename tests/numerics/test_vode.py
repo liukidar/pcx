@@ -44,7 +44,7 @@ class _NoVodes(pxc.EnergyModule):
 # Energy accumulation ##################################################################
 
 
-@pytest.mark.bug("EnergyModule.energy() reduces over an empty iterable and raises TypeError")
+@pytest.mark.bug("#72: EnergyModule.energy() reduces over an empty iterable and raises TypeError")
 def test_energy_of_a_module_with_no_vodes_is_zero():
     """The total energy of a module is the sum over its Vodes, and the sum over an
     empty collection is zero.
@@ -81,7 +81,7 @@ def test_vode_energy_equals_the_closed_form_total():
     assert_allclose(jnp.sum(vode.energy()), jnp.sum(0.5 * (H - U) ** 2))
 
 
-@pytest.mark.bug("Vode.energy() collapses to a scalar once __call__ has recorded the input shape")
+@pytest.mark.bug("BUGS.md#19: Vode.energy() collapses to a scalar once __call__ has recorded the input shape")
 def test_energy_is_the_same_whether_u_was_set_by_call_or_by_set():
     """``Vode.__call__`` is documented as equivalent to ``vode.set("u", u).get("h")``,
     so the energy must not depend on which of the two was used.
@@ -111,7 +111,8 @@ def test_energy_is_the_same_whether_u_was_set_by_call_or_by_set():
 
 
 @pytest.mark.bug(
-    "clear_params sets the cache dict to None, so every subsequent read raises instead of seeing an empty cache"
+    "BUGS.md#7: clear_params sets the cache dict to None, so every subsequent read raises instead of seeing an "
+    "empty cache"
 )
 def test_a_cleared_cache_reads_as_empty_rather_than_raising():
     """Clearing a cache must leave it empty and readable, not broken.

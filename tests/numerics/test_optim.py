@@ -131,7 +131,7 @@ def test_adam_step_matches_optax_driven_directly():
 # scale_by #############################################################################
 
 
-@pytest.mark.bug("Optim.step(scale_by=k) writes g*k back into the caller's gradient Params in place")
+@pytest.mark.bug("#67: Optim.step(scale_by=k) writes g*k back into the caller's gradient Params in place")
 def test_step_does_not_mutate_the_caller_gradients():
     """``scale_by`` is documented as scaling the gradients *before* handing them to
     optax — an input to the step, not a side effect on the caller's tree.
@@ -152,7 +152,7 @@ def test_step_does_not_mutate_the_caller_gradients():
     )
 
 
-@pytest.mark.bug("Optim.step(scale_by=k) mutates grads in place, so repeated steps compound k")
+@pytest.mark.bug("#67: Optim.step(scale_by=k) mutates grads in place, so repeated steps compound k")
 def test_two_scaled_steps_apply_the_same_scaling_each_time():
     """Two SGD steps with the same gradients and the same ``scale_by`` must move the
     weight by ``2 * lr * k * g``.

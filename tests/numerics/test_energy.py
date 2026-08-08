@@ -222,15 +222,21 @@ def test_zero_energy_gradient_wrt_h_is_zero():
     assert_allclose(jax.grad(total_energy)(h), jnp.zeros_like(h))
 
 
-@pytest.mark.bug("zero_energy returns jnp.zeros((1,)) regardless of the node value's shape")
+@pytest.mark.bug("BUGS.md#11: zero_energy returns jnp.zeros((1,)) regardless of the node value's shape")
 def test_zero_energy_has_the_same_shape_as_the_node_value():
     """``zero_energy`` is a drop-in replacement for ``se_energy``/``ce_energy``, both of
     which return one energy term per element of ``h``. It must therefore have the shape
     of ``h``.
 
-    A fixed ``(1,)`` shape breaks the caller: ``Vode.energy`` reshapes the returned
-    array to ``(batch, -1)``, which is impossible for a size-1 array whenever the batch
-    size is not 1.
+    A fixed ``(1,)`` shape can break the caller: ``Vode.energy`` reshapes the returned
+    array to ``(batch, -1)``, which is impossible for a size-1 array. Note the reach is
+    narrower than it first appears. ``Vode.energy`` only takes that reshape branch when
+    ``self.shape`` was never recorded, which means ``u`` was set with ``set()`` rather
+    than ``__call__``; under ``vmap``, which is how every tutorial drives a model, the
+    other branch runs and ``zero_energy`` works. So this shares a root cause with
+    BUGS.md#19 and is only reachable through the same call path. It is asserted here on
+    its own terms: ``zero_energy`` is documented as interchangeable with the other two
+    energy functions, and a shape that ignores its input is not interchangeable.
     """
     h = jnp.ones((3, 2))
     u = jnp.zeros((3, 2))

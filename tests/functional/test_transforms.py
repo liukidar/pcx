@@ -297,7 +297,9 @@ def test_value_and_grad_writes_back_a_param_mutated_in_the_function():
     assert_allclose(param.get(), w)
 
 
-@pytest.mark.bug("ValueAndGrad hands positional args straight to the function, so mutating one writes into the caller")
+@pytest.mark.bug(
+    "BUGS.md#6: ValueAndGrad hands positional args straight to the function, so mutating one writes into the caller"
+)
 def test_value_and_grad_does_not_write_back_a_param_passed_positionally():
     """Positional arguments must stay pure under `value_and_grad` exactly as they
     do under `jit` — the protocol is a property of the library, not of one
@@ -325,7 +327,9 @@ def test_value_and_grad_does_not_write_back_a_param_passed_positionally():
     assert_allclose(positional.get(), jnp.array([0.0]))
 
 
-@pytest.mark.bug("a positional Param mutated inside value_and_grad keeps a live autodiff tracer after the call returns")
+@pytest.mark.bug(
+    "BUGS.md#6: a positional Param mutated inside value_and_grad keeps a live autodiff tracer after the call returns"
+)
 def test_value_and_grad_does_not_leak_a_tracer_into_a_positional_param():
     """The severe form of the same defect. When the mutation involves the
     differentiated parameter, the value written into the caller's positional
@@ -394,7 +398,9 @@ def test_value_and_grad_updates_a_shared_param_exactly_once():
     assert_allclose(state.get(), jnp.array([1.0]))
 
 
-@pytest.mark.bug("pxf.value_and_grad(argnums=0) raises TypeError: an int argnums is splatted with * instead of wrapped")
+@pytest.mark.bug(
+    "#74: pxf.value_and_grad(argnums=0) raises TypeError: an int argnums is splatted with * instead of wrapped"
+)
 def test_value_and_grad_accepts_an_integer_argnums():
     """`pcx.functional.value_and_grad` advertises `argnums: int | Sequence[int]`,
     matching `jax.value_and_grad`, and a bare `int` is by far the common way to
@@ -600,7 +606,9 @@ def test_repeated_jitted_draws_follow_the_raw_jax_key_stream():
         assert jnp.array_equal(pcx.RKG.key.get(), key), f"global key diverged at call {call}"
 
 
-@pytest.mark.bug("the global RKG key is left holding a jax tracer when a transformed function raises (no try/finally)")
+@pytest.mark.bug(
+    "#71: the global RKG key is left holding a jax tracer when a transformed function raises (no try/finally)"
+)
 def test_global_rkg_holds_a_concrete_array_after_a_transformed_function_raises():
     """`_BaseTransform` swaps `RKG.key` for the traced key on the way in and
     restores it on the way out — but the restore is a plain statement, not a

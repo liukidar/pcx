@@ -226,7 +226,7 @@ def test_indexing_matches_the_bare_array(index):
 
 
 @pytest.mark.bug(
-    "iterating a Param never terminates: no __iter__, and the __getitem__ fallback never stops because "
+    "#70: iterating a Param never terminates: no __iter__, and the __getitem__ fallback never stops because "
     "jax clamps an out-of-bounds index instead of raising IndexError"
 )
 def test_iterating_a_param_yields_exactly_the_elements_of_the_array():
@@ -251,7 +251,7 @@ def test_iterating_a_param_yields_exactly_the_elements_of_the_array():
         assert_same_array(actual, expected, context=f"row {i}")
 
 
-@pytest.mark.bug("Param forwards __getitem__ and .shape but defines no __len__, so len(param) raises TypeError")
+@pytest.mark.bug("#70: Param forwards __getitem__ and .shape but defines no __len__, so len(param) raises TypeError")
 def test_len_matches_the_bare_array():
     """`len(w)` must be the size of the leading axis, as it is for the array.
 
@@ -266,7 +266,7 @@ def test_len_matches_the_bare_array():
     assert len(pcx.Param(A)) == len(A)
 
 
-@pytest.mark.bug("Param forwards no __float__/__int__, so float(param) on a scalar parameter raises TypeError")
+@pytest.mark.bug("#70: Param forwards no __float__/__int__, so float(param) on a scalar parameter raises TypeError")
 def test_scalar_conversions_match_the_bare_array():
     """`float(loss)` and `int(count)` on a zero-dimensional parameter must give the
     same Python number the wrapped array gives.
@@ -368,12 +368,12 @@ def test_repr_of_an_empty_param_does_not_raise():
 #
 # `__iadd__`, `__isub__` and `__imul__` are covered by
 # tests/core/test_parameter.py::test_in_place_arithmetic_mutates_the_same_object,
-# together with the known `/=` defect (BUGS.md#3). The remaining augmented
+# together with the known `/=` defect (#70). The remaining augmented
 # assignments are below.
 
 
 @pytest.mark.bug(
-    "BUGS.md#3, generalised: Param defines only __iadd__/__isub__/__imul__, so //= %= **= @= &= |= ^= <<= >>= "
+    "#70: Param defines only __iadd__/__isub__/__imul__, so //= %= **= @= &= |= ^= <<= >>= "
     "all rebind the name to a bare jax.Array and the parameter silently keeps its old value"
 )
 @pytest.mark.parametrize(
@@ -402,7 +402,7 @@ def test_every_augmented_assignment_mutates_the_same_object(op, start, other, ex
     still points at the untouched original. The update is discarded in silence, and
     the local variable is no longer a parameter at all.
 
-    BUGS.md#3 records this for `/=` only; the same root cause covers the nine
+    #70 records this for `/=` only; the same root cause covers the nine
     operators here, none of which has an in-place implementation.
     """
     param = pcx.Param(start)

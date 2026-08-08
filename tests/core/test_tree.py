@@ -258,7 +258,9 @@ def test_inject_strict_rejects_surplus_values():
         tree_inject(dst, values=surplus, is_pytree=True)
 
 
-@pytest.mark.bug("too few values raises a bare StopIteration from next() instead of the documented count mismatch")
+@pytest.mark.bug(
+    "BUGS.md#14: too few values raises a bare StopIteration from next() instead of the documented count mismatch"
+)
 def test_inject_strict_rejects_missing_values():
     """Documented: with `strict=True` "the number of values must match the number
     of leaves in the pytree" — a mismatch in either direction is the same user
@@ -277,7 +279,9 @@ def test_inject_strict_rejects_missing_values():
         tree_inject(dst, values=too_few, is_pytree=True)
 
 
-@pytest.mark.bug("tree_inject calls .get() on every element of `values`, so plain arrays raise AttributeError")
+@pytest.mark.bug(
+    "BUGS.md#13: tree_inject calls .get() on every element of `values`, so plain arrays raise AttributeError"
+)
 def test_inject_accepts_plain_values():
     """`values` is documented as an "input sequence of values to inject", and the
     default `inject_fn` is `lambda n, v: n.set(v)` — a plain value is exactly what

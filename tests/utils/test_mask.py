@@ -210,7 +210,7 @@ def test_m_is_is_equivalent_to_chaining_and(model):
 # Negation #############################################################################
 
 
-@pytest.mark.bug("`_M_not` overrides `__call__` instead of `apply`, so `~M(A)` never negates the leaf predicate")
+@pytest.mark.bug("#68: `_M_not` overrides `__call__` instead of `apply`, so `~M(A)` never negates the leaf predicate")
 def test_negation_of_a_leaf_predicate_is_the_logical_not(model):
     """``(~M(A)).apply(p)`` must be ``not M(A).apply(p)`` for every parameter.
 
@@ -226,7 +226,7 @@ def test_negation_of_a_leaf_predicate_is_the_logical_not(model):
         assert negative.apply(param) == (not positive.apply(param)), f"~ did not negate at {path}"
 
 
-@pytest.mark.bug("`~M(A)` applied to a model returns a bare bool instead of a masked pytree")
+@pytest.mark.bug("#68: `~M(A)` applied to a model returns a bare bool instead of a masked pytree")
 def test_negation_applied_to_a_model_selects_the_complement(model):
     """``(~M(A))(model)`` must select every parameter ``M(A)`` rejects, and no other.
 
@@ -241,7 +241,7 @@ def test_negation_applied_to_a_model_selects_the_complement(model):
     assert _kept(masked).keys() == complement
 
 
-@pytest.mark.bug("negation is ignored inside `&`/`|`: `M(A) & ~M(B)` resolves to `M(A) & M(B)`")
+@pytest.mark.bug("#68: negation is ignored inside `&`/`|`: `M(A) & ~M(B)` resolves to `M(A) & M(B)`")
 def test_and_with_a_negated_mask_excludes_the_negated_set(model):
     """``M(A) & ~M(B)`` selects the ``A``s that are not ``B``s.
 
@@ -258,7 +258,7 @@ def test_and_with_a_negated_mask_excludes_the_negated_set(model):
     assert _kept(masked).keys() == expected
 
 
-@pytest.mark.bug("negation never negates, so De Morgan's laws do not hold for the mask algebra")
+@pytest.mark.bug("#68: negation never negates, so De Morgan's laws do not hold for the mask algebra")
 def test_de_morgan_holds_for_the_leaf_predicate(model):
     """``~(M(A) | M(B))`` and ``~M(A) & ~M(B)`` must agree, and both must be the complement.
 

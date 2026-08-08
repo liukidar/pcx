@@ -141,7 +141,7 @@ def test_keys_are_stable_attribute_paths(net, ckpt):
         assert set(f.files) == {".a.nn.weight", ".a.nn.bias", ".b.nn.weight", ".b.nn.bias"}
 
 
-@pytest.mark.bug("BUGS.md#26: load_params does no shape check, so a mismatched checkpoint overwrites silently")
+@pytest.mark.bug("#73: load_params does no shape check, so a mismatched checkpoint overwrites silently")
 def test_shape_mismatch_is_rejected(rkg, ckpt):
     """Loading a checkpoint from a differently-shaped model must not succeed.
     It currently overwrites the parameter with the wrong shape, which surfaces
@@ -160,7 +160,7 @@ def test_shape_mismatch_is_rejected(rkg, ckpt):
     assert loaded.shape == original.shape, f"silently loaded a {loaded.shape} weight into a {original.shape} parameter"
 
 
-@pytest.mark.bug("BUGS.md#10: duplicate refs are written as None, so np.load refuses the object array")
+@pytest.mark.bug("#73: duplicate refs are written as None, so np.load refuses the object array")
 def test_round_trip_preserves_shared_parameters(rkg, ckpt):
     """A model using `pxnn.shared` must checkpoint and restore like any other.
 
