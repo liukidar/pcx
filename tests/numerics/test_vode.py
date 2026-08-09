@@ -44,7 +44,6 @@ class _NoVodes(pxc.EnergyModule):
 # Energy accumulation ##################################################################
 
 
-@pytest.mark.bug("#72: EnergyModule.energy() reduces over an empty iterable and raises TypeError")
 def test_energy_of_a_module_with_no_vodes_is_zero():
     """The total energy of a module is the sum over its Vodes, and the sum over an
     empty collection is zero.
