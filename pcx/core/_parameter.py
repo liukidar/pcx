@@ -185,27 +185,25 @@ class Param(DynamicParam):
         self._value = self._value.__mul__(get(__other))
         return self
 
-    def __div__(self, __other):
-        return self._value.__div__(get(__other))
-
-    def __rdiv__(self, __other):
-        return self._value.__rdiv__(get(__other))
-
-    def __idiv__(self, __other):
-        self._value = self._value.__div__(get(__other))
-        return self
-
     def __truediv__(self, __other):
         return self._value.__truediv__(get(__other))
 
     def __rtruediv__(self, __other):
         return self._value.__rtruediv__(get(__other))
 
+    def __itruediv__(self, __other):
+        self._value = self._value.__truediv__(get(__other))
+        return self
+
     def __floordiv__(self, __other):
         return self._value.__floordiv__(get(__other))
 
     def __rfloordiv__(self, __other):
         return self._value.__rfloordiv__(get(__other))
+
+    def __ifloordiv__(self, __other):
+        self._value = self._value.__floordiv__(get(__other))
+        return self
 
     def __divmod__(self, __other):
         return self._value.__divmod__(get(__other))
@@ -219,11 +217,19 @@ class Param(DynamicParam):
     def __rmod__(self, __other):
         return self._value.__rmod__(get(__other))
 
+    def __imod__(self, __other):
+        self._value = self._value.__mod__(get(__other))
+        return self
+
     def __pow__(self, __other):
         return self._value.__pow__(get(__other))
 
     def __rpow__(self, __other):
         return self._value.__rpow__(get(__other))
+
+    def __ipow__(self, __other):
+        self._value = self._value.__pow__(get(__other))
+        return self
 
     def __matmul__(self, __other):
         return self._value.__matmul__(get(__other))
@@ -231,11 +237,19 @@ class Param(DynamicParam):
     def __rmatmul__(self, __other):
         return self._value.__rmatmul__(get(__other))
 
+    def __imatmul__(self, __other):
+        self._value = self._value.__matmul__(get(__other))
+        return self
+
     def __and__(self, __other):
         return self._value.__and__(get(__other))
 
     def __rand__(self, __other):
         return self._value.__rand__(get(__other))
+
+    def __iand__(self, __other):
+        self._value = self._value.__and__(get(__other))
+        return self
 
     def __or__(self, __other):
         return self._value.__or__(get(__other))
@@ -243,11 +257,19 @@ class Param(DynamicParam):
     def __ror__(self, __other):
         return self._value.__ror__(get(__other))
 
+    def __ior__(self, __other):
+        self._value = self._value.__or__(get(__other))
+        return self
+
     def __xor__(self, __other):
         return self._value.__xor__(get(__other))
 
     def __rxor__(self, __other):
         return self._value.__rxor__(get(__other))
+
+    def __ixor__(self, __other):
+        self._value = self._value.__xor__(get(__other))
+        return self
 
     def __lshift__(self, __other):
         return self._value.__lshift__(get(__other))
@@ -255,14 +277,34 @@ class Param(DynamicParam):
     def __rlshift__(self, __other):
         return self._value.__rlshift__(get(__other))
 
+    def __ilshift__(self, __other):
+        self._value = self._value.__lshift__(get(__other))
+        return self
+
     def __rshift__(self, __other):
         return self._value.__rshift__(get(__other))
 
     def __rrshift__(self, __other):
         return self._value.__rrshift__(get(__other))
 
+    def __irshift__(self, __other):
+        self._value = self._value.__rshift__(get(__other))
+        return self
+
     def __round__(self, ndigits=None):
         return self._value.__round__(ndigits)
+
+    def __float__(self):
+        return self._value.__float__()
+
+    def __int__(self):
+        return self._value.__int__()
+
+    def __len__(self):
+        return self._value.__len__()
+
+    def __iter__(self):
+        return self._value.__iter__()
 
     def __getitem__(self, __idx):
         return self._value.__getitem__(__idx)

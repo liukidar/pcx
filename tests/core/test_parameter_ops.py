@@ -225,10 +225,6 @@ def test_indexing_matches_the_bare_array(index):
     assert_same_array(pcx.Param(A)[index], A[index], context=f"Param[{index!r}]")
 
 
-@pytest.mark.bug(
-    "#70: iterating a Param never terminates: no __iter__, and the __getitem__ fallback never stops because "
-    "jax clamps an out-of-bounds index instead of raising IndexError"
-)
 def test_iterating_a_param_yields_exactly_the_elements_of_the_array():
     """`for row in w` must walk the leading axis exactly as `for row in w.get()` does,
     and must stop at the end of it.
@@ -251,7 +247,6 @@ def test_iterating_a_param_yields_exactly_the_elements_of_the_array():
         assert_same_array(actual, expected, context=f"row {i}")
 
 
-@pytest.mark.bug("#70: Param forwards __getitem__ and .shape but defines no __len__, so len(param) raises TypeError")
 def test_len_matches_the_bare_array():
     """`len(w)` must be the size of the leading axis, as it is for the array.
 
@@ -266,7 +261,6 @@ def test_len_matches_the_bare_array():
     assert len(pcx.Param(A)) == len(A)
 
 
-@pytest.mark.bug("#70: Param forwards no __float__/__int__, so float(param) on a scalar parameter raises TypeError")
 def test_scalar_conversions_match_the_bare_array():
     """`float(loss)` and `int(count)` on a zero-dimensional parameter must give the
     same Python number the wrapped array gives.
@@ -372,10 +366,6 @@ def test_repr_of_an_empty_param_does_not_raise():
 # assignments are below.
 
 
-@pytest.mark.bug(
-    "#70: Param defines only __iadd__/__isub__/__imul__, so //= %= **= @= &= |= ^= <<= >>= "
-    "all rebind the name to a bare jax.Array and the parameter silently keeps its old value"
-)
 @pytest.mark.parametrize(
     ("op", "start", "other", "expected"),
     [
