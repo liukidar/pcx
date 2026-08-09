@@ -89,11 +89,11 @@ class Ruleset(BaseModule):
         status = status or ""
 
         for _pattern, _rules in self.rules.items():
-            if re.match(_pattern, status) is None:
+            if re.fullmatch(_pattern, status) is None:
                 continue
 
             for _rule in _rules:
-                if _match := re.match(rule_pattern, _rule):
+                if _match := re.fullmatch(rule_pattern, _rule):
                     yield _match.group(1, 2)
 
     def apply_set_transformation(
@@ -245,7 +245,9 @@ class Vode(EnergyModule):
         Returns:
             Vode: returns itself to allow for chaining.
         """
-        _rule_pattern = f"(.*(?<!\\s))\\s*<-\\s*({key}.*)"
+        # The key group is anchored so 'u' cannot match a rule written for 'u2'; the optional tail is the
+        # ':transformation' suffix. 'Ruleset.filter' full-matches, so no trailing anchor is needed here.
+        _rule_pattern = f"(.*(?<!\\s))\\s*<-\\s*({key}(?::.*)?)"
 
         rules = tuple(self.ruleset.filter(self.status, _rule_pattern))
         for _targets, _tform in rules:
