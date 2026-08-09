@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/_static/pcx-banner-dark.svg">
-    <img src="docs/_static/pcx-banner-light.svg" alt="PCX — predictive coding in JAX" width="720">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/_static/pcx-banner-dark-rounded.svg">
+    <img src="docs/_static/pcx-banner-light-rounded.svg" alt="PCX — predictive coding in JAX" width="720">
   </picture>
 </p>
 
