@@ -99,24 +99,18 @@ def test_repr_of_a_callable_object_names_its_class():
     assert repr(pxf.jit()(_Scaler(2.0))) == "Jit(fn=_Scaler)"
 
 
-@pytest.mark.bug(
-    "#77: _BaseTransform.__init__ collapses __wrapped__ to the innermost function, so repr() of a composed transform "
-    "hides every intermediate layer and the recursive branch in __repr__ is unreachable"
-)
 def test_repr_of_a_nested_transform_names_every_layer():
     """A composed transform must describe the whole stack, not just the innermost
     function.
 
-    `__repr__` contains a branch for exactly this — `repr(self.__wrapped__) if
-    isinstance(self.__wrapped__, _BaseTransform)` — so nested reporting is plainly
-    the intent. But `__init__` sets `self.__wrapped__ = _fn.__wrapped__` when it
-    wraps another transform, which by induction is always the innermost plain
-    function, so that branch can never run.
+    `__repr__` recurses through `self.__wrapped__` while it is a `_BaseTransform`, so
+    every layer names the one below it. That requires `__init__` to keep the immediate
+    wrapped object rather than collapsing it to the innermost plain function.
 
-    The consequence is that `pxf.jit()(f)` and `pxf.jit()(pxf.value_and_grad(m)(f))`
-    print identically while computing entirely different things: one returns a value,
-    the other a `(value, gradients)` pair. Composition is the documented way to build
-    a training step, so this is the object a user most needs to identify.
+    Otherwise `pxf.jit()(f)` and `pxf.jit()(pxf.value_and_grad(m)(f))` would print
+    identically while computing entirely different things: one returns a value, the
+    other a `(value, gradients)` pair. Composition is the documented way to build a
+    training step, so this is the object a user most needs to identify.
     """
     composed = pxf.jit()(pxf.value_and_grad(diff_params())(_affine_loss))
 

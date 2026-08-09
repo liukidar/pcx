@@ -110,10 +110,12 @@ class _BaseTransform(abc.ABC):
         _fns = _make_tuple(fn)
         _fn = _fns[0]
 
+        # The immediate wrapped object, so '__repr__' can name every layer; 'inspect' unwraps the chain regardless.
+        self.__wrapped__ = _fn
+
         # We wrap 'fn' to return the updated values of the parameters as well and to unref the kwargs before passing
         # them to the original function.
         if isinstance(_fn, _BaseTransform):
-            self.__wrapped__ = _fn.__wrapped__
 
             def _map_fn(fn):
                 # 'kwargs' are reffed so we specify is_pytree=True to avoid reffing multiple times them.
@@ -134,7 +136,6 @@ class _BaseTransform(abc.ABC):
                 return _wrap_fn
 
         else:
-            self.__wrapped__ = _fn
 
             def _map_fn(fn):
                 # We unref only when the original function, not a _BaseTransform, is called, as many transformations
