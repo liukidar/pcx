@@ -4,13 +4,13 @@
    contain the root `toctree` directive.
 
 .. image:: _static/pcx-banner-light.svg
-   :alt: PCX — predictive coding in JAX
+   :alt: PCX — Predictive Coding Networks Made Simple
    :class: only-light
    :align: center
    :width: 90%
 
 .. image:: _static/pcx-banner-dark.svg
-   :alt: PCX — predictive coding in JAX
+   :alt: PCX — Predictive Coding Networks Made Simple
    :class: only-dark
    :align: center
    :width: 90%

@@ -1,11 +1,9 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/_static/pcx-banner-dark-rounded.svg">
-    <img src="docs/_static/pcx-banner-light-rounded.svg" alt="PCX — predictive coding in JAX" width="720">
+    <img src="docs/_static/pcx-banner-light-rounded.svg" alt="PCX — Predictive Coding Networks Made Simple" width="720">
   </picture>
 </p>
-
-# PCX — Predictive Coding Networks Made Simple
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![PyPI version](https://badge.fury.io/py/pcx.svg)](https://badge.fury.io/py/pcx)
