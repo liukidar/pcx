@@ -9,3 +9,6 @@
 
 # Notebooks are JSON: keep them LF so nbformat diffs stay readable
 *.ipynb text eol=lf
+
+# Changelog entries are appended concurrently on many branches; take both sides on merge.
+CHANGELOG.md merge=union
