@@ -53,6 +53,7 @@ GitHub release notes.
 
 - `just fix` ran the formatter before the linter, so `ruff check --fix` could leave its rewrites unformatted and `just all` would then fail its own format check.
 - Various lint findings across `pcx`: unsorted imports, deprecated `typing` aliases, implicit `Optional` annotations, stale `# noqa` codes, and an unnecessary `map`/`zip` pairing in `BaseModule.flatten_module_with_keys`.
+- `repr()` of a composed transform names every layer instead of collapsing to the innermost function ([#104](https://github.com/liukidar/pcx/pull/104)).
 
 ## [0.6.2.post3] - 2024-11-03
 
