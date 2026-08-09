@@ -151,3 +151,9 @@ docs/source/
 
 # Local scratch space for temporary files (never committed)
 tmp/
+
+# Coding agents
+.aider*
+.claude/
+.codex/
+.cursor/
