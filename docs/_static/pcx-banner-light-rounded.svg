@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 256" width="1280" height="256">
   <defs>
     <linearGradient id="lP" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#7C3AED"/>
@@ -21,17 +21,17 @@
       <stop offset="1" stop-color="#06B6D4" stop-opacity="0"/>
     </radialGradient>
     <clipPath id="lRound">
-      <rect width="1280" height="320" rx="64"/>
+      <rect width="1280" height="256" rx="64"/>
     </clipPath>
   </defs>
 
   <g clip-path="url(#lRound)">
-    <rect width="1280" height="320" fill="#F1F5F9"/>
+    <rect width="1280" height="256" fill="#F1F5F9"/>
     <circle cx="270" cy="40" r="300" fill="url(#lGlowV)"/>
-    <circle cx="1030" cy="290" r="320" fill="url(#lGlowC)"/>
+    <circle cx="1030" cy="226" r="320" fill="url(#lGlowC)"/>
   </g>
 
-  <g transform="translate(452,26) scale(0.8)">
+  <g transform="translate(452,24) scale(0.8)">
     <!-- P -->
     <path d="M 42 158 L 42 42 L 74 42 A 31 31 0 0 1 74 104 L 42 104"
           stroke="url(#lP)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
@@ -50,7 +50,7 @@
     </g>
   </g>
 
-  <text x="640" y="256" text-anchor="middle"
+  <text x="640" y="212" text-anchor="middle"
         font-family="'SF Pro Display','Segoe UI',system-ui,-apple-system,sans-serif"
         font-size="21" font-weight="600" letter-spacing="7"
         fill="#64748B">PREDICTIVE CODING NETWORKS MADE SIMPLE</text>
