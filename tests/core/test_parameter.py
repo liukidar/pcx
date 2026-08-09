@@ -103,11 +103,7 @@ def test_tree_map_over_a_subclass_returns_that_subclass():
         (operator.iadd, 6.0),
         (operator.isub, 2.0),
         (operator.imul, 8.0),
-        pytest.param(
-            operator.itruediv,
-            2.0,
-            marks=pytest.mark.bug("#70: Param defines __idiv__ (Python 2) but no __itruediv__, so `p /= x` rebinds"),
-        ),
+        (operator.itruediv, 2.0),
     ],
     ids=["iadd", "isub", "imul", "itruediv"],
 )
