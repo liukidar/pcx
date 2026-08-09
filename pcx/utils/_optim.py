@@ -92,7 +92,9 @@ class Optim(BaseModule):
 
                     return g
 
-                return set(g, g * scale_by)
+                # 'grads' is often reused (e.g. by a second optimiser), so scale a copy. 'tree_map' rebuilds the
+                # Param through its registered unflatten, preserving the subclass and its attributes (e.g. 'frozen').
+                return jtu.tree_map(lambda _g: _g * scale_by, g)
         else:
 
             def _map_grad(g):
