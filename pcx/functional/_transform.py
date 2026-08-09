@@ -299,6 +299,8 @@ class ValueAndGrad(_BaseTransform):
         self.kwargs_mask = kwargs_mask
         self.has_aux = t_kwargs["has_aux"]
 
+        _argnums = t_kwargs.get("argnums", ())
+        t_kwargs["argnums"] = (_argnums,) if isinstance(_argnums, int) else tuple(_argnums)
         t_kwargs["has_aux"] = True
         self.t_kwargs = t_kwargs
 

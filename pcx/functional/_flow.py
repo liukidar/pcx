@@ -165,7 +165,7 @@ class Switch(_BaseTransform):
         Args:
             fns (Sequence[_BaseTransformation | Callable]): functions to be called based on index.
         """
-        super().__init__(fns)
+        super().__init__(tuple(fns))
 
         self.t_kwargs = t_kwargs
 

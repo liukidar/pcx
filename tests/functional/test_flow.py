@@ -544,20 +544,17 @@ def test_switch_matches_jax_lax_switch_for_every_index(index):
     assert_allclose(result, expected)
 
 
-@pytest.mark.bug(
-    "#74: pxf.switch([...]) raises TypeError: _make_tuple leaves a list alone, collapsing all branches into one"
-)
 def test_switch_accepts_a_list_of_branches():
     """`pcx.functional.switch` is typed `branches: Sequence[...]` and mirrors
     `jax.lax.switch`, whose branches are conventionally written as a list — that
     is also how every `jax.lax.switch` example in the wild spells it.
 
     `_BaseTransform.__init__` normalises `fn` with `_make_tuple`, which is
-    `x if isinstance(x, tuple) else (x,)`: a list is not a tuple, so it is wrapped
-    rather than expanded and the whole list becomes a single "function".
-    `Switch._t` then calls `len(self.fn)` on that one wrapped callable and raises
-    `TypeError: object of type 'function' has no len()`. Only the undocumented
-    tuple spelling works.
+    `x if isinstance(x, tuple) else (x,)`: a list is not a tuple, so it used to be
+    wrapped rather than expanded and the whole list became a single "function".
+    `Switch._t` then called `len(self.fn)` on that one wrapped callable and raised
+    `TypeError: object of type 'function' has no len()`, so only the undocumented
+    tuple spelling worked.
     """
     x = jnp.array([2.0, -3.0])
 
