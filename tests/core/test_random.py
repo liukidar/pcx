@@ -80,14 +80,14 @@ def test_batch_draw_returns_n_distinct_keys(n: int):
     assert len(unique) == n, f"only {len(unique)} distinct keys among {n}"
 
 
-@pytest.mark.bug("#75: rkg(1) returns a bare key of shape (2,) instead of one key of shape (1, 2)")
 def test_batch_draw_is_uniform_in_n():
     """`rkg(n)` must always yield `n` keys, including `n == 1`.
 
-    It currently special-cases 1 and returns a bare key, so `keys[0]` is a
-    uint32 rather than a key and iterating over the result yields the key's two
-    integers. Any batched code path hits this the moment a batch size of 1
-    occurs — a final partial batch, or a single-example debug run.
+    Special-casing 1 and returning a bare key would make `keys[0]` a uint32
+    rather than a key, and iterating the result would yield the key's two
+    integers. Any batched code path hits that the moment a batch size of 1
+    occurs — a final partial batch, or a single-example debug run. The bare key
+    is reached by calling `rkg()` with no argument instead.
     """
     rkg = pcx.RandomKeyGenerator(seed=0)
 

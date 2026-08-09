@@ -79,19 +79,19 @@ class RandomKeyGenerator(BaseModule):
         """
         self.key.seed(seed)
 
-    def __call__(self, n: int = 1) -> tuple[ArrayLike, ...] | ArrayLike:
+    def __call__(self, n: int | None = None) -> tuple[ArrayLike, ...] | ArrayLike:
         """Generate n random keys.
 
         Args:
-            n (int, optional): number of keys to generate.
+            n (int, optional): number of keys to generate. If None, a single key is generated.
 
         Returns:
-            Tuple[ArrayLike, ...] | ArrayLike: a single key if n is 1, otherwise a tuple of keys.
+            Tuple[ArrayLike, ...] | ArrayLike: a single key if n is None, otherwise a tuple of n keys.
         """
-        _k = self.key.split(n)
+        _k = self.key.split(1 if n is None else n)
 
-        # For comodity, return a single key if n is 1
-        if n == 1:
+        # For comodity, return a single key if n is not specified
+        if n is None:
             return _k[0]
         else:
             return _k
