@@ -182,18 +182,14 @@ def test_a_single_argument_callable_mask_leaf_is_applied_to_its_kwarg_subtree():
     assert grads["q"] is None, "a mask leaf returning False must exclude the parameter from the gradient"
 
 
-@pytest.mark.bug(
-    "#78: _process_mask's `except TypeError` fallback swallows a TypeError raised inside a user's mask callable and "
-    "calls it a second time, so a broken mask runs twice and reports a confusing chained error"
-)
 def test_a_mask_callable_that_raises_a_type_error_is_not_invoked_twice():
     """A user's mask callable must be invoked exactly once per subtree.
 
-    `map_fn` uses `try: mask(kwarg, is_pytree=True) / except TypeError: mask(kwarg)`
-    to discover the callable's arity. `except TypeError` cannot tell "this callable
-    does not accept `is_pytree`" from "this callable ran and raised `TypeError`", so
-    a mask that accepts the keyword and then fails — a typo, a bad `isinstance`, an
-    array operation on a `None` leaf — is silently re-executed.
+    `map_fn` used to discover the callable's arity with `try: mask(kwarg,
+    is_pytree=True) / except TypeError: mask(kwarg)`. `except TypeError` cannot tell
+    "this callable does not accept `is_pytree`" from "this callable ran and raised
+    `TypeError`", so a mask that accepted the keyword and then failed — a typo, a bad
+    `isinstance`, an array operation on a `None` leaf — was silently re-executed.
 
     Two consequences, both real: any side effect in the mask (a counter, a log line,
     a cache write) happens twice, and the traceback the user finally sees is the
