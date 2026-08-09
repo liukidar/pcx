@@ -606,9 +606,6 @@ def test_repeated_jitted_draws_follow_the_raw_jax_key_stream():
         assert jnp.array_equal(pcx.RKG.key.get(), key), f"global key diverged at call {call}"
 
 
-@pytest.mark.bug(
-    "#71: the global RKG key is left holding a jax tracer when a transformed function raises (no try/finally)"
-)
 def test_global_rkg_holds_a_concrete_array_after_a_transformed_function_raises():
     """`_BaseTransform` swaps `RKG.key` for the traced key on the way in and
     restores it on the way out — but the restore is a plain statement, not a

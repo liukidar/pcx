@@ -709,7 +709,6 @@ def test_cond_advances_the_global_rkg_exactly_like_a_raw_jax_split():
     assert jnp.array_equal(pcx.RKG.key.get(), fresh[0]), "the global key must be advanced past the consumed one"
 
 
-@pytest.mark.bug("#71: the global RKG key is left holding a jax tracer when a flow function raises (no try/finally)")
 def test_global_rkg_holds_a_concrete_array_after_a_flow_function_raises():
     """`_BaseTransform` swaps `RKG.key` for the traced key on the way in and
     restores it on the way out, but the restore is a plain statement rather than a

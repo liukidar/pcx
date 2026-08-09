@@ -125,11 +125,13 @@ class _BaseTransform(abc.ABC):
                 def _wrap_fn(*args, **kwargs):
                     # Update the global RKG key with the transformed one so it is accessible globally.
                     _old_key, RKG.key = RKG.key, kwargs["__RKG"].key
-                    _r = fn(*args, **kwargs, _is_root=False)
-
-                    # Replace the new key with the old ones to avoid leaks. It will be overwritten anyway immediately
-                    # outside of the transformation bounds.
-                    RKG.key = _old_key
+                    try:
+                        _r = fn(*args, **kwargs, _is_root=False)
+                    finally:
+                        # Replace the new key with the old ones to avoid leaks. It will be overwritten anyway
+                        # immediately outside of the transformation bounds. This must happen even if 'fn' raises,
+                        # or the traced key stays in the global RKG and poisons every later random draw.
+                        RKG.key = _old_key
 
                     return _r, kwargs
 
@@ -143,11 +145,12 @@ class _BaseTransform(abc.ABC):
                 # called.
                 def _wrap_fn(*args, **kwargs):
                     _old_key, RKG.key = RKG.key, kwargs["__RKG"].key
-                    _fn_kwargs = tree_unref(kwargs)
-                    del _fn_kwargs["__RKG"]
-                    _r = fn(*args, **_fn_kwargs)
-
-                    RKG.key = _old_key
+                    try:
+                        _fn_kwargs = tree_unref(kwargs)
+                        del _fn_kwargs["__RKG"]
+                        _r = fn(*args, **_fn_kwargs)
+                    finally:
+                        RKG.key = _old_key
 
                     return _r, kwargs
 
