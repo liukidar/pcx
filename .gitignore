@@ -151,3 +151,7 @@ docs/source/
 
 # Local scratch space for temporary files (never committed)
 tmp/
+
+# Claude Code working directory. Holds agent git worktrees, which are full
+# checkouts of this repo and would otherwise be linted and staged as part of it.
+.claude/
