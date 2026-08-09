@@ -22,7 +22,7 @@
     </radialGradient>
   </defs>
 
-  <rect width="1280" height="320" fill="#FFFFFF"/>
+  <rect width="1280" height="320" fill="#F1F5F9"/>
   <circle cx="270" cy="40" r="300" fill="url(#lGlowV)"/>
   <circle cx="1030" cy="290" r="320" fill="url(#lGlowC)"/>
 
