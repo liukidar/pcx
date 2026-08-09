@@ -3,6 +3,18 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+.. image:: _static/pcx-banner-light.svg
+   :alt: PCX — predictive coding in JAX
+   :class: only-light
+   :align: center
+   :width: 90%
+
+.. image:: _static/pcx-banner-dark.svg
+   :alt: PCX — predictive coding in JAX
+   :class: only-dark
+   :align: center
+   :width: 90%
+
 Welcome to PCAX's documentation!
 ================================
 

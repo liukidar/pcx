@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 200" width="470" height="200">
+  <defs>
+    <linearGradient id="gP" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="gC" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+    <linearGradient id="gX" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F97316"/>
+      <stop offset="1" stop-color="#EC4899"/>
+    </linearGradient>
+  </defs>
+
+  <!-- P -->
+  <path d="M 42 158 L 42 42 L 74 42 A 31 31 0 0 1 74 104 L 42 104"
+        stroke="url(#gP)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- C with predicted completion dots -->
+  <path d="M 249.4 62.7 A 58 58 0 1 0 249.4 137.3"
+        stroke="url(#gC)" stroke-width="30" stroke-linecap="round" fill="none"/>
+  <g fill="#06B6D4">
+    <circle cx="258.8" cy="78.3" r="7" opacity="0.65"/>
+    <circle cx="263"   cy="100"  r="5.5" opacity="0.4"/>
+    <circle cx="258.8" cy="121.7" r="4" opacity="0.22"/>
+  </g>
+
+  <!-- X -->
+  <g stroke-width="30" stroke-linecap="round" fill="none">
+    <path d="M 320 42 L 420 158" stroke="url(#gX)"/>
+    <path d="M 420 42 L 320 158" stroke="url(#gX)" opacity="0.88"/>
+  </g>
+</svg>
