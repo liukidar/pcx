@@ -210,7 +210,6 @@ def test_m_is_is_equivalent_to_chaining_and(model):
 # Negation #############################################################################
 
 
-@pytest.mark.bug("#68: `_M_not` overrides `__call__` instead of `apply`, so `~M(A)` never negates the leaf predicate")
 def test_negation_of_a_leaf_predicate_is_the_logical_not(model):
     """``(~M(A)).apply(p)`` must be ``not M(A).apply(p)`` for every parameter.
 
@@ -226,14 +225,13 @@ def test_negation_of_a_leaf_predicate_is_the_logical_not(model):
         assert negative.apply(param) == (not positive.apply(param)), f"~ did not negate at {path}"
 
 
-@pytest.mark.bug("#68: `~M(A)` applied to a model returns a bare bool instead of a masked pytree")
 def test_negation_applied_to_a_model_selects_the_complement(model):
     """``(~M(A))(model)`` must select every parameter ``M(A)`` rejects, and no other.
 
     This is the ordinary user-facing use — "optimise everything except the weights".
-    ``M.__call__`` is the tree-application entry point; ``_M_not`` redefines it as a
-    single-leaf predicate, so the call returns a scalar and the caller receives
-    something that cannot be used as a mask at all.
+    ``M.__call__`` is the tree-application entry point and ``apply`` is the per-leaf
+    predicate, so negation belongs on ``apply``. Installed on ``__call__`` instead it
+    returns a scalar, and the caller gets something unusable as a mask.
     """
     masked = (~pxu.M(pxnn.LayerParam))(model)
 
@@ -241,15 +239,15 @@ def test_negation_applied_to_a_model_selects_the_complement(model):
     assert _kept(masked).keys() == complement
 
 
-@pytest.mark.bug("#68: negation is ignored inside `&`/`|`: `M(A) & ~M(B)` resolves to `M(A) & M(B)`")
 def test_and_with_a_negated_mask_excludes_the_negated_set(model):
     """``M(A) & ~M(B)`` selects the ``A``s that are not ``B``s.
 
     This composed form is the DSL's own documented example
-    (``(M(A | B)) & ~M_has(C, attr1=1)``). Because ``_M_not`` leaves ``apply``
-    inherited, the combinator resolves the *positive* predicate, so the expression
-    silently computes ``M(A) & M(B)`` — here an empty selection where the whole layer
-    was meant to be chosen.
+    (``(M(A | B)) & ~M_has(C, attr1=1)``). The combinators resolve their operands
+    through ``apply``, so a ``_M_not`` that does not override ``apply`` leaves them
+    resolving the *positive* predicate: the expression silently computes
+    ``M(A) & M(B)`` — here an empty selection where the whole layer was meant to be
+    chosen.
     """
     masked = (pxu.M(pcx.Param) & ~pxu.M(pxc.VodeParam))(model)
 
@@ -258,7 +256,6 @@ def test_and_with_a_negated_mask_excludes_the_negated_set(model):
     assert _kept(masked).keys() == expected
 
 
-@pytest.mark.bug("#68: negation never negates, so De Morgan's laws do not hold for the mask algebra")
 def test_de_morgan_holds_for_the_leaf_predicate(model):
     """``~(M(A) | M(B))`` and ``~M(A) & ~M(B)`` must agree, and both must be the complement.
 
@@ -273,6 +270,31 @@ def test_de_morgan_holds_for_the_leaf_predicate(model):
         expected = not (isinstance(param, pxnn.LayerParam) or isinstance(param, pxc.VodeParam))
         assert (~(a | b)).apply(param) == expected, f"~(A | B) wrong at {path}"
         assert (~a & ~b).apply(param) == expected, f"~A & ~B wrong at {path}"
+
+
+@pytest.mark.bug("#88: `M.__call__` reffs the tree first, so a negated mask selects the `_BaseParamRef` placeholders")
+def test_negation_does_not_select_deduplication_placeholders():
+    """A mask must select parameters, never the bookkeeping `tree_ref` leaves behind.
+
+    `M.__call__` calls `tree_ref` first, which replaces every duplicate `BaseParam`
+    reference with a `_BaseParamRef` holding an integer index. A positive mask rejects
+    those because they are not the requested type; a negated mask selects them for the
+    same reason. They then reach `Optim.apply_updates`, whose `get(p)` returns the raw
+    index and adds it to the parameter, so a shared model trains on numbers that are
+    off by the ref index with nothing raised.
+    """
+
+    class Shared(pcx.Module):
+        def __init__(self):
+            super().__init__()
+            self.a = pxnn.Linear(2, 2)
+            self.b = self.a
+
+    selected = _kept((~pxu.M(pxc.VodeParam))(Shared())).values()
+
+    assert not [p for p in selected if type(p).__name__ == "_BaseParamRef"], (
+        "a negated mask selected the de-duplication placeholders inserted by tree_ref"
+    )
 
 
 # Mapping to values ####################################################################
