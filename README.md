@@ -6,12 +6,11 @@
 </p>
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![Built with JAX](https://img.shields.io/badge/built%20with-JAX-5e97f6.svg)](https://github.com/jax-ml/jax)
 [![PyPI version](https://badge.fury.io/py/pcx.svg)](https://badge.fury.io/py/pcx)
 [![Documentation](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://pcx.readthedocs.io/en/latest/)
 [![CI](https://github.com/liukidar/pcx/actions/workflows/ci.yml/badge.svg)](https://github.com/liukidar/pcx/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/liukidar/pcx/graph/badge.svg)](https://codecov.io/gh/liukidar/pcx)
-[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
 [![arXiv](https://img.shields.io/badge/arXiv-2407.01163-b31b1b.svg)](https://arxiv.org/abs/2407.01163)
 
