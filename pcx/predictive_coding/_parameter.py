@@ -1,11 +1,9 @@
 __all__ = ["ParamCache", "VodeParam"]
 
 
-from typing import Dict, Optional
 import jax
 
-from ..core._parameter import Param, ParamDict, ParamCache
-
+from ..core._parameter import Param, ParamCache, ParamDict
 
 ########################################################################################################################
 #
@@ -22,8 +20,8 @@ from ..core._parameter import Param, ParamDict, ParamCache
 
 class VodeParam(Param):
     class Cache(ParamDict, ParamCache):
-        def __init__(self, params: Dict[str, jax.Array] = None):
+        def __init__(self, params: dict[str, jax.Array] | None = None):
             super().__init__(params)
 
-    def __init__(self, value: Optional[jax.Array] = None):
+    def __init__(self, value: jax.Array | None = None):
         super().__init__(value)

@@ -4,18 +4,19 @@ __all__ = [
     "Vode",
 ]
 
-import jax
-from typing import Callable, Any, Dict, Sequence
 import re
+from collections.abc import Callable, Sequence
+from typing import Any
 
-from ..core._random import RKG, RandomKeyGenerator
-from ..core._parameter import Param
+import jax
+
 from ..core._module import BaseModule
+from ..core._parameter import Param
+from ..core._random import RKG, RandomKeyGenerator
 from ..core._static import static
-from ._parameter import VodeParam
-from ._energy_module import EnergyModule
 from ._energy import se_energy
-
+from ._energy_module import EnergyModule
+from ._parameter import VodeParam
 
 ########################################################################################################################
 #
@@ -56,12 +57,10 @@ class Ruleset(BaseModule):
 
     def __init__(
         self,
-        rules: Dict[str, Sequence[str]],
-        tforms: Dict[
+        rules: dict[str, Sequence[str]],
+        tforms: dict[
             str,
-            Callable[
-                ["Vode", str, jax.Array | None, RandomKeyGenerator], jax.Array | None
-            ],
+            Callable[["Vode", str, jax.Array | None, RandomKeyGenerator], jax.Array | None],
         ] = {},
     ):
         """Ruleset constructor.
@@ -130,9 +129,7 @@ class Ruleset(BaseModule):
 
         return value
 
-    def apply_get_transformation(
-        self, node: "Vode", tform: str, key: str, rkg: RandomKeyGenerator = RKG
-    ) -> Any | None:
+    def apply_get_transformation(self, node: "Vode", tform: str, key: str, rkg: RandomKeyGenerator = RKG) -> Any | None:
         """Recursively apply the transformation specified by the given tform to the given value.
 
         Args:
@@ -150,9 +147,7 @@ class Ruleset(BaseModule):
         if _value is None and ":" in tform:
             tform, _t = tform.rsplit(":", 1)
 
-            _value = self.tforms[_t](
-                node, key, self.apply_get_transformation(node, tform, key, rkg), rkg
-            )
+            _value = self.tforms[_t](node, key, self.apply_get_transformation(node, tform, key, rkg), rkg)
 
         return _value
 
@@ -201,9 +196,7 @@ class Vode(EnergyModule):
         self.ruleset = Ruleset({STATUS.INIT: ("h, u <- u",), **ruleset}, tforms)
         self.shape = static(None)
 
-    def __call__(
-        self, u: jax.Array | None, rkg: RandomKeyGenerator = RKG, output="h", **kwargs
-    ) -> jax.Array | Any:
+    def __call__(self, u: jax.Array | None, rkg: RandomKeyGenerator = RKG, output="h", **kwargs) -> jax.Array | Any:
         """Deep learning layers are typically implemented as callable objects, taking in input the incoming activation
         and returning the transformed activation. Analogously, a Vode is implemented as a callable object, taking in
         input the Vode incoming activations (e.g., 'u' and/or other values), storing them, and returning the Vode value
@@ -235,9 +228,7 @@ class Vode(EnergyModule):
         else:
             return self.get(output, rkg=rkg)
 
-    def set(
-        self, key: str, value: jax.Array | None, rkg: RandomKeyGenerator = RKG
-    ) -> "Vode":
+    def set(self, key: str, value: jax.Array | None, rkg: RandomKeyGenerator = RKG) -> "Vode":
         """Set the value of the parameter corresponding to the given key, after being processed by the Vode ruleset.
         The rule syntax is 'target <- key:transformation', where 'target' is the name of the parameter to set (can be a
         list of comma-separated names), and 'transformation' is a string that refers to the name of the transformation
@@ -258,15 +249,11 @@ class Vode(EnergyModule):
 
         rules = tuple(self.ruleset.filter(self.status, _rule_pattern))
         for _targets, _tform in rules:
-            _value = self.ruleset.apply_set_transformation(
-                self, _tform, _tform.split(":", 1)[0], value, rkg
-            )
+            _value = self.ruleset.apply_set_transformation(self, _tform, _tform.split(":", 1)[0], value, rkg)
 
             for _target in _targets.split(","):
                 _target = _target.strip()
-                if hasattr(self, _target) and isinstance(
-                    (_param := getattr(self, _target)), Param
-                ):
+                if hasattr(self, _target) and isinstance((_param := getattr(self, _target)), Param):
                     _param.set(_value)
                 else:
                     self.cache[_target] = _value
@@ -279,9 +266,7 @@ class Vode(EnergyModule):
 
         return self
 
-    def get(
-        self, key: str, default: Any | None = None, rkg: RandomKeyGenerator = RKG
-    ) -> jax.Array | Any | None:
+    def get(self, key: str, default: Any | None = None, rkg: RandomKeyGenerator = RKG) -> jax.Array | Any | None:
         """Returns the value of the parameter corresponding to the given key, after being processed by the Vode ruleset.
         The rule syntax is 'key -> target:transformation', where 'target' is the name of the parameter to get when
         key is queried. NOTE: the right-hand side of the rule is also saved to the cache, so subsequent calls to the
@@ -307,14 +292,10 @@ class Vode(EnergyModule):
         else:
             # TODO: use warnings
             if len(_rules) > 1:
-                print(
-                    f"WARNING: Multiple output rules matched for key '{key}' in status '{self.status}'."
-                )
+                print(f"WARNING: Multiple output rules matched for key '{key}' in status '{self.status}'.")
             (_target, _tform) = _rules[0]
 
-            _value = self.ruleset.apply_get_transformation(
-                self, _tform, _target, rkg=rkg
-            )
+            _value = self.ruleset.apply_get_transformation(self, _tform, _target, rkg=rkg)
 
             if ":" in _tform:
                 self.cache[_tform] = _value

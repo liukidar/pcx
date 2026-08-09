@@ -1,16 +1,16 @@
-from typing import Any, Callable, Tuple, Sequence
-from jaxtyping import PyTree
 import abc
 import inspect
+from collections.abc import Callable, Sequence
+from typing import Any
 
+import equinox as eqx
 import jax
 import jax.tree_util as jtu
-import equinox as eqx
+from jaxtyping import PyTree
 
-from ..core._tree import tree_extract, tree_inject, tree_ref, tree_unref
-from ..core._random import RKG
 from ..core._parameter import BaseParam
-
+from ..core._random import RKG
+from ..core._tree import tree_extract, tree_inject, tree_ref, tree_unref
 
 ########################################################################################################################
 #
@@ -98,7 +98,7 @@ class _BaseTransform(abc.ABC):
 
     def __init__(
         self,
-        fn: "_BaseTransform" | Callable | Sequence["_BaseTransform" | Callable],
+        fn: "_BaseTransform | Callable | Sequence[_BaseTransform | Callable]",
     ) -> None:
         """_BaseTransform constructor.
 
@@ -187,7 +187,7 @@ class _BaseTransform(abc.ABC):
         return _r
 
     @abc.abstractmethod
-    def _t(self, *args, **kwargs) -> Tuple[Any, Sequence[jax.Array | None]]:
+    def _t(self, *args, **kwargs) -> tuple[Any, Sequence[jax.Array | None]]:
         return NotImplemented
 
     def __repr__(self):
@@ -246,7 +246,7 @@ class Jit(_BaseTransform):
     original kwargs outside of the "jit barrier".
     """
 
-    def __init__(self, fn: "_BaseTransform" | Callable, **t_kwargs: Any):
+    def __init__(self, fn: "_BaseTransform | Callable", **t_kwargs: Any):
         super().__init__(fn)
 
         def _wrap_fn(*args, **kwargs):
@@ -293,7 +293,7 @@ class ValueAndGrad(_BaseTransform):
     easily be redesigned to allow for masking of the value if deemed to be a necessary feature.
     """
 
-    def __init__(self, fn: "_BaseTransform" | Callable, kwargs_mask: Any = {}, **t_kwargs: Any):
+    def __init__(self, fn: "_BaseTransform | Callable", kwargs_mask: Any = {}, **t_kwargs: Any):
         super().__init__(fn)
         self.kwargs_mask = kwargs_mask
         self.has_aux = t_kwargs["has_aux"]
@@ -318,7 +318,7 @@ class ValueAndGrad(_BaseTransform):
             _wrap_fn,
             **{
                 **self.t_kwargs,
-                "argnums": self.t_kwargs.get("argnums", ()) + (len(args),),
+                "argnums": (*self.t_kwargs.get("argnums", ()), len(args)),
             },
         )(
             *args,
@@ -352,14 +352,14 @@ class Vmap(_BaseTransform):
     NOTE: RKG is automatically handled by the transformation, so it must not be provided in the kwargs.
     """
 
-    def __init__(self, fn: "_BaseTransform" | Callable, kwargs_mask: Any = {}, **t_kwargs: Any):
+    def __init__(self, fn: "_BaseTransform | Callable", kwargs_mask: Any = {}, **t_kwargs: Any):
         super().__init__(fn)
         self.kwargs_mask = kwargs_mask
         self.t_kwargs = t_kwargs
 
     def _t(self, *args, **kwargs):
         _kwargs_mask = self._process_mask(self.kwargs_mask, kwargs)
-        _in_axes_mask = _make_tuple(self.t_kwargs.get("in_axes", ())) + (_kwargs_mask,)
+        _in_axes_mask = (*_make_tuple(self.t_kwargs.get("in_axes", ())), _kwargs_mask)
 
         # Compute vaxes dimension which is necessary to split the RKG key.
         def _extract_vaxes_dim(node, mask):

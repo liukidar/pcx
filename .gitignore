@@ -90,7 +90,8 @@ profile_default/
 ipython_config.py
 
 # pyenv
-.python-version
+#   .python-version is committed on purpose: it pins the interpreter uv provisions
+#   for everyone working on the project.
 
 # pipenv
 #   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
@@ -135,3 +136,18 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Sphinx
+#   docs/source/ is generated at build time: sphinx-apidoc writes the API stubs and
+#   the tutorial notebooks are mirrored in from examples/. See .readthedocs.yaml.
+docs/_build/
+docs/source/
+
+# Ruff
+.ruff_cache/
+
+# ty
+.ty_cache/
+
+# Local scratch space for temporary files (never committed)
+tmp/

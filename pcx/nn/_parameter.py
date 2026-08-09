@@ -4,11 +4,9 @@ __all__ = [
 ]
 
 
-from typing import Optional
 import jax
 
 from ..core._parameter import Param
-
 
 ########################################################################################################################
 #
@@ -23,10 +21,10 @@ from ..core._parameter import Param
 
 
 class LayerParam(Param):
-    def __init__(self, value: Optional[jax.Array] = None):
+    def __init__(self, value: jax.Array | None = None):
         super().__init__(value)
 
 
 class LayerState(Param):
-    def __init__(self, value: Optional[jax.Array] = None):
+    def __init__(self, value: jax.Array | None = None):
         super().__init__(value)

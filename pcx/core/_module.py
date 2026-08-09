@@ -3,17 +3,17 @@ __all__ = ["BaseModule", "Module"]
 
 import abc
 import functools
+from collections.abc import Generator
 from enum import IntEnum
-from typing import Any, Tuple, Generator, TypeVar, Type
+from typing import Any, TypeVar
 
+import equinox as eqx
 import jax
 import jax.tree_util as jtu
-import equinox as eqx
 
 from ._parameter import DynamicParam
 from ._static import static
 from ._tree import tree_apply
-
 
 T = TypeVar("T")
 
@@ -58,38 +58,29 @@ class _BaseModuleMeta(abc.ABCMeta):
             _cls,
             flatten_func=_BaseModuleMeta.flatten_module,
             flatten_with_keys=_BaseModuleMeta.flatten_module_with_keys,
-            unflatten_func=functools.partial(
-                _BaseModuleMeta.unflatten_module, cls=_cls
-            ),
+            unflatten_func=functools.partial(_BaseModuleMeta.unflatten_module, cls=_cls),
         )
 
         return _cls
 
     @staticmethod
-    def flatten_module(module: "BaseModule") -> Tuple[Tuple[Any, ...], Tuple[str, ...]]:
+    def flatten_module(module: "BaseModule") -> tuple[tuple[Any, ...], tuple[str, ...]]:
         return tuple(module.__dict__.values()), tuple(module.__dict__.keys())
 
     @staticmethod
     def flatten_module_with_keys(
         module: "BaseModule",
-    ) -> Tuple[Tuple[Tuple[str, Any], ...], Tuple[str, ...]]:
+    ) -> tuple[tuple[tuple[str, Any], ...], tuple[str, ...]]:
         return (
-            tuple(
-                zip(
-                    map(lambda k: jtu.GetAttrKey(k), module.__dict__.keys()),
-                    module.__dict__.values(),
-                )
-            ),
+            tuple((jtu.GetAttrKey(k), v) for k, v in module.__dict__.items()),
             tuple(module.__dict__.keys()),
         )
 
     @staticmethod
-    def unflatten_module(
-        aux_data: Tuple[str, ...], children: Tuple[Any, ...], cls: Type["BaseModule"]
-    ) -> "BaseModule":
+    def unflatten_module(aux_data: tuple[str, ...], children: tuple[Any, ...], cls: type["BaseModule"]) -> "BaseModule":
         _module = object.__new__(cls)
 
-        _module.__dict__ = dict(zip(aux_data, children))
+        _module.__dict__ = dict(zip(aux_data, children, strict=True))
 
         return _module
 
@@ -103,21 +94,16 @@ class BaseModule(metaclass=_BaseModuleMeta):
         raise NotImplementedError
 
     def __repr__(self) -> str:
-        leaves = jtu.tree_leaves_with_path(
-            self, is_leaf=lambda x: isinstance(x, DynamicParam)
-        )
+        leaves = jtu.tree_leaves_with_path(self, is_leaf=lambda x: isinstance(x, DynamicParam))
 
         if len(leaves):
             return "\n".join(
-                (
-                    f"({self.__class__.__name__}):",
-                    *(f"  {jtu.keystr(key)}: {repr(value)}" for key, value in leaves)
-                )
+                (f"({self.__class__.__name__}):", *(f"  {jtu.keystr(key)}: {value!r}" for key, value in leaves))
             )
         else:
             return f"({self.__class__.__name__}):  (empty)"
 
-    def submodules(self, *, cls: Type[T] | None = None) -> Generator[T, None, None]:
+    def submodules(self, *, cls: type[T] | None = None) -> Generator[T, None, None]:
         """Return the children submodules of the given type. Does not work recursively, and
         only returns the direct children of matching type.
 
@@ -167,9 +153,7 @@ class Module(BaseModule):
         if value is None:
             return self._mode.get()
         else:
-            tree_apply(
-                lambda m: m._mode.set(value), lambda x: isinstance(x, Module), self
-            )
+            tree_apply(lambda m: m._mode.set(value), lambda x: isinstance(x, Module), self)
 
             return
 

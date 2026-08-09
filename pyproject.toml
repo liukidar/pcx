@@ -1,45 +1,135 @@
-[tool.poetry]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
 name = "pcx"
 version = "0.6.3"
-packages = [{ include = "pcx" }]
 description = "PCX is a Python JAX-based library designed to develop highly configurable predictive coding networks."
-authors = ["Luca Pinchetti <luca.pinchetti@cs.ox.ac.uk>"]
-repository = "https://github.com/liukidar/pcx"
-documentation = "https://pcx.readthedocs.io/en/latest/"
-license = "Apache License 2.0"
+authors = [
+    { name = "Luca Pinchetti", email = "luca.pinchetti@cs.ox.ac.uk" },
+    { name = "Cornelius Emde", email = "ai@corneliusemde.com" },
+]
 readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
 keywords = ["predictive coding", "machine learning", "neuroscience"]
 classifiers = [
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "equinox>=0.11.7",
+    "optax>=0.2.3",
+    "jax>=0.4.33",
 ]
 
-[tool.poetry.dependencies]
-python = "^3.11"
-equinox = "^0.11.7"
-optax = "^0.2.3"
-jax = "^0.4.33"
+[project.optional-dependencies]
+# Convenience alias for the CUDA build of jax. Linux only: jax ships no CUDA
+# wheels for native Windows, and macOS acceleration would need the (currently
+# unmaintained) jax-metal plugin, so there is deliberately no `metal` extra.
+cuda12 = ["jax[cuda12]"]
 
-[tool.poetry.group.dev.dependencies]
-ruff = "^0.6.7"
+[project.urls]
+"Homepage" = "https://github.com/liukidar/pcx"
+"Repository" = "https://github.com/liukidar/pcx"
+"Documentation" = "https://pcx.readthedocs.io/en/latest/"
+"Bug Tracker" = "https://github.com/liukidar/pcx/issues"
+"Changelog" = "https://github.com/liukidar/pcx/blob/main/CHANGELOG.md"
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[dependency-groups]
+dev = [
+    "ruff>=0.14.0",
+    "ty>=0.0.5",
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "coverage>=7.0.0",
+]
+
+docs = [
+    "sphinx>=7.0.0",
+    "sphinx-book-theme>=1.1.0",
+    "nbsphinx>=0.9.0",
+    "ipykernel>=6.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["pcx"]
 
 [tool.ruff]
 line-length = 120
 indent-width = 4
-target-version = "py312"
+target-version = "py311"
+# The tutorial notebooks are teaching material: their line breaks are chosen for
+# readability on a slide or a narrow screen, and cells legitimately reference names
+# defined in earlier cells. Reformatting them would churn every tutorial without
+# improving any of them. Remove this exclusion if the notebooks are ever normalised.
+extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
-ignore = []
+# Explicit rule set so linting is stable across ruff releases.
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "RUF", # ruff-specific
+]
+ignore = [
+    "E741", # ambiguous variable names (l, I, O) are idiomatic in the math-heavy core
+    # Several public constructors take `= {}` defaults. Switching them to a None sentinel is an
+    # API-visible change; revisit once the test suite covers these call paths.
+    "B006",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The top-level package deliberately re-exports its subpackages via star imports.
+"pcx/__init__.py" = ["F403"]
+"pcx/*/__init__.py" = ["F403"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.ty.src]
+include = ["pcx", "tests"]
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra -q"
+
+[tool.coverage.run]
+source = ["pcx"]
+branch = true
+# Required so coverage data collected on different runners (and different absolute
+# paths) can be combined in CI.
+relative_files = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "@overload",
+]
+precision = 2

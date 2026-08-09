@@ -1,0 +1,22 @@
+coverage:
+  status:
+    project:
+      default:
+        # Coverage is still being built out; don't block PRs on small dips.
+        target: auto
+        threshold: 2%
+        informational: true
+    patch:
+      default:
+        target: 80%
+        informational: true
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: true
+
+ignore:
+  - "tests/**"
+  - "examples/**"
+  - "docs/**"

@@ -1,9 +1,9 @@
-__all__ = ["StateParam", "StatefulLayer", "BatchNorm"]
+__all__ = ["BatchNorm", "StateParam", "StatefulLayer"]
 
-from typing import Hashable, Sequence
+from collections.abc import Hashable, Sequence
 
-import jax.tree_util as jtu
 import equinox as eqx
+import jax.tree_util as jtu
 
 from ..core._module import Module
 from ..core._parameter import BaseParam, Param

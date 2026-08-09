@@ -1,15 +1,15 @@
 __all__ = ["tree_extract", "tree_inject", "tree_ref", "tree_unref"]
 
 
-from typing import Any, Tuple, Sequence, Callable
-from jaxtyping import PyTree
+from collections.abc import Callable, Sequence
+from typing import Any
 
-import jax.tree_util as jtu
 import equinox as eqx
+import jax.tree_util as jtu
+from jaxtyping import PyTree
 
 from ..core._parameter import BaseParam, DynamicParam
 from ..core._static import StaticParam
-
 
 ########################################################################################################################
 #
@@ -133,7 +133,7 @@ def tree_apply(
 def tree_extract(
     pydag: PyTree,
     *rest: ...,
-    extract_fn: Callable[[Any | Tuple[Any, ...]], Any] = lambda x: x,
+    extract_fn: Callable[[Any | tuple[Any, ...]], Any] = lambda x: x,
     filter_fn: Callable[[Any], bool] = lambda x: isinstance(x, DynamicParam),
     is_pytree: bool = False,
 ) -> Sequence[Any]:
@@ -173,9 +173,9 @@ def tree_extract(
 def tree_inject(
     pydag: PyTree,
     *,
-    params: PyTree = None,
-    values: Sequence[Any] = None,
-    inject_fn: Callable[[Tuple[Any, Any]], None] = lambda n, v: n.set(v),
+    params: PyTree | None = None,
+    values: Sequence[Any] | None = None,
+    inject_fn: Callable[[tuple[Any, Any]], None] = lambda n, v: n.set(v),
     filter_fn: Callable[[Any], bool] = lambda x: isinstance(x, DynamicParam),
     is_pytree: bool = False,
     strict: bool = True,
@@ -225,9 +225,7 @@ def tree_inject(
         # This is to assert the user didn't mess up with the pytree structure.
         try:
             next(_values_it)
-            raise ValueError(
-                "The number of values does not match the number of leaves in the pytree."
-            )
+            raise ValueError("The number of values does not match the number of leaves in the pytree.")
         except StopIteration:
             pass
 

@@ -1,18 +1,16 @@
 __all__ = [
     "M",
-    "M_is",
     "M_has",
     "M_hasnot",
-    "step",
+    "M_is",
     "Optim",
     "OptimTree",
-    "save_params",
     "load_params",
+    "save_params",
+    "step",
 ]
 
-from ._mask import M, M_is, M_has, M_hasnot
+from ._mask import M, M_has, M_hasnot, M_is
 from ._misc import step
 from ._optim import Optim, OptimTree
-
-
-from ._serialisation import save_params, load_params
+from ._serialisation import load_params, save_params

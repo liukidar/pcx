@@ -1,17 +1,17 @@
-__all__ = ["save_params", "load_params"]
+__all__ = ["load_params", "save_params"]
 
+from collections.abc import Callable
 from types import UnionType
-from typing import Any, Callable, Type
-from jaxtyping import PyTree
-import numpy as np
+from typing import Any
 
 import jax
 import jax.tree_util as jtu
+import numpy as np
+from jaxtyping import PyTree
 
 from ..core._parameter import BaseParam
 from ..core._tree import _cache
 from ..nn._parameter import LayerParam
-
 
 ########################################################################################################################
 #
@@ -25,7 +25,7 @@ from ..nn._parameter import LayerParam
 def save_params(
     model: PyTree,
     path: str,
-    filter: Callable[[Any], bool] | Type[BaseParam] = LayerParam,
+    filter: Callable[[Any], bool] | type[BaseParam] = LayerParam,
 ) -> None:
     """Function to save the parameters of a model to a file. The '.npz' extension is automatically added
     to the file name.
@@ -38,11 +38,7 @@ def save_params(
             the parameters to save. The default value 'LayerParam' selects all the weights of the layers in the
             model.
     """
-    _filter_fn = (
-        filter
-        if not isinstance(filter, type | UnionType)
-        else lambda x: isinstance(x, filter)
-    )
+    _filter_fn = filter if not isinstance(filter, type | UnionType) else lambda x: isinstance(x, filter)
 
     _params = jtu.tree_flatten_with_path(model, is_leaf=_filter_fn)[0]
 
@@ -63,7 +59,7 @@ def save_params(
 def load_params(
     model: PyTree,
     path: str,
-    filter: Callable[[Any], bool] | Type[BaseParam] = LayerParam,
+    filter: Callable[[Any], bool] | type[BaseParam] = LayerParam,
 ) -> None:
     """Function to load the parameters of a model from a file. The '.npz' extension is automatically added
     to the file name. The model must have the same structure as the one used to save the parameters and must
@@ -85,11 +81,7 @@ def load_params(
         KeyError: the file does not contain all the parameters required by the model.
     """
     path = path if path.endswith(".npz") else f"{path}.npz"
-    _filter_fn = (
-        filter
-        if not isinstance(filter, type | UnionType)
-        else lambda x: isinstance(x, filter)
-    )
+    _filter_fn = filter if not isinstance(filter, type | UnionType) else lambda x: isinstance(x, filter)
 
     _loaded_values = np.load(path)
     _params = jtu.tree_flatten_with_path(model, is_leaf=_filter_fn)[0]

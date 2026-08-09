@@ -1,10 +1,11 @@
-from typing import Any, Callable, Type, Tuple
-from jaxtyping import PyTree
 import contextlib
+from collections.abc import Callable
+from typing import Any
+
+from jaxtyping import PyTree
 
 from ..core._tree import tree_apply
 from ..predictive_coding._energy_module import EnergyModule
-
 
 ########################################################################################################################
 #
@@ -16,9 +17,9 @@ from ..predictive_coding._energy_module import EnergyModule
 @contextlib.contextmanager
 def step(
     module: EnergyModule | PyTree,
-    status: str | None | Tuple = None,
+    status: str | tuple | None = None,
     *,
-    clear_params: Callable[[Any], bool] | Type | Tuple = None,
+    clear_params: Callable[[Any], bool] | type | tuple | None = None,
 ):
     """Applies common operations to a model before and after a step (normally a weight and/or state update).
     It is useful as settings the model's status and clearing the parameters cache allows to control the model's
@@ -43,11 +44,7 @@ def step(
     # Enforce status to be a tuple.
     status = (status,) if not isinstance(status, tuple) else status
 
-    clear_params = (
-        (None, clear_params)
-        if not isinstance(clear_params, list | tuple)
-        else clear_params
-    )
+    clear_params = (None, clear_params) if not isinstance(clear_params, list | tuple) else clear_params
 
     if clear_params[0] is not None:
         module.clear_params(clear_params[0])

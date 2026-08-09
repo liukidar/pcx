@@ -1,18 +1,18 @@
 __all__ = [
-    "scan",
-    "while_loop",
     "cond",
-    "switch",
     "jit",
-    "vmap",
+    "scan",
+    "switch",
     "value_and_grad",
+    "vmap",
+    "while_loop",
 ]
 
-from typing import Any, Hashable, Sequence, Callable
+from collections.abc import Callable, Hashable, Sequence
+from typing import Any
 
-from ._transform import _BaseTransform, Jit, Vmap, ValueAndGrad
-from ._flow import Scan, WhileLoop, Cond, Switch
-
+from ._flow import Cond, Scan, Switch, WhileLoop
+from ._transform import Jit, ValueAndGrad, Vmap, _BaseTransform
 
 # Flow ###############################################################################################################
 
@@ -32,7 +32,8 @@ def while_loop(
     f: _BaseTransform | Callable,
     cond_fun: _BaseTransform | Callable,
 ) -> WhileLoop:
-    """Utility function to use the jax.lax.while_loop syntax for the :class:`~pcax.functional.WhileLoop` transformation."""
+    """Utility function to use the jax.lax.while_loop syntax for the
+    :class:`~pcax.functional.WhileLoop` transformation."""
     return WhileLoop(f, cond_fun=cond_fun)
 
 
@@ -81,9 +82,7 @@ def vmap(
     axis_name: str | None = None,
 ):
     def decorator(fn: _BaseTransform | Callable):
-        return Vmap(
-            fn, kwargs_mask, in_axes=in_axes, out_axes=out_axes, axis_name=axis_name
-        )
+        return Vmap(fn, kwargs_mask, in_axes=in_axes, out_axes=out_axes, axis_name=axis_name)
 
     return decorator
 
@@ -95,8 +94,6 @@ def value_and_grad(
     reduce_axes: Sequence[Hashable] = (),
 ):
     def decorator(fn: _BaseTransform | Callable):
-        return ValueAndGrad(
-            fn, kwargs_mask, argnums=argnums, has_aux=has_aux, reduce_axes=reduce_axes
-        )
+        return ValueAndGrad(fn, kwargs_mask, argnums=argnums, has_aux=has_aux, reduce_axes=reduce_axes)
 
     return decorator
