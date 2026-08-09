@@ -21,7 +21,7 @@
       <stop offset="1" stop-color="#06B6D4" stop-opacity="0"/>
     </radialGradient>
     <clipPath id="lRound">
-      <rect width="1280" height="320" rx="32"/>
+      <rect width="1280" height="320" rx="64"/>
     </clipPath>
   </defs>
 
