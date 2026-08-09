@@ -42,7 +42,9 @@ class EnergyModule(Module):
         Returns:
             jax.Array: total energy of the module.
         """
-        return functools.reduce(lambda x, y: x + y, (m.energy() for m in self.submodules(cls=EnergyModule)))
+        return functools.reduce(
+            lambda x, y: x + y, (m.energy() for m in self.submodules(cls=EnergyModule)), jax.numpy.asarray(0.0)
+        )
 
     def clear_params(self, filter: Callable[[Any], bool] | type) -> None:
         """Set the selected parameters to None. This is especially useful to clear the cache of the
