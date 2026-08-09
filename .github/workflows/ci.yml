@@ -114,7 +114,7 @@ jobs:
         run: uv run coverage run --parallel-mode -m pytest -v
 
       - name: Upload coverage data
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-locked
           path: .coverage.*
@@ -193,7 +193,7 @@ jobs:
           uv run --isolated --no-project --with dist/*.whl python -c "import pcx; print(pcx.__name__, 'ok')"
 
       - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
