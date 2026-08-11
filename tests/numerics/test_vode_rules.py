@@ -102,10 +102,6 @@ def test_every_matching_input_rule_fires_and_the_last_write_to_a_target_wins():
     assert_allclose(reversed_.h.get(), U + 1.0, err_msg="rules did not run in the order they were specified")
 
 
-@pytest.mark.bug(
-    "#69: Vode.set interpolates the key into the regex as '({key}.*)', so set('u', ...) fires rules written for u2, "
-    "u_target or any key that merely starts with 'u' — and then never stores u itself"
-)
 def test_setting_one_key_does_not_fire_a_rule_written_for_a_different_key():
     """A rule names the key it reacts to, and `u2` is not `u`.
 
@@ -182,10 +178,6 @@ def test_status_none_does_not_fire_a_rule_registered_for_a_named_status():
     assert_allclose(vode.get("a"), U, err_msg="the '.*' rule did not fire under STATUS.NONE")
 
 
-@pytest.mark.bug(
-    "#69: Ruleset.filter uses re.match, not re.fullmatch, so a status is matched by prefix: any status starting with "
-    "'init' fires the forward-initialisation rule"
-)
 @pytest.mark.parametrize("status", ["initialise", "initialisation", "init_weights", "initial"], ids=lambda s: s)
 def test_a_status_is_matched_exactly_and_not_by_prefix(status: str):
     """A status must match a rule's pattern as a whole, not merely start with it.
