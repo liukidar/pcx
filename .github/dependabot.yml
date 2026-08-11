@@ -16,3 +16,8 @@ updates:
       interval: monthly
     commit-message:
       prefix: "ci"
+    # One combined PR per monthly run instead of one per action. Six separate
+    # bumps meant six rebases and six full CI matrix runs (see issue #87).
+    groups:
+      actions:
+        patterns: ["*"]
