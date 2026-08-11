@@ -398,17 +398,14 @@ def test_value_and_grad_updates_a_shared_param_exactly_once():
     assert_allclose(state.get(), jnp.array([1.0]))
 
 
-@pytest.mark.bug(
-    "#74: pxf.value_and_grad(argnums=0) raises TypeError: an int argnums is splatted with * instead of wrapped"
-)
 def test_value_and_grad_accepts_an_integer_argnums():
     """`pcx.functional.value_and_grad` advertises `argnums: int | Sequence[int]`,
     matching `jax.value_and_grad`, and a bare `int` is by far the common way to
     ask for the gradient of a single positional argument.
 
     `ValueAndGrad._t` builds `(*self.t_kwargs.get("argnums", ()), len(args))`,
-    which requires `argnums` to be iterable, so the documented `int` form is
-    rejected outright. Only the undocumented `(0,)` spelling works.
+    which requires `argnums` to be iterable, so the documented `int` form used to
+    be rejected outright and only the undocumented `(0,)` spelling worked.
     """
     w = jnp.array([0.5, -1.25])
     x = jnp.array([2.0, 3.0])

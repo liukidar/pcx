@@ -226,9 +226,6 @@ def test_value_and_grad_with_a_tuple_argnums_returns_positional_and_keyword_grad
     The result is repacked as `(positional_gradients, kwarg_gradients)`. Both halves
     have to be right: a mis-sliced repack would hand the optimiser the gradient with
     respect to the *input data* as if it were the gradient of the weights.
-
-    (The documented `argnums=0` integer spelling is rejected outright — #74 —
-    so this uses the `(0,)` tuple form that does work.)
     """
     w = jnp.array([0.5, -1.25])
     x = jnp.array([2.0, 3.0])
