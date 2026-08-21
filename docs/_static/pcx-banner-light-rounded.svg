@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 256" width="1280" height="256">
+  <defs>
+    <linearGradient id="lP" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7C3AED"/>
+      <stop offset="1" stop-color="#4F46E5"/>
+    </linearGradient>
+    <linearGradient id="lC" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06B6D4"/>
+      <stop offset="1" stop-color="#0891B2"/>
+    </linearGradient>
+    <linearGradient id="lX" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#EA580C"/>
+      <stop offset="1" stop-color="#DB2777"/>
+    </linearGradient>
+    <radialGradient id="lGlowV" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#8B5CF6" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="lGlowC" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#06B6D4" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#06B6D4" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="lRound">
+      <rect width="1280" height="256" rx="64"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#lRound)">
+    <rect width="1280" height="256" fill="#F1F5F9"/>
+    <circle cx="270" cy="40" r="300" fill="url(#lGlowV)"/>
+    <circle cx="1030" cy="226" r="320" fill="url(#lGlowC)"/>
+  </g>
+
+  <g transform="translate(452,24) scale(0.8)">
+    <!-- P -->
+    <path d="M 42 158 L 42 42 L 74 42 A 31 31 0 0 1 74 104 L 42 104"
+          stroke="url(#lP)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- C with predicted completion dots -->
+    <path d="M 249.4 62.7 A 58 58 0 1 0 249.4 137.3"
+          stroke="url(#lC)" stroke-width="30" stroke-linecap="round" fill="none"/>
+    <g fill="#0891B2">
+      <circle cx="258.8" cy="78.3" r="7" opacity="0.7"/>
+      <circle cx="263"   cy="100"  r="5.5" opacity="0.45"/>
+      <circle cx="258.8" cy="121.7" r="4" opacity="0.25"/>
+    </g>
+    <!-- X -->
+    <g stroke-width="30" stroke-linecap="round" fill="none">
+      <path d="M 320 42 L 420 158" stroke="url(#lX)"/>
+      <path d="M 420 42 L 320 158" stroke="url(#lX)" opacity="0.88"/>
+    </g>
+  </g>
+
+  <text x="640" y="212" text-anchor="middle"
+        font-family="'SF Pro Display','Segoe UI',system-ui,-apple-system,sans-serif"
+        font-size="21" font-weight="600" letter-spacing="7"
+        fill="#64748B">PREDICTIVE CODING NETWORKS MADE SIMPLE</text>
+</svg>

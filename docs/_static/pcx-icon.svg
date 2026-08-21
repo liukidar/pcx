@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="iP" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="iC" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+    <linearGradient id="iX" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F97316"/>
+      <stop offset="1" stop-color="#EC4899"/>
+    </linearGradient>
+    <radialGradient id="iGlow" cx="0.5" cy="0.42" r="0.75">
+      <stop offset="0" stop-color="#1E293B"/>
+      <stop offset="1" stop-color="#0B1120"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="256" height="256" rx="56" fill="url(#iGlow)"/>
+
+  <!-- X monogram: one violet arm (P), one cyan arm (C) whose missing end
+       is completed by predicted dots (the predictive-coding motif) -->
+  <g stroke-linecap="round" fill="none">
+    <path d="M 70 66 L 186 190" stroke="url(#iP)" stroke-width="34"/>
+    <path d="M 186 66 L 106 151" stroke="url(#iC)" stroke-width="34"/>
+  </g>
+  <g fill="url(#iX)">
+    <circle cx="85"  cy="173" r="10"/>
+    <circle cx="66"  cy="193" r="7" opacity="0.75"/>
+  </g>
+</svg>
