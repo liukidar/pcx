@@ -222,11 +222,11 @@ class _BaseTransform(abc.ABC):
 
         def map_fn(mask, kwarg):
             if callable(mask):
-                try:
-                    # special case handling for Mask (or any callable that may benefit by knowing it is being
-                    # called on a guaranteed pytree), since 'kwarg' is already reffed, and thus a pytree.
+                # special case handling for Mask (or any callable that may benefit by knowing it is being
+                # called on a guaranteed pytree), since 'kwarg' is already reffed, and thus a pytree.
+                if "is_pytree" in inspect.signature(mask).parameters:
                     return mask(kwarg, is_pytree=True)
-                except TypeError:
+                else:
                     return mask(kwarg)
             else:
                 return mask
