@@ -149,7 +149,7 @@ class M:
 class _M_not(M):
     """Computes the logical not of a mask or type"""
 
-    def __call__(self, leaf: Any):
+    def apply(self, leaf: Any):
         return not M._resolve(self.mask, leaf)
 
 
