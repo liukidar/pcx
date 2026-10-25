@@ -11,6 +11,7 @@ import jax.numpy as jnp
 import pytest
 
 import pcx
+import pcx.functional as pxf
 import pcx.predictive_coding as pxc
 import pcx.utils as pxu
 
@@ -58,8 +59,8 @@ def test_the_requested_status_is_the_one_applied(model, status):
 
 
 def test_an_explicit_exit_status_is_applied(model):
-    """The two-tuple form is the only spelling that currently restores anything,
-    and the tutorials rely on it."""
+    """The two-tuple form names the exit status explicitly, and the tutorials rely
+    on it."""
     with pxu.step(model, (pxc.STATUS.INIT, None)):
         assert model.status == pxc.STATUS.INIT
 
@@ -88,15 +89,13 @@ def test_clear_params_tuple_clears_before_and_after(model):
         assert pcx.get(model.vode.cache) is None, "the 'before' slot did not clear on entry"
 
 
-@pytest.mark.bug("BUGS.md#9: a scalar status is never restored; the model stays in the block's status")
 def test_status_is_restored_after_the_block(model):
     """Leaving the block must leave the status as it was found.
 
-    The status is only reset when a 2-tuple is passed, so the canonical
-    single-status form documented in the tutorials leaves the model in `'init'`
-    forever. Any energy computed between that block and the next runs under the
-    initialisation ruleset, which copies `u` into `h` and drives the energy to
-    zero.
+    Otherwise the canonical single-status form documented in the tutorials
+    leaves the model in `'init'` forever, and any energy computed between that
+    block and the next runs under the initialisation ruleset, which copies `u`
+    into `h` and drives the energy to zero.
     """
     assert model.status is None
 
@@ -106,12 +105,11 @@ def test_status_is_restored_after_the_block(model):
     assert model.status is None, f"status leaked out of the block as {model.status!r}"
 
 
-@pytest.mark.bug("BUGS.md#9: no try/finally, so an exception skips both the cache clear and the status reset")
 def test_an_exception_in_the_body_still_restores_the_model():
     """A failing body must not leave the model corrupted.
 
-    Without `try/finally` an exception skips the cache clear and the status
-    reset, so the model keeps the block's status. Under pytest the next test
+    Without `try/finally` an exception would skip the cache clear and the status
+    reset, so the model would keep the block's status. Under pytest the next test
     inherits it, which turns one real failure into a cascade of unrelated ones.
     """
     model = Model()
@@ -124,12 +122,60 @@ def test_an_exception_in_the_body_still_restores_the_model():
     assert model.status is None, f"status left as {model.status!r} after the body raised"
 
 
-@pytest.mark.bug("BUGS.md#9: the inner block's exit does not restore the outer block's status")
 def test_nested_blocks_restore_the_outer_status(model):
     """Nesting is natural — an inference loop inside a training block — so the
     inner block must not clobber the status the outer one established."""
-    with pxu.step(model, (pxc.STATUS.INIT, None)):
-        with pxu.step(model, ("inner", None)):
+    with pxu.step(model, pxc.STATUS.INIT):
+        with pxu.step(model, "inner"):
             assert model.status == "inner"
 
         assert model.status == pxc.STATUS.INIT, f"inner block left the status as {model.status!r}"
+
+    assert model.status is None
+
+
+def test_an_explicit_exit_status_wins_over_restoring(model):
+    """The two-tuple form is a request for a specific exit status, so it is
+    applied even when the status on entry was different."""
+    with pxu.step(model, pxc.STATUS.INIT):
+        with pxu.step(model, ("inner", None)):
+            pass
+
+        assert model.status is None
+
+
+def test_a_module_reachable_twice_is_restored_to_its_entry_status():
+    """`tree_apply` visits a shared module once per reference, so the second visit
+    sees the block's status, not the original one. Restoring must still land on the
+    status the module had on entry."""
+    vode = pxc.Vode()
+
+    class Shared(pxc.EnergyModule):
+        def __init__(self):
+            super().__init__()
+            self.a = vode
+            self.b = vode
+
+    m = Shared()
+    vode.status = "outer"
+
+    with pxu.step(m, pxc.STATUS.INIT):
+        assert vode.status == pxc.STATUS.INIT
+
+    assert vode.status == "outer"
+
+
+def test_a_block_inside_a_scan_body_keeps_the_carry_structure(model):
+    """The status is static pytree metadata, so `jax.lax.scan` requires it to be
+    the same on entry to and exit from the body. A block that does not restore the
+    status changes the carry's structure and the scan is rejected."""
+    model.status = "outer"
+
+    def body(_, *, model):
+        with pxu.step(model, pxc.STATUS.INIT):
+            assert model.status == pxc.STATUS.INIT
+        return (), None
+
+    pxf.scan(body, length=3)(model=model)
+
+    assert model.status == "outer"

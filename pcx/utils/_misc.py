@@ -33,7 +33,9 @@ def step(
 
     Args:
         module (EnergyModule | PyTree): the target module.
-        status (str | None, optional): the status to apply to the module and its submodules.
+        status (str | tuple | None, optional): the status to apply to the module and its submodules. On exit, each
+            module's status is restored to what it was on entry. If a tuple is provided, the first element is used
+            for the duration of the step and the second element is applied on exit instead of restoring.
         clear_params (Callable[[Any], bool] | Type | Tuple, optional): Target parameters to clear. The value is
             directly passed to the 'EnergyModule.clear_params', so refer to that method for more information.
             If a tuple is provided, the first element is used to call '.clear_params' before the step and the second
@@ -49,20 +51,28 @@ def step(
     if clear_params[0] is not None:
         module.clear_params(clear_params[0])
 
-    tree_apply(
-        lambda m: m._status.set(status[0]),
-        lambda x: isinstance(x, EnergyModule),
-        tree=module,
-    )
+    # Record each module's status on entry so a scalar status is restored on exit. Modules visited more than
+    # once (see `tree_apply`) are recorded once per visit; restoring in reverse order leaves the entry value.
+    previous: list[tuple[EnergyModule, Any]] = []
 
-    yield
+    def _enter(m: EnergyModule) -> None:
+        previous.append((m, m.status))
+        m._status.set(status[0])
 
-    if clear_params[1] is not None:
-        module.clear_params(clear_params[1])
+    tree_apply(_enter, lambda x: isinstance(x, EnergyModule), tree=module)
 
-    if len(status) > 1:
-        tree_apply(
-            lambda m: m._status.set(status[1]),
-            lambda x: isinstance(x, EnergyModule),
-            tree=module,
-        )
+    try:
+        yield
+    finally:
+        if clear_params[1] is not None:
+            module.clear_params(clear_params[1])
+
+        if len(status) > 1:
+            tree_apply(
+                lambda m: m._status.set(status[1]),
+                lambda x: isinstance(x, EnergyModule),
+                tree=module,
+            )
+        else:
+            for m, s in reversed(previous):
+                m._status.set(s)
