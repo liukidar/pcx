@@ -330,3 +330,29 @@ def test_error_vodes_keep_the_gradient_when_the_error_is_small_relative_to_the_v
     # Measured: ErrorVode 6e-8 (float32 resolution of e itself), Vode 2e-4.
     assert err_rel < 1e-6, f"ErrorVode gradient off by {err_rel:.2e}"
     assert plain_rel > 100 * err_rel, f"Vode {plain_rel:.2e} vs ErrorVode {err_rel:.2e}"
+
+
+def test_under_init_the_weight_gradient_is_backprop():
+    """At forward initialisation e = 0 and the energy is the output loss; its weight gradient must reach every
+    layer as for a Vode network (the stop-gradient only applies outside STATUS.INIT)."""
+    x, y = data()
+    plain, err = MLP(pxc.Vode, jnp.tanh), MLP(pxc.ErrorVode, jnp.tanh)
+
+    def bp_grads(model):
+        with pxu.step(model, pxc.STATUS.INIT, clear_params=pxc.VodeParam.Cache):
+            _, g = pxf.value_and_grad(pxu.M(pxnn.LayerParam).to((False, True)), has_aux=True)(energy_y)(
+                x, y, model=model
+            )
+        return [jnp.asarray(pcx.get(layer.nn.weight)) for layer in g["model"].layers]
+
+    for wp, we in zip(bp_grads(plain), bp_grads(err), strict=True):
+        assert float(jnp.linalg.norm(wp)) > 0
+        assert_allclose(we, wp, rtol=1e-5, atol=1e-6)
+
+
+@pxf.vmap(VMASK, in_axes=(0, 0), out_axes=(None, None), axis_name="batch")
+def energy_y(x, y, *, model):
+    model(x, y)
+    per_node = jnp.stack([n.energy() for n in [*model.nodes, model.out]])
+    per_node = jax.lax.psum(per_node, "batch")
+    return per_node.sum(), per_node

@@ -104,6 +104,12 @@ class ErrorVode(Vode):
             if _e is None or _u is None:
                 return default
 
+            # The stop-gradient keeps the state gradients local. Under STATUS.INIT nothing steps the states and the
+            # energy is the forward pass's loss, whose weight gradient must reach every layer (backprop), as it does
+            # for a Vode whose h is set to u.
+            if self.status == STATUS.INIT:
+                return _u + _e
+
             return jax.lax.stop_gradient(_u) + _e
 
         return super().get(key, default, rkg)
