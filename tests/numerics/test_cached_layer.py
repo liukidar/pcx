@@ -252,3 +252,82 @@ def test_apply_h_updates_is_exact_for_a_linear_network():
         pxc.apply_h_updates(forward, updates, x, None, model=cached, order=1)
     for h1, h0, gn in zip(values(cached, x), before, g.nodes, strict=True):
         assert_allclose(h1, h0 - 0.5 * gn.e.get(), rtol=1e-5, atol=1e-6)
+
+
+# Convolutions ########################################################################
+
+
+class CNN(pxc.EnergyModule):
+    """x (2, 6, 6) -> [Conv -> tanh -> node] x 2 -> flatten -> Linear -> clamped output Vode."""
+
+    def __init__(self, node: type[pxc.Vode], cached: bool, seed: int = 0):
+        super().__init__()
+        rkg = pcx.RandomKeyGenerator(seed)
+        layers = [
+            pxnn.Conv2d(2, 3, 3, padding=1, rkg=rkg),
+            pxnn.Conv2d(3, 2, 3, padding=1, rkg=rkg),
+            pxnn.Linear(2 * 6 * 6, DIMS[-1], rkg=rkg),
+        ]
+        self.layers: list[Any] = [pxc.Cached(layer) if cached else layer for layer in layers]
+        self.nodes: list[Any] = [node() for _ in range(2)]
+        self.out = pxc.Vode()
+        self.out.h.frozen = True
+
+    def __call__(self, x, y):
+        for layer, node in zip(self.layers[:-1], self.nodes, strict=True):
+            x = node(jnp.tanh(layer(x)))
+        self.out(self.layers[-1](x.reshape(-1)))
+        if y is not None:
+            self.out.set("h", y)
+        return self.out.get("u")
+
+
+def cnn_pair(node):
+    k1, k2 = jax.random.split(jax.random.PRNGKey(4))
+    x, y = jax.random.normal(k1, (B, 2, 6, 6)), jax.random.normal(k2, (B, DIMS[-1]))
+    plain, cached = CNN(node, cached=False), CNN(node, cached=True)
+    init(plain, x, y)
+    init(cached, x, y)
+    keys = jax.random.split(jax.random.PRNGKey(5), len(plain.nodes))
+    for k, pn, cn in zip(keys, plain.nodes, cached.nodes, strict=True):
+        eps = 0.3 * jax.random.normal(k, pn._stored().get().shape)
+        if node is pxc.ErrorVode:
+            pn.e.set(eps)
+            cn.e.set(eps)
+        else:
+            pn.h.set(pn.h.get() + eps)
+            cn.h.set(cn.h.get() + eps)
+    _refill(cached, x)
+    return x, y, plain, cached
+
+
+@pytest.mark.parametrize("node", [pxc.Vode, pxc.ErrorVode])
+def test_conv_gradients_match(node):
+    """The tangent rule is generic: for a convolution JAX transposes it to the usual conv gradients."""
+    x, _, plain, cached = cnn_pair(node)
+    e_plain, g_plain = state_grads(plain, x)
+    e_cached, g_cached = state_grads(cached, x)
+    assert_allclose(e_cached, e_plain, rtol=1e-5, atol=1e-6)
+    for gp, gc in zip(g_plain.nodes, g_cached.nodes, strict=True):
+        assert_allclose(gc._stored().get(), gp._stored().get(), rtol=1e-5, atol=1e-6)
+    for wp, wc in zip(weight_grads(plain, x), weight_grads(cached, x), strict=True):
+        assert_allclose(wc, wp, rtol=1e-5, atol=1e-6)
+
+
+def test_conv_cached_forward_evaluates_no_convolution():
+    x, y, _, cached = cnn_pair(pxc.ErrorVode)
+    with pxu.step(cached, clear_params=pxc.VodeParam.Cache):
+        text = str(jax.make_jaxpr(lambda x_: forward(x_, None, model=cached))(x))
+    pcx.RKG.seed(0)
+    assert "conv_general_dilated" not in text and "dot_general" not in text
+
+
+def test_conv_trajectory_matches_a_vode_network():
+    x, y, _, cached = cnn_pair(pxc.ErrorVode)
+    oracle = CNN(pxc.Vode, cached=False)
+    init(oracle, x, y)
+    for on, h in zip(oracle.nodes, values(cached, x), strict=True):
+        on.h.set(h)
+    traj_oracle = _run(oracle, x, 20, lr=0.005, h_steps=False)
+    traj_cached = _run(cached, x, 20, lr=0.005)
+    assert_allclose(traj_cached, traj_oracle, rtol=1e-5, atol=1e-6)
