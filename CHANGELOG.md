@@ -19,6 +19,8 @@ GitHub release notes.
 
 ### Added
 
+- `pxc.ErrorVode`, a Vode that stores its prediction error `e = h - u` instead of its value, with `h = stop_gradient(u) + e`. Energies and the local PC state and weight gradients are those of the same Vode network, read from the stored error without the cancellation of forming `h - u` in float32. `pxc.apply_h_updates` applies optimiser updates as steps in `h` (forward-mode Taylor correction of the change in `u`), reproducing the Vode trajectories; `optim.step` on ErrorVodes steps the errors directly, a different local dynamics.
+- `Vode.residual()`, the prediction error used by `se_energy`; subclasses override it to change how the error is computed.
 - Test suite of 442 tests across four tiers: structural (`tests/core/`), transform equivalence against hand-written raw jax (`tests/functional/`), numerical correctness against closed forms and `optax` (`tests/numerics/`), plus `tests/utils/`, `tests/nn/` and per-backend smoke tests (`tests/devices/`). Coverage of `pcx/` is 96%.
 - 29 verified defects, each with a failing test asserting the correct behaviour. Marked `bug` and excluded from the default run; reported by an advisory CI job. Every marker opens with the issue that owns the defect, so the marker is the map from test to fix. 19 are tracked as issues #67 to #79; the 10 still under discussion with the maintainers live in `BUGS.md`, which is deleted once they are resolved.
 - `tests/README.md` documenting the testing strategy: the tiers and their oracles, the `bug` / `device` / `slow` markers, the shared fixtures, and how mutation testing validates the suite.
