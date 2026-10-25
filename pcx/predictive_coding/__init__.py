@@ -1,7 +1,9 @@
 __all__ = [
     "STATUS",
+    "Cached",
     "EnergyModule",
     "ErrorVode",
+    "LayerCache",
     "Ruleset",
     "Vode",
     "VodeParam",
@@ -11,6 +13,7 @@ __all__ = [
     "zero_energy",
 ]
 
+from ._cached import Cached, LayerCache
 from ._energy import ce_energy, se_energy, zero_energy
 from ._energy_module import EnergyModule
 from ._error_vode import ErrorVode, apply_h_updates

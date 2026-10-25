@@ -14,6 +14,7 @@ from ..core._parameter import BaseParam, DynamicParam
 from ..core._random import RKG, RandomKeyGenerator
 from ..core._static import static
 from ..core._tree import tree_apply
+from ._cached import Cached
 from ._energy import se_energy
 from ._energy_module import EnergyModule
 from ._parameter import VodeParam
@@ -151,6 +152,9 @@ def apply_h_updates(
         *args, **kwargs: passed to `fn`.
         model (PyTree): the model, passed to `fn` as the keyword argument `model`.
         order (int, optional): order of the Taylor expansion of `u_l`, 1 or 2. Defaults to 2.
+
+    `Cached` layers are updated too: their output moves by `dz = W d` (exactly, by linearity), read from the same
+    forward-mode pass, so each cached layer costs one matmul on `d` per step and no forward pass.
     """
     if order not in (1, 2):
         raise ValueError(f"order must be 1 or 2, got {order}")
@@ -168,10 +172,13 @@ def apply_h_updates(
 
     _error_vodes: list[ErrorVode] = []
     tree_apply(lambda v: _error_vodes.append(v), lambda x: isinstance(x, ErrorVode), tree=model)
+    _cached: list[Cached] = []
+    tree_apply(lambda m: _cached.append(m), lambda x: isinstance(x, Cached), tree=model)
 
     _p0 = [p.get() for p in _params]
+    _z0 = [cast(jax.Array, m.cache["z"]) for m in _cached]
 
-    if _error_vodes:
+    if _error_vodes or _cached:
         # Every dynamic parameter of the model, so that the forward passes below leave no trace (e.g. jvp tracers
         # in the caches) behind them.
         _all = jtu.tree_leaves(model, is_leaf=lambda x: isinstance(x, DynamicParam))
@@ -184,27 +191,35 @@ def apply_h_updates(
                     p.set(v)
                 fn(*args, model=model, **kwargs)
 
-                return [cast(jax.Array, v.get("u")) for v in _error_vodes]
+                return (
+                    [cast(jax.Array, v.get("u")) for v in _error_vodes],
+                    [cast(jax.Array, m.cache["z"]) for m in _cached],
+                )
             finally:
                 for p, v in zip(_all, _snapshot, strict=True):
                     p.set(v)
                 RKG.key.set(_key)
 
-        def _du1(values: list[jax.Array]) -> list[jax.Array]:
+        def _du1(values: list[jax.Array]) -> tuple[list[jax.Array], list[jax.Array]]:
             return jax.jvp(_us, (values,), (_deltas,))[1]
 
         if order == 1:
-            _du = _du1(_p0)
+            _du, _dz = _du1(_p0)
         else:
-            _first, _second = jax.jvp(_du1, (_p0,), (_deltas,))
+            # The second-order term of z is zero (the cached layers are linear); only u needs it.
+            (_first, _dz), (_second, _) = jax.jvp(_du1, (_p0,), (_deltas,))
             _du = [a + 0.5 * b for a, b in zip(_first, _second, strict=True)]
 
         _du_by_param = {id(v.e): du for v, du in zip(_error_vodes, _du, strict=True)}
     else:
         _du_by_param = {}
+        _dz = []
 
     for p, v, d in zip(_params, _p0, _deltas, strict=True):
         if id(p) in _du_by_param:
             p.set(v + d - _du_by_param[id(p)])
         else:
             p.set(v + d)
+
+    for m, z, dz in zip(_cached, _z0, _dz, strict=True):
+        m.cache["z"] = z + dz
