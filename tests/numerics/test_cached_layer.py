@@ -356,3 +356,19 @@ def test_compute_dtype_casts_at_the_matmul_and_keeps_float32_parameters_and_cach
         text = str(jax.make_jaxpr(lambda x_: forward(x_, None, model=model))(x))
     pcx.RKG.seed(0)
     assert "dot_general" not in text
+
+
+def test_a_cast_only_wrapper_has_no_cache_and_works_with_apply_h_updates():
+    """`cache=False` applies the dtype casts only: no cache is filled and h-steps work as for plain layers."""
+    x, y = data()
+    model = MLP(pxc.ErrorVode, jnp.tanh, cached=True)
+    for layer in model.layers:
+        layer.enabled.set(False)
+        layer.compute_dtype.set(jnp.bfloat16)
+    init(model, x, y)
+    assert all(layer.cache.get() is None for layer in model.layers)
+    _, g = state_grads(model, x)
+    updates = jax.tree.map(lambda a: -0.05 * a, g)
+    with pxu.step(model, clear_params=pxc.VodeParam.Cache):
+        pxc.apply_h_updates(forward, updates, x, None, model=model)
+    assert all(layer.cache.get() is None for layer in model.layers)

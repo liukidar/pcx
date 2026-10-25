@@ -173,7 +173,7 @@ def apply_h_updates(
     _error_vodes: list[ErrorVode] = []
     tree_apply(lambda v: _error_vodes.append(v), lambda x: isinstance(x, ErrorVode), tree=model)
     _cached: list[Cached] = []
-    tree_apply(lambda m: _cached.append(m), lambda x: isinstance(x, Cached), tree=model)
+    tree_apply(lambda m: _cached.append(m), lambda x: isinstance(x, Cached) and x.enabled.get(), tree=model)
 
     _p0 = [p.get() for p in _params]
     _z0 = [cast(jax.Array, m.cache["z"]) for m in _cached]
