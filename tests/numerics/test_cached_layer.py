@@ -331,3 +331,28 @@ def test_conv_trajectory_matches_a_vode_network():
     traj_oracle = _run(oracle, x, 20, lr=0.005, h_steps=False)
     traj_cached = _run(cached, x, 20, lr=0.005)
     assert_allclose(traj_cached, traj_oracle, rtol=1e-5, atol=1e-6)
+
+
+# Mixed precision #####################################################################
+
+
+def test_compute_dtype_casts_at_the_matmul_and_keeps_float32_parameters_and_cache():
+    x, y = data()
+    model = MLP(pxc.ErrorVode, jnp.tanh, cached=True)
+    for layer in model.layers:
+        layer.compute_dtype.set(jnp.bfloat16)
+        layer.cache_dtype.set(jnp.float32)
+    init(model, x, y)
+    assert all(_inner(layer).nn.weight.get().dtype == jnp.float32 for layer in model.layers)
+    assert all(layer.cache["z"].dtype == jnp.float32 for layer in model.layers)
+    # weight gradients come back in float32 and agree with the float32 network to bf16 accuracy
+    ref = MLP(pxc.ErrorVode, jnp.tanh, cached=False)
+    init(ref, x, y)
+    for w_bf, w_ref in zip(weight_grads(model, x), weight_grads(ref, x), strict=True):
+        assert w_bf.dtype == jnp.float32
+        assert_allclose(w_bf, w_ref, rtol=3e-2, atol=3e-2)
+    # last: tracing leaves tracers in the model's caches
+    with pxu.step(model, clear_params=pxc.VodeParam.Cache):
+        text = str(jax.make_jaxpr(lambda x_: forward(x_, None, model=model))(x))
+    pcx.RKG.seed(0)
+    assert "dot_general" not in text

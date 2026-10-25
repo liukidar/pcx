@@ -13,6 +13,7 @@ import jax.tree_util as jtu
 from jax.custom_derivatives import SymbolicZero
 
 from ..core._parameter import BaseParam, ParamCache, ParamDict
+from ..core._static import static
 from ._energy_module import EnergyModule
 from ._vode import STATUS
 
@@ -104,6 +105,7 @@ def _cached_apply(nn: Any, x: jax.Array, z: jax.Array, key: Any) -> jax.Array:
             tangent = t_w if tangent is None else tangent + t_w
         if tangent is None:
             tangent = jnp.zeros_like(z_)
+        tangent = tangent.astype(z_.dtype)  # the cache may be float32 while the layer computes in bf16
 
         # The primal goes back through `cached` so that an enclosing differentiation (nested jvp in
         # `apply_h_updates`, order 2) applies this rule again and sees the dependence on x; a bare `z_` would be a
@@ -127,19 +129,56 @@ class Cached(EnergyModule):
     pooling, ...). Status `STATUS.INIT`, or an empty cache, runs the layer and fills the cache.
     """
 
-    def __init__(self, layer: Callable[..., jax.Array]):
+    def __init__(
+        self,
+        layer: Callable[..., jax.Array],
+        *,
+        cache: bool = True,
+        compute_dtype: Any | None = None,
+        cache_dtype: Any | None = None,
+    ):
+        """
+        Args:
+            layer: the linear layer to wrap.
+            cache (bool, optional): keep the output between inference steps. `False` only applies the dtype casts
+                (a mixed-precision wrapper, for comparisons). Defaults to True.
+            compute_dtype (optional): cast the layer's arrays and its input to this dtype at the call (e.g. bf16
+                matmuls with float32 parameters kept for the optimiser). Defaults to the arrays' dtype.
+            cache_dtype (optional): dtype of the stored z, e.g. float32 while computing in bf16: the forward is
+                rounded once, the increments `z <- z + W d` accumulate in float32. Defaults to the output dtype.
+        """
         super().__init__()
         self.layer = layer
         self.cache = LayerCache()
+        self.enabled = static(cache)
+        self.compute_dtype = static(compute_dtype)
+        self.cache_dtype = static(cache_dtype)
+
+    def _nn(self) -> Any:
+        _nn = _values(self.layer.nn)
+        _dt = self.compute_dtype.get()
+        if _dt is not None:
+            _nn = jtu.tree_map(lambda a: a.astype(_dt) if eqx.is_array(a) else a, _nn)
+
+        return _nn
 
     def __call__(self, x: jax.Array, key: Any = None) -> jax.Array:
+        _dt = self.compute_dtype.get()
+        if _dt is not None:
+            x = x.astype(_dt)
+        if not self.enabled.get():
+            return self._nn()(x, key=key)
+
         _cache = self.cache.get()
         _z = _cache.get("z") if _cache is not None else None
 
         if self.status == STATUS.INIT or _z is None:
-            _z = self.layer(x, key=key)
+            _z = self._nn()(x, key=key)
+            _cdt = self.cache_dtype.get()
+            if _cdt is not None:
+                _z = _z.astype(_cdt)
         else:
-            _z = _cached_apply(_values(self.layer.nn), x, _z, key)
+            _z = _cached_apply(self._nn(), x, _z, key)
 
         self.cache["z"] = _z
 

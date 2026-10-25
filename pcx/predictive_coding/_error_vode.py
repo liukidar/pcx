@@ -222,4 +222,4 @@ def apply_h_updates(
             p.set(v + d)
 
     for m, z, dz in zip(_cached, _z0, _dz, strict=True):
-        m.cache["z"] = z + dz
+        m.cache["z"] = z + dz.astype(z.dtype)
