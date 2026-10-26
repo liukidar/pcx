@@ -27,10 +27,14 @@ B = 6
 
 
 class MLP(pxc.EnergyModule):
-    """x -> [layer -> act -> node] x 2 -> layer -> clamped output Vode."""
+    """x -> [layer -> act -> node] x 2 -> layer -> clamped output Vode. With `post`, the activation follows the node
+    (layer -> node -> act), so a layer's input is a nonlinear function of the states."""
 
-    def __init__(self, node: type[pxc.Vode], act: Callable[[jax.Array], jax.Array], cached: bool, seed: int = 0):
+    def __init__(
+        self, node: type[pxc.Vode], act: Callable[[jax.Array], jax.Array], cached: bool, seed: int = 0, post: bool = False
+    ):
         super().__init__()
+        self.post = pcx.static(post)
         rkg = pcx.RandomKeyGenerator(seed)
         self.act = pcx.static(act)
         layers = [pxnn.Linear(DIMS[i], DIMS[i + 1], rkg=rkg) for i in range(len(DIMS) - 1)]
@@ -41,7 +45,7 @@ class MLP(pxc.EnergyModule):
 
     def __call__(self, x, y):
         for layer, node in zip(self.layers[:-1], self.nodes, strict=True):
-            x = node(self.act(layer(x)))
+            x = self.act(node(layer(x))) if self.post.get() else node(self.act(layer(x)))
         self.out(self.layers[-1](x))
         if y is not None:
             self.out.set("h", y)
@@ -94,10 +98,10 @@ def data():
     return jax.random.normal(k1, (B, DIMS[0])), jax.random.normal(k2, (B, DIMS[-1]))
 
 
-def pair(node=pxc.ErrorVode, act=jnp.tanh):
+def pair(node=pxc.ErrorVode, act=jnp.tanh, post=False):
     """The same network (weights, states) with plain and with cached layers, at a perturbed state."""
     x, y = data()
-    plain, cached = MLP(node, act, cached=False), MLP(node, act, cached=True)
+    plain, cached = MLP(node, act, cached=False, post=post), MLP(node, act, cached=True, post=post)
     init(plain, x, y)
     init(cached, x, y)
     keys = jax.random.split(jax.random.PRNGKey(2), len(plain.nodes))
@@ -116,7 +120,7 @@ def pair(node=pxc.ErrorVode, act=jnp.tanh):
 
 def vode_oracle(model, x, y):
     """A plain Vode network with the same weights, at the same values h as `model`."""
-    oracle = MLP(pxc.Vode, model.act.get(), cached=False)
+    oracle = MLP(pxc.Vode, model.act.get(), cached=False, post=model.post.get())
     init(oracle, x, y)
     with pxu.step(model, clear_params=pxc.VodeParam.Cache):
         forward(x, None, model=model)
@@ -241,6 +245,26 @@ def test_incremental_caches_equal_a_fresh_forward(node):
     _refill(cached, x)
     for z_inc, layer in zip(zs, cached.layers, strict=True):
         assert_allclose(z_inc, layer.cache["z"], rtol=1e-5, atol=1e-6)
+
+
+@pytest.mark.parametrize("node", [pxc.Vode, pxc.ErrorVode])
+def test_incremental_caches_with_a_nonlinear_input(node):
+    """A cached layer whose input is a nonlinear function of the states (activation after the node) moves by
+    W (f(h + d) - f(h)), which is second order in d: the cache must still equal W f(h) + b after the steps (up to the
+    third-order Taylor remainder, small at this step size)."""
+    x, _, _, cached = pair(node, post=True)
+    _run(cached, x, 20, lr=0.01, momentum=0.0)
+    zs = [layer.cache["z"] for layer in cached.layers]
+    _refill(cached, x)
+    for z_inc, layer in zip(zs, cached.layers, strict=True):
+        assert_allclose(z_inc, layer.cache["z"], rtol=1e-4, atol=1e-5)
+
+
+@pytest.mark.parametrize("node", [pxc.Vode, pxc.ErrorVode])
+def test_post_activation_trajectory_matches_a_vode_network(node):
+    x, y, _, cached = pair(node, post=True)
+    oracle = vode_oracle(cached, x, y)
+    assert_allclose(_run(cached, x, 20), _run(oracle, x, 20, h_steps=False), rtol=1e-3, atol=1e-6)
 
 
 def test_apply_h_updates_is_exact_for_a_linear_network():

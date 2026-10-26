@@ -159,8 +159,9 @@ def apply_h_updates(
         model (PyTree): the model, passed to `fn` as the keyword argument `model`.
         order (int, optional): order of the Taylor expansion of `u_l`, 1 or 2. Defaults to 2.
 
-    `Cached` layers are updated too: their output moves by `dz = W d` (exactly, by linearity), read from the same
-    forward-mode pass, so each cached layer costs one matmul on `d` per step and no forward pass.
+    `Cached` layers are updated too: their output moves by `dz = W d_in` (d_in the change of the layer's input, to the
+    same order as the nodes), read from the same forward-mode pass, so each cached layer costs one matmul per step and
+    no forward pass.
     """
     if order not in (1, 2):
         raise ValueError(f"order must be 1 or 2, got {order}")
@@ -212,9 +213,12 @@ def apply_h_updates(
         if order == 1:
             _du, _dz = _du1(_p0)
         else:
-            # The second-order term of z is zero (the cached layers are linear); only u needs it.
-            (_first, _dz), (_second, _) = jax.jvp(_du1, (_p0,), (_deltas,))
+            # A cached layer is linear in its input, but the input can be a nonlinear function of the states (an
+            # activation after the node, an attention core): then z moves by W (f(h + d) - f(h)), which has a second
+            # order term. It is symbolically zero when the input is the state itself.
+            (_first, _dz1), (_second, _dz2) = jax.jvp(_du1, (_p0,), (_deltas,))
             _du = [a + 0.5 * b for a, b in zip(_first, _second, strict=True)]
+            _dz = [a + 0.5 * b for a, b in zip(_dz1, _dz2, strict=True)]
 
         _du_by_param = {id(v.e): du for v, du in zip(_error_vodes, _du, strict=True)}
     else:
