@@ -1,7 +1,7 @@
 import abc
 import inspect
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import Any, NamedTuple
 
 import equinox as eqx
 import jax
@@ -68,6 +68,46 @@ from ..core._tree import tree_extract, tree_inject, tree_ref, tree_unref
 
 def _make_tuple(x: Any):
     return x if isinstance(x, tuple) else (x,)
+
+
+class _VAxis(NamedTuple):
+    """The first array mapped by a `Vmap` and the axis it is mapped over."""
+
+    param: Any
+    axis: int
+
+
+def _explicit_spec(x: Any) -> "jax.sharding.PartitionSpec | None":
+    """The explicit `PartitionSpec` of `x`, or None on a jax predating explicit sharding."""
+    if not hasattr(jax, "typeof") or not hasattr(jax.sharding, "reshard"):
+        return None
+
+    return getattr(jax.typeof(x.get() if isinstance(x, BaseParam) else x).sharding, "spec", None)
+
+
+def _shard_like(keys: jax.Array, x: Any, axis: int) -> jax.Array:
+    """Shards the leading axis of `keys` the way `x` is sharded along `axis`.
+
+    `jax.vmap` requires every input mapped over the same axis to have the same sharding along it. With explicit
+    sharding (the default mesh type of `jax.make_mesh` since jax 0.9.0) that sharding is part of the type, so keys
+    split over a batch sharded on `P("data")` must be resharded to `P("data")` too. Anything without explicit
+    sharding along `axis` (no mesh, an `Auto` mesh, or a jax predating explicit sharding) is returned unchanged.
+    """
+    _spec = _explicit_spec(x)
+    _axis = axis % len(x.shape)
+    if _spec is None or _axis >= len(_spec) or _spec[_axis] is None:
+        return keys
+
+    return jax.sharding.reshard(keys, jax.sharding.PartitionSpec(_spec[_axis]))
+
+
+def _replicate(keys: jax.Array) -> jax.Array:
+    """Undoes `_shard_like`, so a single key can be indexed out of `keys` unambiguously."""
+    _spec = _explicit_spec(keys)
+    if _spec is None or all(s is None for s in _spec):
+        return keys
+
+    return jax.sharding.reshard(keys, jax.sharding.PartitionSpec())
 
 
 def _repr_function(f: Callable) -> str:
@@ -367,26 +407,29 @@ class Vmap(_BaseTransform):
         _kwargs_mask = self._process_mask(self.kwargs_mask, kwargs)
         _in_axes_mask = (*_make_tuple(self.t_kwargs.get("in_axes", ())), _kwargs_mask)
 
-        # Compute vaxes dimension which is necessary to split the RKG key.
-        def _extract_vaxes_dim(node, mask):
+        # Find the first mapped array: its size along the vmap axis is necessary to split the RKG key, and its
+        # sharding along that axis is the sharding the split keys must have.
+        def _extract_vaxes(node, mask):
             if mask is not None:
                 for param in filter(lambda _node: hasattr(_node, "shape"), jtu.tree_leaves(node)):
-                    return param.shape[mask]
+                    return _VAxis(param, mask)
 
             return None
 
-        _vaxis_dim = jtu.tree_leaves(
+        _v = jtu.tree_leaves(
             jtu.tree_map(
-                lambda mask, node: _extract_vaxes_dim(node, mask),
+                lambda mask, node: _extract_vaxes(node, mask),
                 _in_axes_mask,
                 (*args, kwargs),
                 is_leaf=lambda mask: mask is None,
-            )
+            ),
+            is_leaf=lambda x: isinstance(x, _VAxis),
         )[0]
+        _vaxis_dim = _v.param.shape[_v.axis]
 
         # Split the __RKG key over the vmap axis (and set the mask accordingly)
         _in_axes_mask[-1]["__RKG"] = 0
-        kwargs["__RKG"].key.set(kwargs["__RKG"].key.split(_vaxis_dim))
+        kwargs["__RKG"].key.set(_shard_like(kwargs["__RKG"].key.split(_vaxis_dim), _v.param, _v.axis))
 
         def _wrap_fn(*args):
             *_args, _kwargs = args
@@ -405,6 +448,6 @@ class Vmap(_BaseTransform):
 
         # Merge back the key value to remove the vmap axis before returning it;
         # it will automatically be injected back into the global RKG (being it a kwarg)
-        kwargs["__RKG"].key.set(kwargs["__RKG"].key[0])
+        kwargs["__RKG"].key.set(_replicate(kwargs["__RKG"].key.get())[0])
 
         return _r, kwargs

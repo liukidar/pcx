@@ -54,6 +54,7 @@ GitHub release notes.
 - `just fix` ran the formatter before the linter, so `ruff check --fix` could leave its rewrites unformatted and `just all` would then fail its own format check.
 - Various lint findings across `pcx`: unsorted imports, deprecated `typing` aliases, implicit `Optional` annotations, stale `# noqa` codes, and an unnecessary `map`/`zip` pairing in `BaseModule.flatten_module_with_keys`.
 - `repr()` of a composed transform names every layer instead of collapsing to the innermost function ([#104](https://github.com/liukidar/pcx/pull/104)).
+- `pxf.vmap` over a batch sharded on an explicit mesh, the default of `jax.make_mesh` since jax 0.9.0, no longer fails with `Mapped away dimension of inputs passed to vmap should be sharded the same`. The per-lane RKG keys are now sharded like the batch, so each lane gets the same key it would get on one device ([#110](https://github.com/liukidar/pcx/pull/110)).
 
 ## [0.6.2.post3] - 2024-11-03
 
