@@ -10,7 +10,7 @@ Everything already agreed is gone from here. Those 19 defects are now
 [#79](https://github.com/liukidar/pcx/issues/79), and each `bug` marker names the
 issue that owns it, so `grep '#70'` finds every test guarding that fix.
 
-Ten items remain, grouped by status. Each still has a failing test asserting the
+Nine items remain, grouped by status. Each still has a failing test asserting the
 proposed behaviour, except 2, whose test has been deleted. Run them with
 `just test-bugs`; each marker names its `BUGS.md#N`. The numbers are the original
 triage numbers, kept stable so they still resolve.
@@ -131,37 +131,6 @@ which transform wraps it. That inconsistency is the part that needs a decision.
 `::test_value_and_grad_does_not_leak_a_tracer_into_a_positional_param`
 *Source:* `pcx/functional/_transform.py`, `ValueAndGrad._t`
 
-### 9. `pxu.step` does not restore status and has no `try/finally`
-
-**Status: the original entry conflated two claims. Split below; only (b) is in
-question.**
-
-**(a) No `try/finally`.** An exception in the body skips both the cache clear and the
-status reset, leaving the model corrupted. Under pytest the next test inherits it.
-This holds regardless of the design intent for (b).
-
-**(b) A scalar status is never restored.** The reset only runs when a 2-tuple is
-passed (`_misc.py:66`), so `with pxu.step(model, STATUS.INIT):` leaves the model in
-`'init'` afterwards, and any energy computed before the next block runs under a
-different ruleset than the caller expects.
-
-(b) may be intended: if the status is set on every block, restoring it is unnecessary.
-The case that argues against is nesting, where the inner block's exit leaves the outer
-block in the wrong status:
-
-```python
-with pxu.step(model, STATUS.NONE):
-    with pxu.step(model, STATUS.INIT):
-        ...
-    # model is in 'init' here, not 'none'
-```
-
-**Open question:** is (b) intended, and is nesting meant to work? If (b) is intended, one of
-the three tests should go and only (a) and the nesting case remain.
-
-*Tests:* three in `tests/utils/test_step.py`
-*Source:* `pcx/utils/_misc.py`, `step`
-
 ### 20. The `Scan` docstring example cannot produce its documented output
 
 **Status: proposal stands, flagged in review as needing more context. Context below.**
@@ -257,6 +226,12 @@ jax has rejected as a prefix since 0.4.34. Bisected as working on 0.4.33 and fai
 every release after, which meant no tutorial notebook ran on a modern jax. Fixed by
 passing `is_leaf=lambda mask: mask is None` to the mask `tree_map`. The nine tests that
 covered it now pass and have had their markers removed.
+
+**Entry 9, `pxu.step` not restoring status, was fixed by restoring each module's
+entry status on exit, inside a `finally`.** Decided: (b) was not intended and nesting
+is meant to work. A two-tuple status still names an explicit exit status, which wins
+over restoring, so the nesting test now uses the scalar form. The three tests pass
+and have had their markers removed.
 
 The three findings investigated and cleared as **not** defects have moved to
 [CONTRIBUTING.md](CONTRIBUTING.md), along with the mutation-testing evidence, since
