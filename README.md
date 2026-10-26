@@ -19,7 +19,6 @@ A JAX library for building highly configurable predictive coding networks.
 - **[Tutorials](examples/)** — nine notebooks, start with [`0_two_moons`](examples/0_two_moons.ipynb)
 - **[Documentation](https://pcx.readthedocs.io/en/latest/)** — API reference and guides
 - **[Benchmarking paper](https://arxiv.org/abs/2407.01163)** and the [code for its experiments](https://github.com/liukidar/pcax/releases/tag/v0.6.1)
-- **[Research notes](notes.pdf)** — open questions Luca never had time to chase, summarised [below](#open-questions)
 - **[Contributing](CONTRIBUTING.md)** — dev setup, tests, release process
 
 ## Installation
@@ -118,16 +117,6 @@ The toolchain is [uv](https://docs.astral.sh/uv/), [ruff](https://docs.astral.sh
 ## Documentation
 
 The documentation is available at [pcx.readthedocs.io](https://pcx.readthedocs.io/en/latest/). To build it yourself, see [docs/README.md](docs/README.md) or run `just docs`.
-
-## Open questions
-
-From Luca, alongside the [research notes](notes.pdf):
-
-> I've uploaded some old research [notes](https://github.com/liukidar/pcx/blob/main/notes.pdf) I never had time to dive deeper into. I'm not sure if they are still relevant, but if anyone finds any of it interesting, I am always happy to chat about it.
-> In particular:
-> - the weights initialisation may not be generating "good" gradients according to the xavier initialisation paper formulae, when used for PC networks (until page 9);
-> - rec-lra (https://arxiv.org/abs/2002.03911) does something that the authors don't make explicit in the paper that maybe can be mathematically formalised and generalised to be applied to PC as well in order to create more interconnected networks (that propagate the energy faster) (page 9-10);
-> - It could be that waiting for the network to converge during inference is actually wrong with the current formulation. This would explain a lot of the behvaiours/tricks we have experineced to make PCNs train effectively. However it is a big problem for PC since its theoretical formulation is based around the idea of state convergence via inference (page 11-12, sorry if it's a bit messy).
 
 ## Citation
 
