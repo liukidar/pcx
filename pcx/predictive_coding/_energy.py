@@ -24,7 +24,7 @@ def zero_energy(vode, rkg: RandomKeyGenerator = RKG):
 
 def se_energy(vode, rkg: RandomKeyGenerator = RKG):
     """Squared error energy function derived from a Gaussian distribution."""
-    e = vode.get("h") - vode.get("u")
+    e = vode.residual(rkg)
     return 0.5 * (e * e)
 
 

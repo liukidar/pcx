@@ -6,7 +6,7 @@ __all__ = [
 
 import re
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import Any, cast
 
 import jax
 
@@ -304,6 +304,14 @@ class Vode(EnergyModule):
 
             return _value
 
+    def _stored(self) -> VodeParam:
+        """The parameter holding the node's state (the value 'h' for a Vode)."""
+        return self.h
+
+    def residual(self, rkg: RandomKeyGenerator = RKG) -> jax.Array:
+        """The prediction error 'h - u' used by the energy functions."""
+        return cast(jax.Array, self.get("h", rkg=rkg)) - cast(jax.Array, self.get("u", rkg=rkg))
+
     def energy(self, rkg: RandomKeyGenerator = RKG) -> jax.Array:
         """Compute the Vode energy and saves it to the cache, using the key 'E'.
         The energy is computed by the energy function provided at construction time.
@@ -320,7 +328,7 @@ class Vode(EnergyModule):
             if self.energy_fn.get() is not None:
                 _E = self.energy_fn(self, rkg=rkg)
 
-                if self.h.shape == self.shape:
+                if self._stored().shape == self.shape:
                     # if the shape is the same as the vode shape,
                     # '.energy' is being called from a vmapped function
                     # otherwise 'h' would have a an extra dimension (batch)
@@ -328,7 +336,7 @@ class Vode(EnergyModule):
                 else:
                     # .energy is being called from a non-vmapped function
                     # we want to preserve the energy information of each element
-                    _E = jax.numpy.reshape(_E, (self.h.shape[0], -1)).sum(axis=1)
+                    _E = jax.numpy.reshape(_E, (self._stored().shape[0], -1)).sum(axis=1)
 
                 self.cache["E"] = _E
             else:
