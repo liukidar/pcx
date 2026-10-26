@@ -121,6 +121,30 @@ def test_a_non_default_filter_saves_the_selected_parameters(rkg, ckpt):
     np.testing.assert_array_equal(np.asarray(pcx.get(target.vode.h)), np.array([3.0, -4.0]))
 
 
+def test_loading_into_a_freshly_constructed_model_works(rkg, ckpt):
+    """The documented workflow is `model = Model(); load_params(model, ...)`, so the
+    target's parameters still hold `None` when the load runs.
+
+    A `Vode` is built with an empty `h`, which is exactly that state, so anything the
+    loader reads off the target parameter has to tolerate it. The sibling tests all
+    seed the target first, which is how this path stayed uncovered.
+    """
+
+    class WithVode(pcx.Module):
+        def __init__(self):
+            self.layer = pxnn.Linear(2, 2, rkg=rkg)
+            self.vode = pxc.Vode()
+
+    source, target = WithVode(), WithVode()
+    source.vode.h.set(jnp.array([3.0, -4.0]))
+    assert pcx.get(target.vode.h) is None, "the target must start empty for this test to mean anything"
+
+    pxu.save_params(source, ckpt, filter=pxc.VodeParam)
+    pxu.load_params(target, ckpt, filter=pxc.VodeParam)
+
+    np.testing.assert_array_equal(np.asarray(pcx.get(target.vode.h)), np.array([3.0, -4.0]))
+
+
 def test_missing_parameter_raises_key_error(net, other_net, ckpt):
     """A checkpoint that does not cover the model must fail loudly. Silently
     leaving a layer at its random initialisation is the worst outcome."""
@@ -141,7 +165,6 @@ def test_keys_are_stable_attribute_paths(net, ckpt):
         assert set(f.files) == {".a.nn.weight", ".a.nn.bias", ".b.nn.weight", ".b.nn.bias"}
 
 
-@pytest.mark.bug("#73: load_params does no shape check, so a mismatched checkpoint overwrites silently")
 def test_shape_mismatch_is_rejected(rkg, ckpt):
     """Loading a checkpoint from a differently-shaped model must not succeed.
     It currently overwrites the parameter with the wrong shape, which surfaces
@@ -160,7 +183,6 @@ def test_shape_mismatch_is_rejected(rkg, ckpt):
     assert loaded.shape == original.shape, f"silently loaded a {loaded.shape} weight into a {original.shape} parameter"
 
 
-@pytest.mark.bug("#73: duplicate refs are written as None, so np.load refuses the object array")
 def test_round_trip_preserves_shared_parameters(rkg, ckpt):
     """A model using `pxnn.shared` must checkpoint and restore like any other.
 

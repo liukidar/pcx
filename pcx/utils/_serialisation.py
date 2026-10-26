@@ -9,7 +9,7 @@ import jax.tree_util as jtu
 import numpy as np
 from jaxtyping import PyTree
 
-from ..core._parameter import BaseParam
+from ..core._parameter import BaseParam, get
 from ..core._tree import _cache
 from ..nn._parameter import LayerParam
 
@@ -42,7 +42,7 @@ def save_params(
 
     _params = jtu.tree_flatten_with_path(model, is_leaf=_filter_fn)[0]
 
-    # Cache to check for duplicate parameters.
+    # Cache to check for duplicate parameters: a shared parameter is saved only under its first path.
     _seen = _cache()
     _data = {}
     for key, param in _params:
@@ -50,8 +50,6 @@ def save_params(
             assert isinstance(param, BaseParam), "Only parameters can be serialized."
             if _seen(id(param)) is None:
                 _data[jtu.keystr(key)] = param.get()
-            else:
-                _data[jtu.keystr(key)] = None
 
     np.savez_compressed(path, **_data)
 
@@ -79,6 +77,7 @@ def load_params(
 
     Raises:
         KeyError: the file does not contain all the parameters required by the model.
+        ValueError: a stored parameter does not have the shape of its target parameter.
     """
     path = path if path.endswith(".npz") else f"{path}.npz"
     _filter_fn = filter if not isinstance(filter, type | UnionType) else lambda x: isinstance(x, filter)
@@ -86,12 +85,21 @@ def load_params(
     _loaded_values = np.load(path)
     _params = jtu.tree_flatten_with_path(model, is_leaf=_filter_fn)[0]
 
+    # Mirrors 'save_params': a shared parameter is stored only under its first path.
+    _seen = _cache()
     for _key, _param in _params:
-        if _filter_fn(_param):
+        if _filter_fn(_param) and _seen(id(_param)) is None:
             _key = jtu.keystr(_key)
             if _key not in _loaded_values:
                 raise KeyError(f"Parameter '{_key}' not found in the file '{path}'.")
-            elif (_value := _loaded_values[_key]) is not None:
-                _param.set(jax.numpy.array(_value))
+            _value = _loaded_values[_key]
+            # A target parameter that holds nothing yet (a freshly built Vode, for example) has no shape to
+            # compare against, so it accepts whatever the file stores.
+            _current = get(_param)
+            if _current is not None and jax.numpy.shape(_current) != _value.shape:
+                raise ValueError(
+                    f"Parameter '{_key}' has shape {jax.numpy.shape(_current)} but the file stores {_value.shape}."
+                )
+            _param.set(jax.numpy.array(_value))
 
     _loaded_values.close()
